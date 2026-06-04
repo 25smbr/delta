@@ -41,37 +41,36 @@ const map = L.map("map", {
     zoomControl: false
 });
 
-const bounds = [[0,0],[H,W]];
-
-L.imageOverlay("map.png", bounds).addTo(map);
-map.fitBounds(bounds);
-map.setMaxBounds(bounds);
+L.imageOverlay("map.png", [[0,0],[H,W]]).addTo(map);
+map.fitBounds([[0,0],[H,W]]);
+map.setMaxBounds([[0,0],[H,W]]);
 
 // ---------------- STATE ----------------
 
-const markersCollection = collection(db, "markers");
-const drawingsCollection = collection(db, "drawings");
+const markersCol = collection(db, "markers");
+const drawingsCol = collection(db, "drawings");
 
 const markers = {};
-const polylines = {};
+const drawings = {};
 
-let drawMode = false;
-let drawPoints = [];
+const undoStack = [];
 
-let selectedSymbol = "friendly_infantry_alive";
-
-// ---------------- ICON ----------------
+// ---------------- ICON COLOR RESTORED ----------------
 
 function symbolSVG(type) {
 
     const [faction, unit, status] = type.split("_");
 
+    let color = faction === "enemy" ? "#ff4d4d" : "#4fa3ff";
+
     let center = "";
 
     switch(unit) {
+
         case "infantry":
-            center = `<line x1="10" y1="10" x2="50" y2="50" stroke="black" stroke-width="3"/>
-                      <line x1="50" y1="10" x2="10" y2="50" stroke="black" stroke-width="3"/>`;
+            center = `
+                <line x1="10" y1="10" x2="50" y2="50" stroke="black" stroke-width="3"/>
+                <line x1="50" y1="10" x2="10" y2="50" stroke="black" stroke-width="3"/>`;
             break;
 
         case "tank":
@@ -100,10 +99,8 @@ function symbolSVG(type) {
         overlay = `<line x1="10" y1="10" x2="50" y2="50" stroke="red" stroke-width="4"/>
                    <line x1="50" y1="10" x2="10" y2="50" stroke="red" stroke-width="4"/>`;
 
-    const color = faction === "enemy" ? "#ff4d4d" : "#4da3ff";
-
     return `
-    <svg xmlns="http://www.w3.org/2000/svg" width="60" height="60">
+    <svg width="60" height="60" xmlns="http://www.w3.org/2000/svg">
         <rect x="5" y="5" width="50" height="50"
               fill="#111"
               stroke="${color}"
@@ -113,7 +110,7 @@ function symbolSVG(type) {
     </svg>`;
 }
 
-function createIcon(type) {
+function icon(type) {
     return L.divIcon({
         html: symbolSVG(type),
         className: "",
@@ -126,83 +123,68 @@ function createIcon(type) {
 
 const panel = document.getElementById("panel");
 
-const structure = {
-    friendly: {
-        infantry: ["alive","wounded","dead"],
-        tank: ["alive","damaged","destroyed"],
-        humvee: ["alive","damaged","destroyed"],
-        truck: ["alive","damaged","destroyed"],
-        position: ["alive","destroyed"]
-    },
-    enemy: {
-        infantry: ["alive","wounded","dead"],
-        tank: ["alive","damaged","destroyed"],
-        humvee: ["alive","damaged","destroyed"],
-        truck: ["alive","damaged","destroyed"],
-        position: ["alive","destroyed"]
-    }
-};
+// ---------------- MARKERS ----------------
 
-function addBtn(type) {
+let selectedSymbol = "friendly_infantry_alive";
 
-    const btn = document.createElement("button");
-    btn.className = "unitBtn";
-    btn.innerHTML = symbolSVG(type);
-
-    btn.onclick = () => {
-        selectedSymbol = type;
-        document.querySelectorAll(".unitBtn").forEach(b => b.classList.remove("active"));
-        btn.classList.add("active");
-    };
-
-    panel.appendChild(btn);
+function pushUndo(action) {
+    undoStack.push(action);
 }
-
-for (const faction in structure) {
-
-    const title = document.createElement("div");
-    title.className = "factionTitle";
-    title.textContent = faction.toUpperCase();
-    panel.appendChild(title);
-
-    for (const unit in structure[faction]) {
-
-        const label = document.createElement("div");
-        label.className = "unitLabel";
-        label.textContent = unit.toUpperCase();
-        panel.appendChild(label);
-
-        structure[faction][unit].forEach(status => {
-            addBtn(`${faction}_${unit}_${status}`);
-        });
-    }
-}
-
-// ---------------- CONTROLS ----------------
 
 document.getElementById("undoBtn").onclick = async () => {
-    location.reload(); // simple safe undo reset (stable for realtime ops)
+
+    const last = undoStack.pop();
+    if (!last) return;
+
+    if (last.type === "add") {
+        await deleteDoc(doc(db,"markers",last.id));
+    }
+
+    if (last.type === "delete") {
+        await setDoc(doc(db,"markers",last.id), last.data);
+    }
+
+    if (last.type === "move") {
+        await setDoc(doc(db,"markers",last.id), last.from);
+    }
 };
 
+// FIXED CLEAR (markers only)
 document.getElementById("clearBtn").onclick = async () => {
-    if (!confirm("CLEAR ALL MARKERS?")) return;
+    if (!confirm("Clear ALL markers?")) return;
 
-    const snap = await getDocs(markersCollection);
+    const snap = await getDocs(markersCol);
     const batch = writeBatch(db);
 
     snap.forEach(d => batch.delete(d.ref));
     await batch.commit();
 };
 
+// ---------------- DRAWING TOOL SYSTEM ----------------
+
+let drawMode = false;
+let tool = "pen";
+let color = "#4fa3ff";
+let width = 2;
+
+let tempShape = null;
+let startPoint = null;
+
+// UI controls
 document.getElementById("drawBtn").onclick = () => {
     drawMode = !drawMode;
-    drawPoints = [];
-    alert(drawMode ? "DRAW MODE ON" : "DRAW MODE OFF");
+};
+
+document.getElementById("clearDrawBtn").onclick = async () => {
+    const snap = await getDocs(drawingsCol);
+    const batch = writeBatch(db);
+    snap.forEach(d => batch.delete(d.ref));
+    await batch.commit();
 };
 
 // ---------------- MARKERS ----------------
 
-onSnapshot(markersCollection, snap => {
+onSnapshot(markersCol, snap => {
 
     const alive = new Set();
 
@@ -215,20 +197,36 @@ onSnapshot(markersCollection, snap => {
 
         if (!markers[id]) {
 
-            const marker = L.marker([data.y, data.x], {
-                icon: createIcon(data.type),
+            const m = L.marker([data.y, data.x], {
+                icon: icon(data.type),
                 draggable: true
             }).addTo(map);
 
-            // DELETE (fixed confirmation)
-            marker.on("contextmenu", async () => {
-                if (!confirm("Delete this unit?")) return;
+            // DELETE FIXED
+            m.on("contextmenu", async () => {
+                if (!confirm("Delete unit?")) return;
+
+                pushUndo({
+                    type: "delete",
+                    id,
+                    data
+                });
+
                 await deleteDoc(doc(db,"markers",id));
             });
 
-            // REPOSITION
-            marker.on("dragend", async e => {
+            // MOVE FIXED
+            m.on("dragend", async e => {
+
                 const p = e.target.getLatLng();
+
+                const old = { ...data };
+
+                pushUndo({
+                    type: "move",
+                    id,
+                    from: old
+                });
 
                 await setDoc(doc(db,"markers",id), {
                     ...data,
@@ -237,7 +235,7 @@ onSnapshot(markersCollection, snap => {
                 });
             });
 
-            markers[id] = marker;
+            markers[id] = m;
         }
     });
 
@@ -249,42 +247,70 @@ onSnapshot(markersCollection, snap => {
     });
 });
 
-// ---------------- ADD MARKER / DRAW ----------------
+// ---------------- DRAWING ----------------
 
-map.on("click", async e => {
+map.on("mousedown", e => {
+    if (!drawMode) return;
 
-    if (drawMode) {
-        drawPoints.push([e.latlng.lat, e.latlng.lng]);
+    startPoint = e.latlng;
 
-        if (drawPoints.length > 1) {
-            if (window.tempLine) map.removeLayer(window.tempLine);
-
-            window.tempLine = L.polyline(drawPoints, {
-                color: "#4fa3ff",
-                weight: 2
-            }).addTo(map);
-        }
-
-        return;
+    if (tool === "pen") {
+        tempShape = L.polyline([startPoint], { color, weight: width }).addTo(map);
     }
-
-    await addDoc(markersCollection, {
-        x: e.latlng.lng,
-        y: e.latlng.lat,
-        type: selectedSymbol,
-        created: Date.now()
-    });
 });
 
-// FINISH DRAW (right click)
-map.on("contextmenu", async () => {
+map.on("mousemove", e => {
+    if (!drawMode || !startPoint) return;
 
-    if (!drawMode || drawPoints.length < 2) return;
+    if (tool === "pen" && tempShape) {
+        tempShape.addLatLng(e.latlng);
+    }
+});
 
-    await addDoc(drawingsCollection, {
-        points: drawPoints,
-        created: Date.now()
-    });
+map.on("mouseup", async e => {
 
-    drawPoints = [];
+    if (!drawMode) return;
+
+    const end = e.latlng;
+
+    let shape = null;
+
+    if (tool === "line") {
+        shape = L.polyline([startPoint, end], { color, weight: width }).addTo(map);
+    }
+
+    if (tool === "circle") {
+        shape = L.circle(startPoint, {
+            radius: startPoint.distanceTo(end),
+            color,
+            weight: width
+        }).addTo(map);
+    }
+
+    if (tool === "rect") {
+        const b = L.latLngBounds(startPoint, end);
+        shape = L.rectangle(b, { color, weight: width }).addTo(map);
+    }
+
+    if (tool === "arrow") {
+        shape = L.polyline([startPoint, end], {
+            color,
+            weight: width
+        }).addTo(map);
+    }
+
+    if (shape) {
+        const ref = await addDoc(drawingsCol, {
+            tool,
+            color,
+            width,
+            points: [startPoint, end],
+            created: Date.now()
+        });
+
+        shape._id = ref.id;
+    }
+
+    tempShape = null;
+    startPoint = null;
 });
