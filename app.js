@@ -1,4 +1,5 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { initializeApp }
+from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 
 import {
     getFirestore,
@@ -7,100 +8,250 @@ import {
     deleteDoc,
     doc,
     onSnapshot
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+}
+from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-
-// FIREBASE CONFIG
 const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT.firebaseapp.com",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT.appspot.com",
-    messagingSenderId: "XXXXXXXX",
-    appId: "XXXXXXXX"
+  apiKey: "AIzaSyDUTJ3Nz8tY7ZN52h3oA582qpw44wrCwac",
+  authDomain: "delta-29dec.firebaseapp.com",
+  projectId: "delta-29dec",
+  storageBucket: "delta-29dec.firebasestorage.app",
+  messagingSenderId: "441849295640",
+  appId: "1:441849295640:web:2c2c7c7fb416a514e4646d",
+  measurementId: "G-8ZCT1SJGGT"
 };
 
 const app = initializeApp(firebaseConfig);
+
 const db = getFirestore(app);
 
-
-// IMAGE SIZE
 const imageWidth = 4000;
 const imageHeight = 2500;
 
-
-// LEAFLET SIMPLE MAP
 const map = L.map("map", {
+
     crs: L.CRS.Simple,
     minZoom: -3
+
 });
 
 const bounds = [
+
     [0, 0],
     [imageHeight, imageWidth]
+
 ];
 
-L.imageOverlay("map.png", bounds).addTo(map);
+L.imageOverlay(
+    "map.png",
+    bounds
+).addTo(map);
 
 map.fitBounds(bounds);
 
+const symbolSelect =
+    document.getElementById("symbolSelect");
 
-// MARKER STORAGE
-const markersCollection = collection(db, "markers");
+const markersCollection =
+    collection(db, "markers");
 
 const displayedMarkers = {};
 
+function symbolSVG(type = "infantry_alive") {
 
-// REALTIME LISTENER
-onSnapshot(markersCollection, (snapshot) => {
+    const status =
+        type.split("_").pop();
 
-    const currentIds = new Set();
+    const unit =
+        type.replace(`_${status}`, "");
 
-    snapshot.forEach((docSnap) => {
+    let center = "";
+
+    switch(unit) {
+
+        case "infantry":
+            center =
+                `<line x1="10" y1="10" x2="50" y2="50" stroke="black" stroke-width="3"/>
+                 <line x1="50" y1="10" x2="10" y2="50" stroke="black" stroke-width="3"/>`;
+            break;
+
+        case "tank":
+            center =
+                `<rect x="15" y="22" width="30" height="16" fill="none" stroke="black" stroke-width="3"/>`;
+            break;
+
+        case "position":
+            center =
+                `<circle cx="30" cy="30" r="10" fill="none" stroke="black" stroke-width="3"/>`;
+            break;
+
+        case "humvee":
+            center =
+                `<rect x="18" y="22" width="24" height="14" fill="none" stroke="black" stroke-width="3"/>`;
+            break;
+
+        case "truck":
+            center =
+                `<rect x="15" y="20" width="20" height="16" fill="none" stroke="black" stroke-width="3"/>
+                 <rect x="35" y="24" width="10" height="12" fill="none" stroke="black" stroke-width="3"/>`;
+            break;
+
+    }
+
+    let overlay = "";
+
+    if(status === "wounded") {
+
+        overlay =
+            `<text x="30" y="58"
+             text-anchor="middle"
+             font-size="16"
+             fill="orange">!</text>`;
+
+    }
+
+    if(status === "damaged") {
+
+        overlay =
+            `<line x1="12" y1="48"
+                   x2="48" y2="12"
+                   stroke="orange"
+                   stroke-width="4"/>`;
+
+    }
+
+    if(status === "dead" ||
+       status === "destroyed") {
+
+        overlay =
+            `<line x1="10" y1="10"
+                   x2="50" y2="50"
+                   stroke="red"
+                   stroke-width="4"/>
+             <line x1="50" y1="10"
+                   x2="10" y2="50"
+                   stroke="red"
+                   stroke-width="4"/>`;
+
+    }
+
+    return `
+    <svg xmlns="http://www.w3.org/2000/svg"
+         width="60"
+         height="60">
+
+        <rect
+            x="5"
+            y="5"
+            width="50"
+            height="50"
+            fill="white"
+            stroke="blue"
+            stroke-width="3"/>
+
+        ${center}
+        ${overlay}
+
+    </svg>`;
+}
+
+function createIcon(type) {
+
+    return L.divIcon({
+
+        html: symbolSVG(type),
+
+        className: "",
+
+        iconSize: [60,60],
+
+        iconAnchor: [30,30]
+
+    });
+}
+
+onSnapshot(markersCollection, snapshot => {
+
+    const current = new Set();
+
+    snapshot.forEach(docSnap => {
 
         const data = docSnap.data();
+
         const id = docSnap.id;
 
-        currentIds.add(id);
+        current.add(id);
 
-        if (!displayedMarkers[id]) {
+        if(!displayedMarkers[id]) {
 
-            const marker = L.marker([
-                data.y,
-                data.x
-            ]).addTo(map);
+            const marker = L.marker(
+                [data.y, data.x],
+                {
+                    icon: createIcon(
+    data.type || "infantry_alive"
+)
+                }
+            ).addTo(map);
 
-            marker.on("click", async () => {
+            marker.on(
+                "contextmenu",
+                async () => {
 
-                await deleteDoc(
-                    doc(db, "markers", id)
-                );
+                    if(confirm("Delete marker?")) {
 
-            });
+                        await deleteDoc(
+                            doc(
+                                db,
+                                "markers",
+                                id
+                            )
+                        );
+
+                    }
+
+                }
+            );
 
             displayedMarkers[id] = marker;
         }
+
     });
 
-    Object.keys(displayedMarkers).forEach(id => {
+    Object.keys(displayedMarkers)
+    .forEach(id => {
 
-        if (!currentIds.has(id)) {
+        if(!current.has(id)) {
 
-            map.removeLayer(displayedMarkers[id]);
+            map.removeLayer(
+                displayedMarkers[id]
+            );
 
             delete displayedMarkers[id];
         }
-    });
-});
 
-
-// ADD MARKER ON CLICK
-map.on("click", async (e) => {
-
-    await addDoc(markersCollection, {
-        x: e.latlng.lng,
-        y: e.latlng.lat,
-        created: Date.now()
     });
 
 });
+
+map.on(
+    "click",
+    async e => {
+
+        await addDoc(
+            markersCollection,
+            {
+
+                x: e.latlng.lng,
+                y: e.latlng.lat,
+
+                type:
+                    symbolSelect.value,
+
+                created:
+                    Date.now()
+
+            }
+        );
+
+    }
+);
