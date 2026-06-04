@@ -10,30 +10,71 @@ body {
     height: 100vh;
 }
 
-#toolbar {
+/* ---------------- ICON GRID ---------------- */
+
+#symbolGrid {
     position: absolute;
     z-index: 1000;
-
     top: 10px;
     left: 10px;
 
-    background: rgba(20,20,20,0.95);
+    display: grid;
+    grid-template-columns: repeat(2, 64px);
+    gap: 6px;
 
     padding: 10px;
 
-    border-radius: 8px;
+    background: rgba(20,20,20,0.95);
+    border-radius: 10px;
 
     box-shadow: 0 0 10px rgba(0,0,0,.4);
 }
 
-#symbolSelect {
+.symbolBtn {
+    width: 64px;
+    height: 64px;
 
+    background: #1c1c1c;
+    border: 1px solid #444;
+    border-radius: 6px;
+
+    cursor: pointer;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: 0;
+}
+
+.symbolBtn:hover {
+    border-color: #888;
+}
+
+.symbolBtn.active {
+    outline: 2px solid #4fa3ff;
+}
+
+/* ---------------- CLEAR BUTTON ---------------- */
+
+#clearMarkersBtn {
+    position: absolute;
+    z-index: 1000;
+
+    top: 10px;
+    right: 10px;
+
+    padding: 10px 12px;
+
+    background: #2a1f1f;
     color: white;
-    background: #222;
 
-    border: 1px solid #555;
+    border: 1px solid #553;
+    border-radius: 8px;
 
-    padding: 5px;
+    cursor: pointer;
+}
 
-    font-size: 14px;
+#clearMarkersBtn:hover {
+    background: #3a2626;
 }
