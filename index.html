@@ -3,7 +3,6 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-
 <title>SA Map</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -13,13 +12,28 @@
 <body>
 
 <div id="topbar">
-    <div class="title">TACTICAL SA SYSTEM</div>
+    <button id="undoBtn">UNDO</button>
+    <button id="drawBtn">DRAW MODE</button>
+    <button id="clearBtn">CLEAR UNITS</button>
+    <button id="clearDrawBtn">CLEAR DRAWINGS</button>
 
-    <div class="actions">
-        <button id="undoBtn">UNDO</button>
-        <button id="drawBtn">DRAW</button>
-        <button id="clearBtn">CLEAR</button>
-    </div>
+    <select id="tool">
+        <option value="pen">Pen</option>
+        <option value="line">Line</option>
+        <option value="circle">Circle</option>
+        <option value="rect">Square</option>
+        <option value="arrow">Arrow</option>
+    </select>
+
+    <input id="width" type="range" min="1" max="10" value="2"/>
+
+    <select id="color">
+        <option value="#ff4d4d">Red</option>
+        <option value="#4fa3ff">Blue</option>
+        <option value="#00ff88">Green</option>
+        <option value="#ffffff">White</option>
+        <option value="#ffd400">Yellow</option>
+    </select>
 </div>
 
 <div id="panel"></div>
