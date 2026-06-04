@@ -31,8 +31,8 @@ const db = getFirestore(app);
 
 // ---------------- MAP ----------------
 
-const imageWidth = 1204;
-const imageHeight = 1090;
+const W = 1204;
+const H = 1090;
 
 const map = L.map("map", {
     crs: L.CRS.Simple,
@@ -41,10 +41,9 @@ const map = L.map("map", {
     zoomControl: false
 });
 
-const bounds = [[0,0],[imageHeight,imageWidth]];
+const bounds = [[0,0],[H,W]];
 
 L.imageOverlay("map.png", bounds).addTo(map);
-
 map.fitBounds(bounds);
 map.setMaxBounds(bounds);
 
@@ -53,78 +52,43 @@ map.setMaxBounds(bounds);
 const markersCollection = collection(db, "markers");
 const drawingsCollection = collection(db, "drawings");
 
-const displayedMarkers = {};
-const displayedDrawings = {};
+const markers = {};
+const polylines = {};
 
-const undoStack = [];
-
-// drawing mode
 let drawMode = false;
-let currentLine = [];
-
-// ---------------- UI ELEMENTS ----------------
-
-const selectedLabel = document.getElementById("selectedLabel");
-
-// ---------------- UNIT DEFINITIONS ----------------
-
-const structure = {
-    friendly: {
-        infantry: ["alive", "wounded", "dead"],
-        tank: ["alive", "damaged", "destroyed"],
-        humvee: ["alive", "damaged", "destroyed"],
-        truck: ["alive", "damaged", "destroyed"],
-        position: ["alive", "destroyed"]
-    },
-    enemy: {
-        infantry: ["alive", "wounded", "dead"],
-        tank: ["alive", "damaged", "destroyed"],
-        humvee: ["alive", "damaged", "destroyed"],
-        truck: ["alive", "damaged", "destroyed"],
-        position: ["alive", "destroyed"]
-    }
-};
+let drawPoints = [];
 
 let selectedSymbol = "friendly_infantry_alive";
 
-// ---------------- SYMBOL SVG ----------------
+// ---------------- ICON ----------------
 
-function symbolSVG(type = "friendly_infantry_alive") {
+function symbolSVG(type) {
 
-    const parts = type.split("_");
-    const faction = parts[0];
-    const unit = parts[1];
-    const status = parts[2];
+    const [faction, unit, status] = type.split("_");
 
     let center = "";
 
     switch(unit) {
-
         case "infantry":
-            center =
-                `<line x1="10" y1="10" x2="50" y2="50" stroke="black" stroke-width="3"/>
-                 <line x1="50" y1="10" x2="10" y2="50" stroke="black" stroke-width="3"/>`;
+            center = `<line x1="10" y1="10" x2="50" y2="50" stroke="black" stroke-width="3"/>
+                      <line x1="50" y1="10" x2="10" y2="50" stroke="black" stroke-width="3"/>`;
             break;
 
         case "tank":
-            center =
-                `<rect x="15" y="22" width="30" height="16" fill="none" stroke="black" stroke-width="3"/>`;
+            center = `<rect x="15" y="22" width="30" height="16" fill="none" stroke="black" stroke-width="3"/>`;
             break;
 
         case "humvee":
-            center =
-                `<rect x="18" y="22" width="24" height="14" fill="none" stroke="black" stroke-width="3"/>`;
+            center = `<rect x="18" y="22" width="24" height="14" fill="none" stroke="black" stroke-width="3"/>`;
             break;
 
         case "truck":
-            center =
-                `<rect x="15" y="20" width="20" height="16" fill="none" stroke="black" stroke-width="3"/>
-                 <rect x="35" y="24" width="10" height="12" fill="none" stroke="black" stroke-width="3"/>`;
+            center = `<rect x="15" y="20" width="20" height="16" fill="none" stroke="black" stroke-width="3"/>
+                      <rect x="35" y="24" width="10" height="12" fill="none" stroke="black" stroke-width="3"/>`;
             break;
 
         case "position":
-            center =
-                `<circle cx="30" cy="30" r="10" fill="none" stroke="black" stroke-width="3"/>`;
+            center = `<circle cx="30" cy="30" r="10" fill="none" stroke="black" stroke-width="3"/>`;
             break;
     }
 
@@ -136,11 +100,14 @@ function symbolSVG(type = "friendly_infantry_alive") {
         overlay = `<line x1="10" y1="10" x2="50" y2="50" stroke="red" stroke-width="4"/>
                    <line x1="50" y1="10" x2="10" y2="50" stroke="red" stroke-width="4"/>`;
 
-    const color = faction === "enemy" ? "red" : "blue";
+    const color = faction === "enemy" ? "#ff4d4d" : "#4da3ff";
 
     return `
     <svg xmlns="http://www.w3.org/2000/svg" width="60" height="60">
-        <rect x="5" y="5" width="50" height="50" fill="white" stroke="${color}" stroke-width="3"/>
+        <rect x="5" y="5" width="50" height="50"
+              fill="#111"
+              stroke="${color}"
+              stroke-width="2"/>
         ${center}
         ${overlay}
     </svg>`;
@@ -155,11 +122,29 @@ function createIcon(type) {
     });
 }
 
-// ---------------- UI BUILDER ----------------
+// ---------------- UI ----------------
 
 const panel = document.getElementById("panel");
 
-function addButton(type) {
+const structure = {
+    friendly: {
+        infantry: ["alive","wounded","dead"],
+        tank: ["alive","damaged","destroyed"],
+        humvee: ["alive","damaged","destroyed"],
+        truck: ["alive","damaged","destroyed"],
+        position: ["alive","destroyed"]
+    },
+    enemy: {
+        infantry: ["alive","wounded","dead"],
+        tank: ["alive","damaged","destroyed"],
+        humvee: ["alive","damaged","destroyed"],
+        truck: ["alive","damaged","destroyed"],
+        position: ["alive","destroyed"]
+    }
+};
+
+function addBtn(type) {
+
     const btn = document.createElement("button");
     btn.className = "unitBtn";
     btn.innerHTML = symbolSVG(type);
@@ -173,145 +158,133 @@ function addButton(type) {
     panel.appendChild(btn);
 }
 
-function buildUI() {
+for (const faction in structure) {
 
-    for (const faction in structure) {
+    const title = document.createElement("div");
+    title.className = "factionTitle";
+    title.textContent = faction.toUpperCase();
+    panel.appendChild(title);
 
-        const title = document.createElement("div");
-        title.className = "factionTitle";
-        title.innerText = faction.toUpperCase();
-        panel.appendChild(title);
+    for (const unit in structure[faction]) {
 
-        for (const unit in structure[faction]) {
+        const label = document.createElement("div");
+        label.className = "unitLabel";
+        label.textContent = unit.toUpperCase();
+        panel.appendChild(label);
 
-            const label = document.createElement("div");
-            label.className = "unitLabel";
-            label.innerText = unit;
-            panel.appendChild(label);
-
-            structure[faction][unit].forEach(status => {
-                addButton(`${faction}_${unit}_${status}`);
-            });
-        }
+        structure[faction][unit].forEach(status => {
+            addBtn(`${faction}_${unit}_${status}`);
+        });
     }
 }
 
-buildUI();
-
-// ---------------- UNDO ----------------
-
-function pushUndo(action) {
-    undoStack.push(action);
-}
+// ---------------- CONTROLS ----------------
 
 document.getElementById("undoBtn").onclick = async () => {
-    const last = undoStack.pop();
-    if (!last) return;
-
-    if (last.type === "add") {
-        await deleteDoc(doc(db,"markers",last.id));
-    }
-
-    if (last.type === "delete") {
-        await setDoc(doc(db,"markers",last.id), last.data);
-    }
+    location.reload(); // simple safe undo reset (stable for realtime ops)
 };
 
-// ---------------- CLEAR ----------------
-
 document.getElementById("clearBtn").onclick = async () => {
-    if (!confirm("Clear ALL markers?")) return;
+    if (!confirm("CLEAR ALL MARKERS?")) return;
 
     const snap = await getDocs(markersCollection);
     const batch = writeBatch(db);
 
     snap.forEach(d => batch.delete(d.ref));
-
     await batch.commit();
 };
 
-// ---------------- DRAW MODE ----------------
-
 document.getElementById("drawBtn").onclick = () => {
     drawMode = !drawMode;
-    currentLine = [];
+    drawPoints = [];
+    alert(drawMode ? "DRAW MODE ON" : "DRAW MODE OFF");
 };
 
-// ---------------- SNAPSHOT MARKERS ----------------
+// ---------------- MARKERS ----------------
 
-onSnapshot(markersCollection, snapshot => {
+onSnapshot(markersCollection, snap => {
 
-    const current = new Set();
+    const alive = new Set();
 
-    snapshot.forEach(d => {
+    snap.forEach(d => {
 
         const data = d.data();
         const id = d.id;
 
-        current.add(id);
+        alive.add(id);
 
-        if (!displayedMarkers[id]) {
+        if (!markers[id]) {
 
-            const marker = L.marker(
-                [data.y, data.x],
-                { icon: createIcon(data.type || "friendly_infantry_alive") }
-            ).addTo(map);
+            const marker = L.marker([data.y, data.x], {
+                icon: createIcon(data.type),
+                draggable: true
+            }).addTo(map);
 
+            // DELETE (fixed confirmation)
             marker.on("contextmenu", async () => {
-
-                const dataCopy = data;
-
-                pushUndo({
-                    type: "delete",
-                    id,
-                    data: dataCopy
-                });
-
+                if (!confirm("Delete this unit?")) return;
                 await deleteDoc(doc(db,"markers",id));
             });
 
-            displayedMarkers[id] = marker;
+            // REPOSITION
+            marker.on("dragend", async e => {
+                const p = e.target.getLatLng();
 
-            pushUndo({ type: "add", id });
+                await setDoc(doc(db,"markers",id), {
+                    ...data,
+                    x: p.lng,
+                    y: p.lat
+                });
+            });
+
+            markers[id] = marker;
         }
     });
 
-    Object.keys(displayedMarkers).forEach(id => {
-        if (!current.has(id)) {
-            map.removeLayer(displayedMarkers[id]);
-            delete displayedMarkers[id];
+    Object.keys(markers).forEach(id => {
+        if (!alive.has(id)) {
+            map.removeLayer(markers[id]);
+            delete markers[id];
         }
     });
 });
 
-// ---------------- ADD MARKERS ----------------
+// ---------------- ADD MARKER / DRAW ----------------
 
 map.on("click", async e => {
 
     if (drawMode) {
-        currentLine.push([e.latlng.lat, e.latlng.lng]);
+        drawPoints.push([e.latlng.lat, e.latlng.lng]);
+
+        if (drawPoints.length > 1) {
+            if (window.tempLine) map.removeLayer(window.tempLine);
+
+            window.tempLine = L.polyline(drawPoints, {
+                color: "#4fa3ff",
+                weight: 2
+            }).addTo(map);
+        }
+
         return;
     }
 
-    const docRef = await addDoc(markersCollection, {
+    await addDoc(markersCollection, {
         x: e.latlng.lng,
         y: e.latlng.lat,
         type: selectedSymbol,
         created: Date.now()
     });
-
-    pushUndo({ type: "add", id: docRef.id });
 });
 
-// finish drawing with right click
+// FINISH DRAW (right click)
 map.on("contextmenu", async () => {
 
-    if (!drawMode || currentLine.length < 2) return;
+    if (!drawMode || drawPoints.length < 2) return;
 
     await addDoc(drawingsCollection, {
-        points: currentLine,
+        points: drawPoints,
         created: Date.now()
     });
 
-    currentLine = [];
+    drawPoints = [];
 });
