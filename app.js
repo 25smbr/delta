@@ -25,13 +25,14 @@ const app = initializeApp(firebaseConfig);
 
 const db = getFirestore(app);
 
-const imageWidth = 4000;
-const imageHeight = 2500;
+const imageWidth = 1204;
+const imageHeight = 1090;
 
 const map = L.map("map", {
 
     crs: L.CRS.Simple,
-    minZoom: -3
+    minZoom: -3,
+    zoomControl: false
 
 });
 
@@ -48,6 +49,13 @@ L.imageOverlay(
 ).addTo(map);
 
 map.fitBounds(bounds);
+
+map.setMaxBounds(bounds);
+
+map.setView(
+    [imageHeight / 2, imageWidth / 2],
+    0
+);
 
 const symbolSelect =
     document.getElementById("symbolSelect");
