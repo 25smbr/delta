@@ -1,7 +1,8 @@
-html, body {
+html,
+body {
     margin: 0;
+    width: 100%;
     height: 100%;
-    background: #0a0f14;
 }
 
 #map {
@@ -9,82 +10,71 @@ html, body {
     height: 100vh;
 }
 
-/* TOP BAR */
+/* ---------------- ICON GRID ---------------- */
 
-#topbar {
+#symbolGrid {
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-
-    height: 42px;
-
-    display: flex;
-    gap: 6px;
-    align-items: center;
-
-    padding: 0 10px;
-
-    background: rgba(10,15,20,0.95);
-    border-bottom: 1px solid #1f2a35;
-
-    z-index: 2000;
-}
-
-#topbar button,
-#topbar select {
-    background: #111;
-    color: white;
-    border: 1px solid #2a3a4a;
-    font-size: 11px;
-    padding: 4px 6px;
-}
-
-/* PANEL */
-
-#panel {
-    position: absolute;
-    top: 50px;
+    z-index: 1000;
+    top: 10px;
     left: 10px;
 
-    width: 320px;
-    max-height: 85vh;
-    overflow-y: auto;
+    display: grid;
+    grid-template-columns: repeat(2, 64px);
+    gap: 6px;
 
-    background: rgba(10,15,20,0.95);
-    border: 1px solid #1f2a35;
-    border-radius: 8px;
+    padding: 10px;
 
-    padding: 8px;
-    z-index: 2000;
+    background: rgba(20,20,20,0.95);
+    border-radius: 10px;
+
+    box-shadow: 0 0 10px rgba(0,0,0,.4);
 }
 
-/* ICONS FIXED CENTERING */
+.symbolBtn {
+    width: 64px;
+    height: 64px;
 
-.unitBtn {
-    width: 58px;
-    height: 58px;
-
-    margin: 3px;
-
-    background: #0f141a;
-    border: 1px solid #2a3a4a;
+    background: #1c1c1c;
+    border: 1px solid #444;
     border-radius: 6px;
 
-    display: inline-flex;
+    cursor: pointer;
+
+    display: flex;
     align-items: center;
     justify-content: center;
 
-    cursor: pointer;
     padding: 0;
 }
 
-.unitBtn svg {
-    display: block;
-    width: 100%;
-    height: 100%;
+.symbolBtn:hover {
+    border-color: #888;
 }
 
-.unitBtn.active {
+.symbolBtn.active {
     outline: 2px solid #4fa3ff;
+}
+
+/* ---------------- CLEAR BUTTON ---------------- */
+
+#clearMarkersBtn {
+    position: absolute;
+    z-index: 1000;
+
+    top: 10px;
+    right: 10px;
+
+    padding: 10px 12px;
+
+    background: #2a1f1f;
+    color: white;
+
+    border: 1px solid #553;
+    border-radius: 8px;
+
+    cursor: pointer;
+}
+
+#clearMarkersBtn:hover {
+    background: #3a2626;
 }
