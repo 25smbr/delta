@@ -91,21 +91,6 @@
 
       <div class="panel-divider"></div>
 
-      <!-- SEARCH COORDINATES -->
-      <section class="panel-section">
-        <div class="section-header">
-          <svg width="12" height="12" viewBox="0 0 12 12"><circle cx="5" cy="5" r="4" stroke="#4fa3ff" stroke-width="1.2" fill="none"/><line x1="8" y1="8" x2="11" y2="11" stroke="#4fa3ff" stroke-width="1.2"/></svg>
-          <span>GO TO COORDINATES</span>
-        </div>
-        <div class="coord-search-row">
-          <input type="text" id="coordSearchInput" class="coord-input mono" placeholder="Y: 0.0000, X: 0.0000" />
-          <button id="coordSearchBtn" class="coord-go-btn" title="Go to coordinates">GO</button>
-        </div>
-        <div id="coordSearchError" class="coord-error"></div>
-      </section>
-
-      <div class="panel-divider"></div>
-
       <!-- DRAWING TOOLS -->
       <section class="panel-section">
         <div class="section-header">
@@ -181,41 +166,8 @@
     <!-- MAP -->
     <div id="mapWrapper">
       <div id="map"></div>
-      <!-- Drawing canvas overlay — positioned absolutely relative to mapWrapper -->
+      <!-- Drawing canvas overlay -->
       <canvas id="drawCanvas"></canvas>
-
-      <!-- Right-click coordinate popup -->
-      <div id="coordPopup" class="coord-popup">
-        <div class="coord-popup-header">
-          <svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" stroke="#4fa3ff" stroke-width="1" fill="none"/><line x1="5" y1="2" x2="5" y2="5" stroke="#4fa3ff" stroke-width="1.2"/><circle cx="5" cy="7" r="0.8" fill="#4fa3ff"/></svg>
-          COORDINATES
-        </div>
-        <div class="coord-popup-row">
-          <span class="coord-popup-label">X</span>
-          <span class="coord-popup-val mono" id="popupX">—</span>
-          <button class="coord-copy-btn" id="copyX" title="Copy X">
-            <svg width="10" height="10" viewBox="0 0 10 10"><rect x="3" y="3" width="6" height="6" stroke="currentColor" stroke-width="1" fill="none"/><path d="M1 7V1h6" stroke="currentColor" stroke-width="1" fill="none"/></svg>
-          </button>
-        </div>
-        <div class="coord-popup-row">
-          <span class="coord-popup-label">Y</span>
-          <span class="coord-popup-val mono" id="popupY">—</span>
-          <button class="coord-copy-btn" id="copyY" title="Copy Y">
-            <svg width="10" height="10" viewBox="0 0 10 10"><rect x="3" y="3" width="6" height="6" stroke="currentColor" stroke-width="1" fill="none"/><path d="M1 7V1h6" stroke="currentColor" stroke-width="1" fill="none"/></svg>
-          </button>
-        </div>
-        <div class="coord-popup-row">
-          <span class="coord-popup-label">BOTH</span>
-          <span class="coord-popup-val mono" id="popupBoth">—</span>
-          <button class="coord-copy-btn" id="copyBoth" title="Copy both">
-            <svg width="10" height="10" viewBox="0 0 10 10"><rect x="3" y="3" width="6" height="6" stroke="currentColor" stroke-width="1" fill="none"/><path d="M1 7V1h6" stroke="currentColor" stroke-width="1" fill="none"/></svg>
-          </button>
-        </div>
-        <button id="coordPopupClose" class="coord-popup-close">✕</button>
-      </div>
-
-      <!-- Ruler tooltip -->
-      <div id="rulerTooltip" class="ruler-tooltip"></div>
     </div>
 
     <!-- ── RIGHT SIDEBAR ── -->
@@ -230,17 +182,8 @@
       <button class="rightBtn" title="Fit to bounds" id="fitBtn">
         <svg width="16" height="16" viewBox="0 0 16 16"><path d="M1 5V1h4M11 1h4v4M1 11v4h4M15 11v4h-4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
       </button>
-      <button class="rightBtn" title="Undo last action" id="undoBtn">
+      <button class="rightBtn" title="History" id="undoBtn">
         <svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 8a5 5 0 1 1 1.5 3.5" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M3 4v4h4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
-      </button>
-      <div class="right-divider"></div>
-      <button class="rightBtn" title="Ruler — measure distance" id="rulerBtn">
-        <svg width="16" height="16" viewBox="0 0 16 16">
-          <rect x="1" y="6" width="14" height="4" rx="1" stroke="currentColor" stroke-width="1.4" fill="none"/>
-          <line x1="4" y1="6" x2="4" y2="4" stroke="currentColor" stroke-width="1.2"/>
-          <line x1="8" y1="6" x2="8" y2="3" stroke="currentColor" stroke-width="1.2"/>
-          <line x1="12" y1="6" x2="12" y2="4" stroke="currentColor" stroke-width="1.2"/>
-        </svg>
       </button>
     </aside>
 
@@ -249,15 +192,19 @@
   <!-- ═══════════════ STATUS BAR ═══════════════ -->
   <footer id="statusBar">
     <div class="status-left">
+      <span class="status-item mono" id="zoomLevel">Z: 0</span>
+      <span class="status-sep">|</span>
       <span class="status-item" id="markerCount">MARKERS: 0</span>
       <span class="status-sep">|</span>
       <span class="status-item" id="drawModeStatus">DRAW: OFF</span>
-      <span class="status-sep">|</span>
-      <span class="status-item" id="rulerStatus">RULER: OFF</span>
     </div>
-    <div class="status-center mono" id="statusCoords">Y: —  X: —</div>
+    <div class="status-center mono" id="statusCoords">51.0000000°N, 19.0000000°E</div>
     <div class="status-right">
-      <span class="status-item" id="rulerReadout"></span>
+      <span class="status-item">WGS 84</span>
+      <span class="status-sep">|</span>
+      <span class="status-item">WORLD RELIEF MODEL</span>
+      <span class="status-sep">|</span>
+      <span class="status-item" id="scaleDisplay">—</span>
     </div>
   </footer>
 
