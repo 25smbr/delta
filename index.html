@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
-<title>Delta Tactical Map</title>
+<title>SA Map</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <link rel="stylesheet" href="style.css">
@@ -12,14 +12,17 @@
 
 <body>
 
-<div id="panel"></div>
+<div id="topbar">
+    <div class="title">TACTICAL SA SYSTEM</div>
 
-<div id="controls">
-    <button id="undoBtn">Undo</button>
-    <button id="drawBtn">Draw</button>
-    <button id="clearBtn">Clear</button>
+    <div class="actions">
+        <button id="undoBtn">UNDO</button>
+        <button id="drawBtn">DRAW</button>
+        <button id="clearBtn">CLEAR</button>
+    </div>
 </div>
 
+<div id="panel"></div>
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
