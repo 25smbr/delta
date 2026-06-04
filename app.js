@@ -57,7 +57,7 @@ const markersCollection =
 
 const displayedMarkers = {};
 
-function symbolSVG(type) {
+function symbolSVG(type = "infantry_alive") {
 
     const status =
         type.split("_").pop();
@@ -187,7 +187,9 @@ onSnapshot(markersCollection, snapshot => {
             const marker = L.marker(
                 [data.y, data.x],
                 {
-                    icon: createIcon(data.type)
+                    icon: createIcon(
+    data.type || "infantry_alive"
+)
                 }
             ).addTo(map);
 
