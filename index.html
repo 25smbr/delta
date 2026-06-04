@@ -6,47 +6,21 @@
 
 <title>Delta Tactical Map</title>
 
-<link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-/>
-
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <link rel="stylesheet" href="style.css">
-
 </head>
+
 <body>
 
-<div id="toolbar">
+<!-- ICON GRID -->
+<div id="symbolGrid"></div>
 
-    <select id="symbolSelect" size="14">
-
-        <option value="infantry_alive">Infantry (Alive)</option>
-        <option value="infantry_wounded">Infantry (Wounded)</option>
-        <option value="infantry_dead">Infantry (Dead)</option>
-
-        <option value="tank_alive">Tank (Alive)</option>
-        <option value="tank_damaged">Tank (Damaged)</option>
-        <option value="tank_destroyed">Tank (Destroyed)</option>
-
-        <option value="position_alive">Position (Active)</option>
-        <option value="position_destroyed">Position (Destroyed)</option>
-
-        <option value="humvee_alive">Humvee (Alive)</option>
-        <option value="humvee_damaged">Humvee (Damaged)</option>
-        <option value="humvee_destroyed">Humvee (Destroyed)</option>
-
-        <option value="truck_alive">Supply Truck (Alive)</option>
-        <option value="truck_damaged">Supply Truck (Damaged)</option>
-        <option value="truck_destroyed">Supply Truck (Destroyed)</option>
-
-    </select>
-
-</div>
+<!-- CLEAR BUTTON -->
+<button id="clearMarkersBtn">Clear All</button>
 
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
 <script type="module" src="app.js"></script>
 
 </body>
