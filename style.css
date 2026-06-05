@@ -2,41 +2,31 @@
    DELTA / MONITOR — Tactical Situational Awareness
    Military dark-panel interface
 ═══════════════════════════════════════════════ */
-
 @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap');
-
 :root {
   --bg-base:      #0a0c0f;
   --bg-panel:     #0e1117;
   --bg-section:   #121620;
   --bg-hover:     #1a1f2b;
   --bg-active:    #1c2333;
-
   --border:       #1e2535;
   --border-light: #2a3245;
-
   --accent:       #4fa3ff;
   --accent-dim:   rgba(79, 163, 255, 0.15);
   --accent-glow:  rgba(79, 163, 255, 0.35);
-
   --danger:       #ff3b3b;
   --danger-dim:   rgba(255, 59, 59, 0.12);
-
   --text-primary: #c8d4e8;
   --text-dim:     #5c6b85;
   --text-label:   #8a9bb8;
-
   --font-ui:      'Rajdhani', sans-serif;
   --font-mono:    'Share Tech Mono', monospace;
-
   --topbar-h:     42px;
   --statusbar-h:  26px;
   --left-w:       210px;
   --right-w:      42px;
 }
-
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
 html, body {
   width: 100%; height: 100%;
   background: var(--bg-base);
@@ -44,11 +34,10 @@ html, body {
   font-family: var(--font-ui);
   font-size: 13px;
   overflow: hidden;
+  transition: background 0.3s ease, color 0.3s ease;
 }
-
 button { cursor: pointer; font-family: var(--font-ui); }
 .mono  { font-family: var(--font-mono); }
-
 /* ─── TOP BAR ─── */
 #topBar {
   position: fixed; top: 0; left: 0; right: 0; z-index: 2000;
@@ -58,16 +47,16 @@ button { cursor: pointer; font-family: var(--font-ui); }
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 10px;
   user-select: none;
+  transition: background 0.3s ease, border-color 0.3s ease;
 }
-
 .topBar-left, .topBar-right {
   display: flex; align-items: center; gap: 4px;
 }
-
 .brand-shield { display: flex; align-items: center; margin-right: 8px; }
 .brand-name {
   font-size: 15px; font-weight: 700; letter-spacing: 3px;
   color: var(--accent);
+  transition: color 0.3s ease;
 }
 .brand-sep {
   margin: 0 6px;
@@ -77,11 +66,13 @@ button { cursor: pointer; font-family: var(--font-ui); }
 .brand-module {
   font-size: 13px; font-weight: 500; letter-spacing: 2px;
   color: var(--text-label);
+  transition: color 0.3s ease;
 }
 .top-divider {
   width: 1px; height: 22px;
   background: var(--border);
   margin: 0 10px;
+  transition: background 0.3s ease;
 }
 .topBtn {
   width: 30px; height: 30px;
@@ -94,17 +85,17 @@ button { cursor: pointer; font-family: var(--font-ui); }
 }
 .topBtn:hover  { background: var(--bg-hover); border-color: var(--border-light); color: var(--text-primary); }
 .topBtn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
-
 .topBar-center {
   display: flex; align-items: center; gap: 16px;
 }
 #clock {
   font-size: 14px; letter-spacing: 1px; color: var(--accent);
+  transition: color 0.3s ease;
 }
 .coord-display {
   font-size: 11px; color: var(--text-dim); letter-spacing: 0.5px;
+  transition: color 0.3s ease;
 }
-
 .status-pill {
   display: flex; align-items: center; gap: 5px;
   padding: 3px 8px;
@@ -126,7 +117,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
   0%, 100% { opacity: 1; transform: scale(1); }
   50%       { opacity: .4; transform: scale(.7); }
 }
-
 /* ─── APP BODY ─── */
 #appBody {
   position: fixed;
@@ -135,7 +125,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
   left: 0; right: 0;
   display: flex;
 }
-
 /* ─── LEFT PANEL ─── */
 #leftPanel {
   width: var(--left-w);
@@ -147,30 +136,28 @@ button { cursor: pointer; font-family: var(--font-ui); }
   flex-shrink: 0;
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
+  transition: background 0.3s ease, border-color 0.3s ease;
 }
 #leftPanel::-webkit-scrollbar { width: 4px; }
 #leftPanel::-webkit-scrollbar-track { background: transparent; }
 #leftPanel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-
 .panel-section { padding: 10px 10px 6px; }
-
 .section-header {
   display: flex; align-items: center; gap: 6px;
   font-size: 10px; font-weight: 700; letter-spacing: 2px;
   color: var(--text-dim);
   padding-bottom: 8px;
   text-transform: uppercase;
+  transition: color 0.3s ease;
 }
-
 .panel-divider {
   height: 1px;
   background: var(--border);
   margin: 0 10px;
+  transition: background 0.3s ease;
 }
-
 /* ─── SYMBOL GROUPS ─── */
 .symbol-group { margin-bottom: 8px; }
-
 .group-label {
   font-size: 9px; font-weight: 700; letter-spacing: 2px;
   color: var(--text-dim);
@@ -179,12 +166,11 @@ button { cursor: pointer; font-family: var(--font-ui); }
   border-left: 2px solid var(--accent);
   padding-left: 5px;
   margin-bottom: 4px;
+  transition: color 0.3s ease, border-color 0.3s ease;
 }
-
 .symbol-row {
   display: flex; flex-wrap: nowrap; gap: 4px;
 }
-
 .symbolBtn {
   width: 54px; height: 54px; flex-shrink: 0;
   background: var(--bg-section);
@@ -205,7 +191,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
   box-shadow: 0 0 8px var(--accent-glow);
 }
 .symbolBtn svg { width: 46px; height: 46px; }
-
 /* ─── COORDINATE SEARCH ─── */
 .coord-search-row {
   display: flex; gap: 4px;
@@ -220,11 +205,10 @@ button { cursor: pointer; font-family: var(--font-ui); }
   font-size: 10px;
   padding: 5px 7px;
   outline: none;
-  transition: border-color .15s;
+  transition: border-color .15s, background 0.3s ease, color 0.3s ease;
 }
 .coord-input::placeholder { color: var(--text-dim); }
 .coord-input:focus { border-color: var(--accent); }
-
 .coord-go-btn {
   padding: 5px 8px;
   background: var(--accent-dim);
@@ -236,7 +220,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
   transition: all .15s;
 }
 .coord-go-btn:hover { background: rgba(79,163,255,0.25); }
-
 .coord-error {
   font-size: 9px;
   color: var(--danger);
@@ -244,7 +227,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
   min-height: 14px;
   padding-bottom: 2px;
 }
-
 /* ─── RIGHT-CLICK COORDINATE POPUP ─── */
 .coord-popup {
   display: none;
@@ -257,8 +239,8 @@ button { cursor: pointer; font-family: var(--font-ui); }
   min-width: 210px;
   box-shadow: 0 4px 24px rgba(0,0,0,0.7);
   user-select: none;
+  transition: background 0.3s ease, border-color 0.3s ease;
 }
-
 .coord-popup-header {
   display: flex; align-items: center; gap: 5px;
   font-size: 9px; font-weight: 700; letter-spacing: 2px;
@@ -266,26 +248,22 @@ button { cursor: pointer; font-family: var(--font-ui); }
   margin-bottom: 7px;
   text-transform: uppercase;
 }
-
 .coord-popup-row {
   display: flex; align-items: center; gap: 6px;
   margin-bottom: 4px;
 }
-
 .coord-popup-label {
   font-size: 9px; font-weight: 700; letter-spacing: 1.5px;
   color: var(--text-dim);
   width: 30px; flex-shrink: 0;
   text-transform: uppercase;
 }
-
 .coord-popup-val {
   flex: 1;
   font-size: 11px;
   color: var(--accent);
   letter-spacing: 0.5px;
 }
-
 .coord-copy-btn {
   width: 20px; height: 20px;
   background: transparent;
@@ -298,7 +276,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
   flex-shrink: 0;
 }
 .coord-copy-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
-
 .coord-popup-close {
   position: absolute; top: 6px; right: 6px;
   width: 18px; height: 18px;
@@ -310,7 +287,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
   transition: color .15s;
 }
 .coord-popup-close:hover { color: var(--danger); }
-
 /* ─── RULER TOOLTIP ─── */
 .ruler-tooltip {
   display: none;
@@ -327,7 +303,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
   white-space: nowrap;
   letter-spacing: 0.5px;
 }
-
 /* ─── DRAW TOOLS ─── */
 .draw-tools-grid {
   display: grid;
@@ -346,7 +321,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
 }
 .drawToolBtn:hover  { background: var(--bg-hover); border-color: var(--border-light); color: var(--text-primary); }
 .drawToolBtn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
-
 .mode-toggle {
   margin-left: auto;
   padding: 2px 6px;
@@ -363,7 +337,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
   border-color: #00dc64;
   color: #00dc64;
 }
-
 /* Slider */
 .slider-row {
   display: flex; align-items: center; gap: 6px;
@@ -394,7 +367,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
   cursor: pointer;
   box-shadow: 0 0 4px var(--accent-glow);
 }
-
 /* Color swatches */
 .color-row {
   display: flex; align-items: center; gap: 6px;
@@ -412,7 +384,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
 }
 .swatch:hover  { transform: scale(1.2); }
 .swatch.active { border-color: #fff; }
-
 /* Danger buttons */
 .danger-btn {
   width: 100%;
@@ -428,17 +399,15 @@ button { cursor: pointer; font-family: var(--font-ui); }
   margin-bottom: 4px;
 }
 .danger-btn:hover { background: rgba(255,59,59,.22); border-color: var(--danger); }
-
 /* ─── MAP WRAPPER ─── */
 #mapWrapper {
   flex: 1; position: relative; overflow: hidden;
 }
-
 #map {
   width: 100%; height: 100%;
   background: #0a0c10;
+  transition: background 0.3s ease;
 }
-
 #drawCanvas {
   position: absolute; top: 0; left: 0;
   width: 100%; height: 100%;
@@ -448,7 +417,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
 #drawCanvas.active { pointer-events: all; cursor: crosshair; }
 #drawCanvas[data-tool="eraser"] { cursor: cell; }
 #drawCanvas[data-tool="pen"]    { cursor: crosshair; }
-
 /* ─── RIGHT PANEL ─── */
 #rightPanel {
   width: var(--right-w);
@@ -457,6 +425,7 @@ button { cursor: pointer; font-family: var(--font-ui); }
   display: flex; flex-direction: column; align-items: center;
   padding: 8px 0; gap: 4px;
   flex-shrink: 0;
+  transition: background 0.3s ease, border-color 0.3s ease;
 }
 .rightBtn {
   width: 30px; height: 30px;
@@ -469,13 +438,12 @@ button { cursor: pointer; font-family: var(--font-ui); }
 }
 .rightBtn:hover  { background: var(--bg-hover); border-color: var(--border-light); color: var(--text-primary); }
 .rightBtn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
-
 .right-divider {
   width: 22px; height: 1px;
   background: var(--border);
   margin: 4px 0;
+  transition: background 0.3s ease;
 }
-
 /* ─── STATUS BAR ─── */
 #statusBar {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 2000;
@@ -484,6 +452,7 @@ button { cursor: pointer; font-family: var(--font-ui); }
   border-top: 1px solid var(--border);
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 12px;
+  transition: background 0.3s ease, border-color 0.3s ease;
 }
 .status-left, .status-right {
   display: flex; align-items: center; gap: 6px;
@@ -491,17 +460,19 @@ button { cursor: pointer; font-family: var(--font-ui); }
 .status-item {
   font-size: 10px; letter-spacing: 1px; color: var(--text-dim);
   text-transform: uppercase;
+  transition: color 0.3s ease;
 }
 .status-sep { color: var(--border-light); }
 .status-center {
   font-size: 10px; color: var(--text-label); letter-spacing: .5px;
   font-family: var(--font-mono);
+  transition: color 0.3s ease;
 }
-
 /* ─── LEAFLET OVERRIDES ─── */
 .leaflet-container {
   background: #0a0c10 !important;
   font-family: var(--font-ui) !important;
+  transition: background 0.3s ease !important;
 }
 .leaflet-control-zoom { display: none; }
 .leaflet-bar { display: none; }
@@ -515,3 +486,86 @@ button { cursor: pointer; font-family: var(--font-ui); }
 }
 .leaflet-popup-tip { background: var(--bg-panel); }
 .leaflet-popup-close-button { color: var(--text-dim) !important; }
+/* ════════════════════════════════════════════════════════════════════
+   LIGHT THEME
+   Toggled via body.light-theme class
+════════════════════════════════════════════════════════════════════ */
+body.light-theme {
+  --bg-base:      #eef1f6;
+  --bg-panel:     #ffffff;
+  --bg-section:   #f3f5f9;
+  --bg-hover:     #e6eaf1;
+  --bg-active:    #dce2ec;
+  --border:       #d0d7e2;
+  --border-light: #b8c3d2;
+  --accent:       #2563eb;
+  --accent-dim:   rgba(37, 99, 235, 0.08);
+  --accent-glow:  rgba(37, 99, 235, 0.2);
+  --danger:       #dc2626;
+  --danger-dim:   rgba(220, 38, 38, 0.06);
+  --text-primary: #1e293b;
+  --text-dim:     #64748b;
+  --text-label:   #475569;
+}
+/* Map & Leaflet background */
+body.light-theme #map {
+  background: #e2e6ee;
+}
+body.light-theme .leaflet-container {
+  background: #e2e6ee !important;
+}
+/* Status pill (LIVE indicator) */
+body.light-theme .status-pill.live {
+  background: rgba(22, 163, 74, 0.07);
+  border-color: rgba(22, 163, 74, 0.3);
+  color: #16a34a;
+}
+body.light-theme .pulse-dot {
+  background: #16a34a;
+}
+/* Swatch active border — use dark instead of white */
+body.light-theme .swatch.active {
+  border-color: #1e293b;
+}
+/* Ruler tooltip */
+body.light-theme .ruler-tooltip {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: #d97706;
+  color: #d97706;
+}
+/* Coordinate popup shadow */
+body.light-theme .coord-popup {
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
+}
+/* Slider track */
+body.light-theme .tac-slider {
+  background: var(--border-light);
+}
+/* Danger buttons */
+body.light-theme .danger-btn {
+  border-color: rgba(220, 38, 38, 0.2);
+}
+body.light-theme .danger-btn:hover {
+  background: rgba(220, 38, 38, 0.1);
+  border-color: var(--danger);
+}
+/* Brand shield SVG — handled via currentColor, but inner SVG is hardcoded.
+   Override the shield accent for light mode. */
+body.light-theme .brand-shield svg path {
+  stroke: var(--accent);
+}
+/* Mode toggle in light theme */
+body.light-theme .mode-toggle {
+  background: rgba(220, 38, 38, 0.06);
+}
+body.light-theme .mode-toggle.on {
+  background: rgba(22, 163, 74, 0.07);
+}
+/* Coord go button hover */
+body.light-theme .coord-go-btn:hover {
+  background: rgba(37, 99, 235, 0.15);
+}
+/* Scrollbar in light theme */
+body.light-theme #leftPanel::-webkit-scrollbar-thumb {
+  background: var(--border-light);
+}
