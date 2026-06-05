@@ -82,7 +82,37 @@ const statusColors = {
 
 let selectedSymbol = "infantry_alive";
 
-// ─── SVG BUILDER ─────────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════
+// ALL STATE VARIABLES — declared here at top level to avoid
+// Temporal Dead Zone (TDZ) errors when functions reference them
+// before their original let/const lines were reached.
+// ════════════════════════════════════════════════════════════════════
+
+// ─── UNIFIED UNDO STACK ───────────────────────────────────────────────────────
+const undoStack = [];
+
+// ─── DRAWING STATE ───────────────────────────────────────────────────────────
+let drawMode    = false;
+let activeTool  = "pen";
+let penColor    = "#ff4444";
+let penWidth    = 3;
+let isDrawing   = false;
+
+let startCanvasX = 0, startCanvasY = 0;
+let startMapLL   = null;
+
+let strokes       = [];
+let currentStroke = null;
+
+// ─── RULER STATE ─────────────────────────────────────────────────────────────
+const PIXELS_PER_METER = 142 / 250;
+
+let rulerMode   = false;
+let rulerPoints = [];
+
+// ════════════════════════════════════════════════════════════════════
+// SVG BUILDER
+// ════════════════════════════════════════════════════════════════════
 function symbolSVG(type = "infantry_alive", forMap = false) {
     const parts  = type.split("_");
     const status = parts[parts.length - 1];
@@ -178,10 +208,6 @@ document.getElementById("zoomOutBtn").addEventListener("click", () => map.zoomOu
 document.getElementById("fitBtn").addEventListener("click",     () => map.fitBounds(bounds));
 document.getElementById("undoBtn").addEventListener("click",    undoLast);
 
-// ─── UNIFIED UNDO STACK ───────────────────────────────────────────────────────
-// Each entry: { type: "marker", id: string } | { type: "drawing" }
-const undoStack = [];
-
 async function undoLast() {
     if (undoStack.length === 0) return;
     const last = undoStack.pop();
@@ -200,7 +226,6 @@ document.getElementById("clearMarkersBtn").addEventListener("click", async () =>
     const batch    = writeBatch(db);
     snapshot.forEach(d => batch.delete(d.ref));
     await batch.commit();
-    // remove marker entries from undo stack
     for (let i = undoStack.length - 1; i >= 0; i--) {
         if (undoStack[i].type === "marker") undoStack.splice(i, 1);
     }
@@ -283,7 +308,6 @@ map.on("contextmenu", (e) => {
     popupY.textContent    = y.toFixed(4);
     popupBoth.textContent = `Y: ${y.toFixed(4)}, X: ${x.toFixed(4)}`;
 
-    // Position relative to mapWrapper
     const wrapper = document.getElementById("mapWrapper");
     const wRect   = wrapper.getBoundingClientRect();
     const eX      = e.originalEvent.clientX - wRect.left;
@@ -292,7 +316,6 @@ map.on("contextmenu", (e) => {
     let left = eX + 8;
     let top  = eY + 8;
 
-    // Keep in bounds
     const popW = 220, popH = 130;
     if (left + popW > wrapper.clientWidth)  left = eX - popW - 8;
     if (top  + popH > wrapper.clientHeight) top  = eY - popH - 8;
@@ -330,10 +353,6 @@ function goToCoords() {
     const val = coordSearchInput.value.trim();
     coordSearchError.textContent = "";
 
-    // Accept formats:
-    //   "Y: 540.1234, X: 602.5678"
-    //   "540.1234, 602.5678"
-    //   "540.1234 602.5678"
     const clean = val.replace(/[YyXx:\s]/g, " ").trim();
     const parts = clean.split(/[\s,]+/).filter(Boolean);
 
@@ -357,7 +376,6 @@ function goToCoords() {
 
     map.setView([y, x], 1);
 
-    // Flash a temporary crosshair marker
     const flash = L.circleMarker([y, x], {
         radius: 12, color: "#4fa3ff", weight: 2,
         fillColor: "rgba(79,163,255,0.2)", fillOpacity: 1
@@ -370,27 +388,9 @@ coordSearchInput.addEventListener("keydown", (e) => { if (e.key === "Enter") goT
 
 // ════════════════════════════════════════════════════════════════════
 // DRAWING SYSTEM — strokes stored in MAP coordinates (lat/lng)
-// so they stay anchored when the map pans or zooms.
 // ════════════════════════════════════════════════════════════════════
 const canvas = document.getElementById("drawCanvas");
 const ctx    = canvas.getContext("2d");
-
-let drawMode    = false;
-let activeTool  = "pen";
-let penColor    = "#ff4444";
-let penWidth    = 3;
-let isDrawing   = false;
-
-// Start point in canvas pixels (for shape preview only)
-let startCanvasX = 0, startCanvasY = 0;
-// Start point in map latlng (stored with stroke)
-let startMapLL   = null;
-
-// Persistent strokes stored in MAP coordinates
-// pen/eraser: { tool, color, width, points: [[lat,lng],...] }
-// line/arrow/circle/rect: { tool, color, width, ll1:{lat,lng}, ll2:{lat,lng} }
-let strokes = [];
-let currentStroke = null;
 
 // ─── CANVAS SIZING ───────────────────────────────────────────────────────────
 function resizeCanvas() {
@@ -404,12 +404,10 @@ resizeCanvas();
 window.addEventListener("resize", resizeCanvas);
 map.on("resize", resizeCanvas);
 
-// Redraw whenever map moves or zooms — this is the key fix
 map.on("move zoom moveend zoomend", redrawAll);
 
 // ─── COORDINATE HELPERS ──────────────────────────────────────────────────────
 function llToCanvas(lat, lng) {
-    // Convert a map latlng to canvas pixel coordinates
     const pt = map.latLngToContainerPoint(L.latLng(lat, lng));
     return [pt.x, pt.y];
 }
@@ -433,7 +431,7 @@ document.querySelector('[data-tool="pen"]')?.classList.add("active");
 const toggleBtn = document.getElementById("toggleDrawMode");
 toggleBtn.addEventListener("click", () => {
     drawMode = !drawMode;
-    if (drawMode && rulerMode) toggleRuler(); // can't have both active
+    if (drawMode && rulerMode) toggleRuler();
     toggleBtn.textContent = drawMode ? "ON" : "OFF";
     toggleBtn.classList.toggle("on", drawMode);
     canvas.classList.toggle("active", drawMode);
@@ -462,7 +460,6 @@ widthSlider.addEventListener("input", () => {
 // ─── CLEAR DRAWINGS ───────────────────────────────────────────────────────────
 document.getElementById("clearDrawingsBtn").addEventListener("click", () => {
     strokes = [];
-    // remove drawing entries from undo stack
     for (let i = undoStack.length - 1; i >= 0; i--) {
         if (undoStack[i].type === "drawing") undoStack.splice(i, 1);
     }
@@ -561,7 +558,7 @@ function drawArrow(ctx, x1, y1, x2, y2, color, width) {
     ctx.fill();
 }
 
-// ─── SHAPE PREVIEW (canvas-pixel-space, no map-coord conversion needed) ───────
+// ─── SHAPE PREVIEW ───────────────────────────────────────────────────────────
 function drawPreview(curX, curY) {
     redrawAll();
     ctx.save();
@@ -699,11 +696,6 @@ canvas.addEventListener("touchend", (e) => {
 // RULER SYSTEM
 // Scale: 142 pixels = 250 meters (at zoom 0)
 // ════════════════════════════════════════════════════════════════════
-const PIXELS_PER_METER = 142 / 250; // pixels per meter at zoom 0
-
-let rulerMode   = false;
-let rulerPoints = []; // array of {lat, lng} in map coords
-
 const rulerBtn     = document.getElementById("rulerBtn");
 const rulerTooltip = document.getElementById("rulerTooltip");
 const rulerStatus  = document.getElementById("rulerStatus");
@@ -712,7 +704,6 @@ const rulerReadout = document.getElementById("rulerReadout");
 function toggleRuler() {
     rulerMode = !rulerMode;
     if (rulerMode && drawMode) {
-        // turn off draw mode
         drawMode = false;
         document.getElementById("toggleDrawMode").textContent = "OFF";
         document.getElementById("toggleDrawMode").classList.remove("on");
@@ -735,23 +726,19 @@ function toggleRuler() {
 
 rulerBtn.addEventListener("click", toggleRuler);
 
-// Pixel distance between two map latlng points, accounting for current zoom
 function mapDistancePixels(ll1, ll2) {
     const p1 = map.latLngToContainerPoint(ll1);
     const p2 = map.latLngToContainerPoint(ll2);
     return Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
 }
 
-// Convert pixel distance at the *current zoom* to meters
-// At zoom 0 the scale is PIXELS_PER_METER. Each zoom level doubles pixels.
 function pixelsToMeters(pixelDist) {
-    const zoom     = map.getZoom();
-    const scale    = Math.pow(2, zoom);        // zoom 0→1, zoom 1→2, zoom -1→0.5 etc.
-    const pxAt0    = pixelDist / scale;        // equivalent pixels at zoom 0
+    const zoom  = map.getZoom();
+    const scale = Math.pow(2, zoom);
+    const pxAt0 = pixelDist / scale;
     return pxAt0 / PIXELS_PER_METER;
 }
 
-// Total ruler length in meters along the polyline
 function rulerTotalMeters() {
     let total = 0;
     for (let i = 1; i < rulerPoints.length; i++) {
@@ -780,7 +767,6 @@ map.on("click", (e) => {
 
 map.on("dblclick", (e) => {
     if (!rulerMode) return;
-    // Finish measuring
     L.DomEvent.stop(e);
     if (rulerPoints.length > 1) {
         const m = rulerTotalMeters();
@@ -794,7 +780,6 @@ map.on("dblclick", (e) => {
 map.on("mousemove", (e) => {
     if (!rulerMode || rulerPoints.length === 0) return;
 
-    // Draw live preview line on canvas
     redrawAll();
 
     const last = rulerPoints[rulerPoints.length - 1];
@@ -812,7 +797,6 @@ map.on("mousemove", (e) => {
     ctx.stroke();
     ctx.restore();
 
-    // Segment distance tooltip
     const pxDist = Math.sqrt((cur.x - lx) ** 2 + (cur.y - ly) ** 2);
     const meters = pixelsToMeters(pxDist);
 
@@ -841,7 +825,6 @@ function drawRulerOverlay() {
     ctx.lineCap     = "round";
     ctx.lineJoin    = "round";
 
-    // Draw lines between points
     if (rulerPoints.length > 1) {
         ctx.beginPath();
         rulerPoints.forEach((pt, i) => {
@@ -851,7 +834,6 @@ function drawRulerOverlay() {
         ctx.stroke();
     }
 
-    // Draw dots at each point + distance label
     rulerPoints.forEach((pt, i) => {
         const [cx, cy] = llToCanvas(pt.lat, pt.lng);
 
@@ -860,7 +842,6 @@ function drawRulerOverlay() {
         ctx.fill();
 
         if (i > 0) {
-            // Show cumulative distance up to this point
             let cumPx = 0;
             for (let j = 1; j <= i; j++) {
                 cumPx += mapDistancePixels(
@@ -873,7 +854,6 @@ function drawRulerOverlay() {
 
             ctx.font      = "bold 11px 'Share Tech Mono', monospace";
             ctx.textAlign = "left";
-            // shadow
             ctx.fillStyle = "rgba(0,0,0,0.6)";
             ctx.fillText(label, cx + 8, cy - 5);
             ctx.fillStyle = "#ffcc00";
