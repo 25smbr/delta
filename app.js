@@ -1,6 +1,5 @@
 import { initializeApp }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-
 import {
     getFirestore,
     collection,
@@ -11,7 +10,6 @@ import {
     getDocs,
     writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
 // ─── FIREBASE ───────────────────────────────────────────────────────────────
 const firebaseConfig = {
     apiKey:            "AIzaSyDUTJ3Nz8tY7ZN52tY7ZN52h3oA582qpw44wrCwac",
@@ -22,16 +20,13 @@ const firebaseConfig = {
     appId:             "1:441849295640:web:2c2c7c7fb416a514e4646d",
     measurementId:     "G-8ZCT1SJGGT"
 };
-
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 const markersCollection  = collection(db, "markers");
 const drawingsCollection = collection(db, "drawings");
-
 // ─── MAP ─────────────────────────────────────────────────────────────────────
 const imageWidth  = 1204;
 const imageHeight = 1090;
-
 const map = L.map("map", {
     crs: L.CRS.Simple,
     minZoom: -3,
@@ -39,23 +34,22 @@ const map = L.map("map", {
     zoomControl: false,
     attributionControl: false
 });
-
 const bounds = [[0, 0], [imageHeight, imageWidth]];
 L.imageOverlay("map.png", bounds).addTo(map);
 map.fitBounds(bounds);
 map.setMaxBounds(bounds);
 map.setView([imageHeight / 2, imageWidth / 2], 0);
-
-// ─── CLOCK ───────────────────────────────────────────────────────────────────
+// ─── CLOCK (UTC+1) ──────────────────────────────────────────────────────────
 function updateClock() {
     const now = new Date();
     const z = (n) => String(n).padStart(2, "0");
+    // Offset by +1 hour for UTC+1
+    const utcPlus1 = new Date(now.getTime() + 3600000);
     document.getElementById("clock").textContent =
-        `${z(now.getUTCHours())}:${z(now.getUTCMinutes())}:${z(now.getUTCSeconds())}Z`;
+        `${z(utcPlus1.getUTCHours())}:${z(utcPlus1.getUTCMinutes())}:${z(utcPlus1.getUTCSeconds())}`;
 }
 updateClock();
 setInterval(updateClock, 1000);
-
 // ─── STATUS BAR ──────────────────────────────────────────────────────────────
 map.on("mousemove", (e) => {
     const lat = e.latlng.lat.toFixed(4);
@@ -63,7 +57,6 @@ map.on("mousemove", (e) => {
     document.getElementById("statusCoords").textContent = `Y: ${lat}  X: ${lng}`;
     document.getElementById("coordDisplay").textContent  = `Y: ${lat}, X: ${lng}`;
 });
-
 // ─── SYMBOL DEFINITIONS ──────────────────────────────────────────────────────
 const symbolGroups = {
     infantry:  ["infantry_alive",  "infantry_wounded",  "infantry_dead"],
@@ -74,7 +67,6 @@ const symbolGroups = {
     humvee:    ["humvee_alive",    "humvee_damaged",    "humvee_destroyed"],
     truck:     ["truck_alive",     "truck_damaged",     "truck_destroyed"]
 };
-
 const statusColors = {
     alive:     "#4fa3ff",
     wounded:   "#ffcc00",
@@ -82,35 +74,26 @@ const statusColors = {
     dead:      "#ff4444",
     destroyed: "#ff4444"
 };
-
 let selectedSymbol = "infantry_alive";
-
 // ════════════════════════════════════════════════════════════════════
 // ALL STATE VARIABLES
 // ════════════════════════════════════════════════════════════════════
-
 const undoStack = [];
-
 // ─── DRAWING STATE ───────────────────────────────────────────────────────────
 let drawMode    = false;
 let activeTool  = "pen";
 let penColor    = "#ff4444";
 let penWidth    = 3;
 let isDrawing   = false;
-
 let startCanvasX = 0, startCanvasY = 0;
 let startMapLL   = null;
-
-// strokes is now the live local copy, synced from Firestore
+// strokes is the live local copy, synced from Firestore via incremental updates
 let strokes       = [];
 let currentStroke = null;
-
 // ─── RULER STATE ─────────────────────────────────────────────────────────────
 const PIXELS_PER_METER = 142 / 250;
-
 let rulerMode   = false;
 let rulerPoints = [];
-
 // ════════════════════════════════════════════════════════════════════
 // SVG BUILDER
 // ════════════════════════════════════════════════════════════════════
@@ -119,9 +102,7 @@ function symbolSVG(type = "infantry_alive", forMap = false) {
     const status = parts[parts.length - 1];
     const unit   = parts.slice(0, -1).join("_");
     const size   = forMap ? 46 : 46;
-
     const borderColor = statusColors[status] || "#4fa3ff";
-
     let center = "";
     switch (unit) {
         case "infantry":
@@ -163,7 +144,6 @@ function symbolSVG(type = "infantry_alive", forMap = false) {
                 fill="none" stroke="#0a0c10" stroke-width="2.5"/>`;
             break;
     }
-
     let overlay = "";
     if (status === "wounded") {
         overlay = `<text x="23" y="52" text-anchor="middle"
@@ -181,9 +161,7 @@ function symbolSVG(type = "infantry_alive", forMap = false) {
           <line x1="38" y1="8" x2="8"  y2="38"
                 stroke="#ff4444" stroke-width="3" stroke-linecap="round"/>`;
     }
-
     const fillOpacity = status === "alive" ? "0.08" : "0.05";
-
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 46 46">
       <rect x="3" y="3" width="40" height="40" rx="2"
             fill="${borderColor}" fill-opacity="${fillOpacity}"
@@ -192,48 +170,48 @@ function symbolSVG(type = "infantry_alive", forMap = false) {
       ${overlay}
     </svg>`;
 }
-
 // ─── POPULATE SYMBOL ROWS ─────────────────────────────────────────────────────
 Object.entries(symbolGroups).forEach(([group, types]) => {
     const row = document.getElementById(`row-${group}`);
     if (!row) return;
-
     types.forEach((type) => {
         const btn = document.createElement("button");
         btn.className  = "symbolBtn";
         btn.title      = type.replace(/_/g, " ").toUpperCase();
         btn.innerHTML  = symbolSVG(type);
-
         btn.addEventListener("click", () => {
             selectedSymbol = type;
             document.querySelectorAll(".symbolBtn").forEach(b => b.classList.remove("active"));
             btn.classList.add("active");
         });
-
         row.appendChild(btn);
     });
 });
-
 // Activate first button
 document.querySelector(".symbolBtn")?.classList.add("active");
-
 // ─── MAP CONTROLS ─────────────────────────────────────────────────────────────
 document.getElementById("zoomInBtn").addEventListener("click",  () => map.zoomIn());
 document.getElementById("zoomOutBtn").addEventListener("click", () => map.zoomOut());
 document.getElementById("fitBtn").addEventListener("click",     () => map.fitBounds(bounds));
 document.getElementById("undoBtn").addEventListener("click",    undoLast);
-
 async function undoLast() {
     if (undoStack.length === 0) return;
     const last = undoStack.pop();
     if (last.type === "marker") {
         await deleteDoc(doc(db, "markers", last.id));
     } else if (last.type === "drawing") {
-        // Delete from Firestore — listener will update local strokes
-        await deleteDoc(doc(db, "drawings", last.id));
+        // Remove from local strokes immediately so the UI updates
+        strokes = strokes.filter(s => s.firestoreId !== last.id);
+        redrawAll();
+        // Also delete from Firestore (the onSnapshot "removed" event will be a no-op
+        // since we already removed it locally)
+        try {
+            await deleteDoc(doc(db, "drawings", last.id));
+        } catch (err) {
+            console.error("Failed to delete drawing from Firestore:", err);
+        }
     }
 }
-
 // ─── CLEAR MARKERS ────────────────────────────────────────────────────────────
 document.getElementById("clearMarkersBtn").addEventListener("click", async () => {
     if (!confirm("Delete ALL markers? This cannot be undone.")) return;
@@ -245,21 +223,30 @@ document.getElementById("clearMarkersBtn").addEventListener("click", async () =>
         if (undoStack[i].type === "marker") undoStack.splice(i, 1);
     }
 });
-
-// ─── CLEAR DRAWINGS ───────────────────────────────────────────────────────────
+// ─── CLEAR DRAWINGS (FIXED) ──────────────────────────────────────────────────
 document.getElementById("clearDrawingsBtn").addEventListener("click", async () => {
-    const snapshot = await getDocs(drawingsCollection);
-    const batch    = writeBatch(db);
-    snapshot.forEach(d => batch.delete(d.ref));
-    await batch.commit();
+    if (!confirm("Delete ALL drawings? This cannot be undone.")) return;
+    // Clear local state immediately so the UI updates
+    strokes = [];
+    redrawAll();
+    // Remove drawing entries from undo stack
     for (let i = undoStack.length - 1; i >= 0; i--) {
         if (undoStack[i].type === "drawing") undoStack.splice(i, 1);
     }
+    // Delete all drawing docs from Firestore
+    try {
+        const snapshot = await getDocs(drawingsCollection);
+        if (!snapshot.empty) {
+            const batch = writeBatch(db);
+            snapshot.forEach(d => batch.delete(d.ref));
+            await batch.commit();
+        }
+    } catch (err) {
+        console.error("Failed to clear drawings from Firestore:", err);
+    }
 });
-
 // ─── FIRESTORE REALTIME — MARKERS ────────────────────────────────────────────
 const displayedMarkers = {};
-
 function createIcon(type) {
     return L.divIcon({
         html: symbolSVG(type, true),
@@ -268,20 +255,16 @@ function createIcon(type) {
         iconAnchor: [23, 23]
     });
 }
-
 onSnapshot(markersCollection, (snapshot) => {
     const current = new Set();
-
     snapshot.forEach((docSnap) => {
         const data = docSnap.data();
         const id   = docSnap.id;
         current.add(id);
-
         if (!displayedMarkers[id]) {
             const marker = L.marker([data.y, data.x], {
                 icon: createIcon(data.type || "infantry_alive")
             }).addTo(map);
-
             marker.on("contextmenu", async () => {
                 if (confirm("Delete this marker?")) {
                     await deleteDoc(doc(db, "markers", id));
@@ -289,32 +272,44 @@ onSnapshot(markersCollection, (snapshot) => {
                     if (idx !== -1) undoStack.splice(idx, 1);
                 }
             });
-
             displayedMarkers[id] = marker;
         }
     });
-
     Object.keys(displayedMarkers).forEach((id) => {
         if (!current.has(id)) {
             map.removeLayer(displayedMarkers[id]);
             delete displayedMarkers[id];
         }
     });
-
     document.getElementById("markerCount").textContent =
         `MARKERS: ${Object.keys(displayedMarkers).length}`;
 });
-
-// ─── FIRESTORE REALTIME — DRAWINGS ───────────────────────────────────────────
-// strokes array is kept in sync with Firestore; each stroke has a firestoreId
+// ─── FIRESTORE REALTIME — DRAWINGS (FIXED: incremental sync) ─────────────────
+// Uses docChanges() for incremental updates instead of full rebuild.
+// This prevents strokes from disappearing during the rebuild gap, and ensures
+// drawings from all connected users are properly merged.
 onSnapshot(drawingsCollection, (snapshot) => {
-    strokes = [];
-    snapshot.forEach((docSnap) => {
-        strokes.push({ ...docSnap.data(), firestoreId: docSnap.id });
+    snapshot.docChanges().forEach((change) => {
+        const id   = change.doc.id;
+        const data = change.doc.data();
+        if (change.type === "added") {
+            // Only add if we don't already have this stroke (prevents duplicates)
+            if (!strokes.some(s => s.firestoreId === id)) {
+                strokes.push({ ...data, firestoreId: id });
+            }
+        } else if (change.type === "modified") {
+            const idx = strokes.findIndex(s => s.firestoreId === id);
+            if (idx !== -1) {
+                strokes[idx] = { ...data, firestoreId: id };
+            }
+        } else if (change.type === "removed") {
+            strokes = strokes.filter(s => s.firestoreId !== id);
+        }
     });
     redrawAll();
+}, (error) => {
+    console.error("Drawings sync error:", error);
 });
-
 // ─── ADD MARKERS ─────────────────────────────────────────────────────────────
 map.on("click", async (e) => {
     if (drawMode || rulerMode) return;
@@ -326,43 +321,32 @@ map.on("click", async (e) => {
     });
     undoStack.push({ type: "marker", id: docRef.id });
 });
-
 // ─── RIGHT-CLICK COORDINATE POPUP ────────────────────────────────────────────
 const coordPopup = document.getElementById("coordPopup");
 const popupBoth  = document.getElementById("popupBoth");
-
 map.on("contextmenu", (e) => {
     if (drawMode || rulerMode) return;
     e.originalEvent.preventDefault();
-
     const x = parseFloat(e.latlng.lng.toFixed(4));
     const y = parseFloat(e.latlng.lat.toFixed(4));
-
     popupBoth.textContent = `Y: ${y.toFixed(4)}, X: ${x.toFixed(4)}`;
-
     const wrapper = document.getElementById("mapWrapper");
     const wRect   = wrapper.getBoundingClientRect();
     const eX      = e.originalEvent.clientX - wRect.left;
     const eY      = e.originalEvent.clientY - wRect.top;
-
     let left = eX + 8;
     let top  = eY + 8;
-
     const popW = 220, popH = 80;
     if (left + popW > wrapper.clientWidth)  left = eX - popW - 8;
     if (top  + popH > wrapper.clientHeight) top  = eY - popH - 8;
-
     coordPopup.style.left    = left + "px";
     coordPopup.style.top     = top  + "px";
     coordPopup.style.display = "block";
 });
-
 document.getElementById("coordPopupClose").addEventListener("click", () => {
     coordPopup.style.display = "none";
 });
-
 map.on("click", () => { coordPopup.style.display = "none"; });
-
 function copyToClipboard(text, btn) {
     navigator.clipboard.writeText(text).then(() => {
         const orig = btn.innerHTML;
@@ -371,57 +355,44 @@ function copyToClipboard(text, btn) {
         setTimeout(() => { btn.innerHTML = orig; btn.style.color = ""; }, 1200);
     });
 }
-
 document.getElementById("copyBoth").addEventListener("click", () => copyToClipboard(popupBoth.textContent, document.getElementById("copyBoth")));
-
 // ─── COORDINATE SEARCH ────────────────────────────────────────────────────────
 const coordSearchInput = document.getElementById("coordSearchInput");
 const coordSearchBtn   = document.getElementById("coordSearchBtn");
 const coordSearchError = document.getElementById("coordSearchError");
-
 function goToCoords() {
     const val = coordSearchInput.value.trim();
     coordSearchError.textContent = "";
-
     const clean = val.replace(/[YyXx:\s]/g, " ").trim();
     const parts = clean.split(/[\s,]+/).filter(Boolean);
-
     if (parts.length < 2) {
         coordSearchError.textContent = "Need Y and X values.";
         return;
     }
-
     const y = parseFloat(parts[0]);
     const x = parseFloat(parts[1]);
-
     if (isNaN(y) || isNaN(x)) {
         coordSearchError.textContent = "Invalid numbers.";
         return;
     }
-
     if (x < 0 || x > imageWidth || y < 0 || y > imageHeight) {
         coordSearchError.textContent = "Coordinates out of bounds.";
         return;
     }
-
     map.setView([y, x], 1);
-
     const flash = L.circleMarker([y, x], {
         radius: 12, color: "#4fa3ff", weight: 2,
         fillColor: "rgba(79,163,255,0.2)", fillOpacity: 1
     }).addTo(map);
     setTimeout(() => map.removeLayer(flash), 2000);
 }
-
 coordSearchBtn.addEventListener("click", goToCoords);
 coordSearchInput.addEventListener("keydown", (e) => { if (e.key === "Enter") goToCoords(); });
-
 // ════════════════════════════════════════════════════════════════════
 // DRAWING SYSTEM — strokes stored in Firestore (synced in real-time)
 // ════════════════════════════════════════════════════════════════════
 const canvas = document.getElementById("drawCanvas");
 const ctx    = canvas.getContext("2d");
-
 // ─── CANVAS SIZING ───────────────────────────────────────────────────────────
 function resizeCanvas() {
     const wrapper = document.getElementById("mapWrapper");
@@ -429,23 +400,24 @@ function resizeCanvas() {
     canvas.height = wrapper.clientHeight;
     redrawAll();
 }
-
 resizeCanvas();
 window.addEventListener("resize", resizeCanvas);
 map.on("resize", resizeCanvas);
-
 map.on("move zoom moveend zoomend", redrawAll);
-
 // ─── COORDINATE HELPERS ──────────────────────────────────────────────────────
 function llToCanvas(lat, lng) {
     const pt = map.latLngToContainerPoint(L.latLng(lat, lng));
     return [pt.x, pt.y];
 }
-
 function canvasToLL(x, y) {
     return map.containerPointToLatLng(L.point(x, y));
 }
-
+// ─── POINT FORMAT HELPER ─────────────────────────────────────────────────────
+// Handles both old format [lat, lng] and new format {lat, lng}
+function getPointCoords(pt) {
+    if (Array.isArray(pt)) return { lat: pt[0], lng: pt[1] };
+    return pt;
+}
 // ─── TOOL SELECTION ───────────────────────────────────────────────────────────
 document.querySelectorAll(".drawToolBtn").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -456,7 +428,6 @@ document.querySelectorAll(".drawToolBtn").forEach((btn) => {
     });
 });
 document.querySelector('[data-tool="pen"]')?.classList.add("active");
-
 // ─── DRAW MODE TOGGLE ─────────────────────────────────────────────────────────
 const toggleBtn = document.getElementById("toggleDrawMode");
 toggleBtn.addEventListener("click", () => {
@@ -469,7 +440,6 @@ toggleBtn.addEventListener("click", () => {
     map.scrollWheelZoom[drawMode ? "disable" : "enable"]();
     document.getElementById("drawModeStatus").textContent = `DRAW: ${drawMode ? "ON" : "OFF"}`;
 });
-
 // ─── COLOR SWATCHES ───────────────────────────────────────────────────────────
 document.querySelectorAll(".swatch").forEach((sw) => {
     sw.addEventListener("click", () => {
@@ -478,7 +448,6 @@ document.querySelectorAll(".swatch").forEach((sw) => {
         sw.classList.add("active");
     });
 });
-
 // ─── PEN WIDTH SLIDER ─────────────────────────────────────────────────────────
 const widthSlider = document.getElementById("penWidth");
 const widthVal    = document.getElementById("penWidthVal");
@@ -486,29 +455,28 @@ widthSlider.addEventListener("input", () => {
     penWidth = parseInt(widthSlider.value);
     widthVal.textContent = penWidth;
 });
-
 // ─── REDRAW ALL STROKES ───────────────────────────────────────────────────────
 function redrawAll() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     strokes.forEach(s => drawStroke(s));
+    // Also draw the stroke currently being drawn (if any)
+    if (currentStroke) drawStroke(currentStroke);
     if (rulerMode && rulerPoints.length > 0) drawRulerOverlay();
 }
-
 function drawStroke(s) {
     ctx.save();
     ctx.strokeStyle = s.color;
     ctx.lineWidth   = s.width;
     ctx.lineCap     = "round";
     ctx.lineJoin    = "round";
-
     if (s.tool === "pen") {
         ctx.beginPath();
-        s.points.forEach(([lat, lng], i) => {
+        s.points.forEach((pt, i) => {
+            const { lat, lng } = getPointCoords(pt);
             const [cx, cy] = llToCanvas(lat, lng);
             i === 0 ? ctx.moveTo(cx, cy) : ctx.lineTo(cx, cy);
         });
         ctx.stroke();
-
     } else if (s.tool === "line") {
         const [x1, y1] = llToCanvas(s.ll1.lat, s.ll1.lng);
         const [x2, y2] = llToCanvas(s.ll2.lat, s.ll2.lng);
@@ -516,12 +484,10 @@ function drawStroke(s) {
         ctx.moveTo(x1, y1);
         ctx.lineTo(x2, y2);
         ctx.stroke();
-
     } else if (s.tool === "arrow") {
         const [x1, y1] = llToCanvas(s.ll1.lat, s.ll1.lng);
         const [x2, y2] = llToCanvas(s.ll2.lat, s.ll2.lng);
         drawArrow(ctx, x1, y1, x2, y2, s.color, s.width);
-
     } else if (s.tool === "circle") {
         const [x1, y1] = llToCanvas(s.ll1.lat, s.ll1.lng);
         const [x2, y2] = llToCanvas(s.ll2.lat, s.ll2.lng);
@@ -532,38 +498,33 @@ function drawStroke(s) {
         ctx.beginPath();
         ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
         ctx.stroke();
-
     } else if (s.tool === "rect") {
         const [x1, y1] = llToCanvas(s.ll1.lat, s.ll1.lng);
         const [x2, y2] = llToCanvas(s.ll2.lat, s.ll2.lng);
         ctx.beginPath();
         ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-
     } else if (s.tool === "eraser") {
         ctx.save();
         ctx.globalCompositeOperation = "destination-out";
         ctx.lineWidth = s.width * 5;
         ctx.beginPath();
-        s.points.forEach(([lat, lng], i) => {
+        s.points.forEach((pt, i) => {
+            const { lat, lng } = getPointCoords(pt);
             const [cx, cy] = llToCanvas(lat, lng);
             i === 0 ? ctx.moveTo(cx, cy) : ctx.lineTo(cx, cy);
         });
         ctx.stroke();
         ctx.restore();
     }
-
     ctx.restore();
 }
-
 function drawArrow(ctx, x1, y1, x2, y2, color, width) {
     const headLen = Math.max(12, width * 4);
     const angle   = Math.atan2(y2 - y1, x2 - x1);
-
     ctx.beginPath();
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);
     ctx.stroke();
-
     ctx.beginPath();
     ctx.moveTo(x2, y2);
     ctx.lineTo(
@@ -578,7 +539,6 @@ function drawArrow(ctx, x1, y1, x2, y2, color, width) {
     ctx.fillStyle = color;
     ctx.fill();
 }
-
 // ─── SHAPE PREVIEW ───────────────────────────────────────────────────────────
 function drawPreview(curX, curY) {
     redrawAll();
@@ -588,16 +548,13 @@ function drawPreview(curX, curY) {
     ctx.lineWidth   = penWidth;
     ctx.lineCap     = "round";
     ctx.lineJoin    = "round";
-
     if (activeTool === "line") {
         ctx.beginPath();
         ctx.moveTo(startCanvasX, startCanvasY);
         ctx.lineTo(curX, curY);
         ctx.stroke();
-
     } else if (activeTool === "arrow") {
         drawArrow(ctx, startCanvasX, startCanvasY, curX, curY, penColor, penWidth);
-
     } else if (activeTool === "circle") {
         const rx = Math.abs(curX - startCanvasX) / 2;
         const ry = Math.abs(curY - startCanvasY) / 2;
@@ -606,16 +563,13 @@ function drawPreview(curX, curY) {
         ctx.beginPath();
         ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
         ctx.stroke();
-
     } else if (activeTool === "rect") {
         ctx.beginPath();
         ctx.strokeRect(startCanvasX, startCanvasY, curX - startCanvasX, curY - startCanvasY);
     }
-
     ctx.restore();
 }
-
-// ─── MOUSE EVENTS ────────────────────────────────────────────────────────────
+// ─── MOUSE EVENTS (FIXED: points stored as {lat, lng} objects) ───────────────
 canvas.addEventListener("mousedown", (e) => {
     if (!drawMode) return;
     isDrawing = true;
@@ -623,46 +577,51 @@ canvas.addEventListener("mousedown", (e) => {
     startCanvasX = x;
     startCanvasY = y;
     startMapLL   = canvasToLL(x, y);
-
     if (activeTool === "pen" || activeTool === "eraser") {
         const ll = canvasToLL(x, y);
         currentStroke = {
             tool:   activeTool,
             color:  penColor,
             width:  penWidth,
-            points: [[ll.lat, ll.lng]]
+            points: [{ lat: ll.lat, lng: ll.lng }]
         };
     }
 });
-
 canvas.addEventListener("mousemove", (e) => {
     if (!drawMode || !isDrawing) return;
     const { offsetX: x, offsetY: y } = e;
-
     if (activeTool === "pen" || activeTool === "eraser") {
         const ll = canvasToLL(x, y);
-        currentStroke.points.push([ll.lat, ll.lng]);
+        currentStroke.points.push({ lat: ll.lat, lng: ll.lng });
         redrawAll();
-        drawStroke(currentStroke);
     } else {
         drawPreview(x, y);
     }
 });
-
 canvas.addEventListener("mouseup", async (e) => {
     if (!drawMode || !isDrawing) return;
     isDrawing = false;
     const { offsetX: x, offsetY: y } = e;
-
     if (activeTool === "pen" || activeTool === "eraser") {
-        // Save to Firestore
-        const docRef = await addDoc(drawingsCollection, {
-            ...currentStroke,
+        const strokeData = {
+            tool:    currentStroke.tool,
+            color:   currentStroke.color,
+            width:   currentStroke.width,
+            points:  currentStroke.points,
             created: Date.now()
-        });
-        undoStack.push({ type: "drawing", id: docRef.id });
+        };
         currentStroke = null;
-        // Firestore listener will trigger redrawAll
+        try {
+            const docRef = await addDoc(drawingsCollection, strokeData);
+            undoStack.push({ type: "drawing", id: docRef.id });
+        } catch (err) {
+            console.error("Failed to save drawing:", err);
+            // Keep it locally even if Firestore fails
+            const localId = "_local_" + Date.now() + "_" + Math.random();
+            strokes.push({ ...strokeData, firestoreId: localId });
+            undoStack.push({ type: "drawing", id: localId });
+            redrawAll();
+        }
     } else {
         const endLL = canvasToLL(x, y);
         const stroke = {
@@ -673,25 +632,41 @@ canvas.addEventListener("mouseup", async (e) => {
             ll2:   { lat: endLL.lat,      lng: endLL.lng },
             created: Date.now()
         };
-        const docRef = await addDoc(drawingsCollection, stroke);
-        undoStack.push({ type: "drawing", id: docRef.id });
-        // Firestore listener will trigger redrawAll
+        try {
+            const docRef = await addDoc(drawingsCollection, stroke);
+            undoStack.push({ type: "drawing", id: docRef.id });
+        } catch (err) {
+            console.error("Failed to save drawing:", err);
+            const localId = "_local_" + Date.now() + "_" + Math.random();
+            strokes.push({ ...stroke, firestoreId: localId });
+            undoStack.push({ type: "drawing", id: localId });
+            redrawAll();
+        }
     }
 });
-
 canvas.addEventListener("mouseleave", async () => {
     if (isDrawing && currentStroke) {
-        const docRef = await addDoc(drawingsCollection, {
-            ...currentStroke,
+        const strokeData = {
+            tool:    currentStroke.tool,
+            color:   currentStroke.color,
+            width:   currentStroke.width,
+            points:  currentStroke.points,
             created: Date.now()
-        });
-        undoStack.push({ type: "drawing", id: docRef.id });
+        };
         currentStroke = null;
         isDrawing = false;
-        // Firestore listener will trigger redrawAll
+        try {
+            const docRef = await addDoc(drawingsCollection, strokeData);
+            undoStack.push({ type: "drawing", id: docRef.id });
+        } catch (err) {
+            console.error("Failed to save drawing:", err);
+            const localId = "_local_" + Date.now() + "_" + Math.random();
+            strokes.push({ ...strokeData, firestoreId: localId });
+            undoStack.push({ type: "drawing", id: localId });
+            redrawAll();
+        }
     }
 });
-
 // ─── TOUCH SUPPORT ───────────────────────────────────────────────────────────
 function getTouchPos(e) {
     const rect = canvas.getBoundingClientRect();
@@ -701,19 +676,16 @@ function getTouchPos(e) {
         offsetY: t.clientY - rect.top
     };
 }
-
 canvas.addEventListener("touchstart", (e) => {
     if (!drawMode) return;
     e.preventDefault();
     canvas.dispatchEvent(new MouseEvent("mousedown", getTouchPos(e)));
 }, { passive: false });
-
 canvas.addEventListener("touchmove", (e) => {
     if (!drawMode) return;
     e.preventDefault();
     canvas.dispatchEvent(new MouseEvent("mousemove", getTouchPos(e)));
 }, { passive: false });
-
 canvas.addEventListener("touchend", (e) => {
     if (!drawMode) return;
     e.preventDefault();
@@ -721,7 +693,6 @@ canvas.addEventListener("touchend", (e) => {
         offsetX: startCanvasX, offsetY: startCanvasY
     }));
 }, { passive: false });
-
 // ════════════════════════════════════════════════════════════════════
 // RULER SYSTEM
 // Scale: 142 pixels = 250 meters (at zoom 0)
@@ -730,7 +701,6 @@ const rulerBtn     = document.getElementById("rulerBtn");
 const rulerTooltip = document.getElementById("rulerTooltip");
 const rulerStatus  = document.getElementById("rulerStatus");
 const rulerReadout = document.getElementById("rulerReadout");
-
 function toggleRuler() {
     rulerMode = !rulerMode;
     if (rulerMode && drawMode) {
@@ -742,10 +712,8 @@ function toggleRuler() {
         map.scrollWheelZoom.enable();
         document.getElementById("drawModeStatus").textContent = "DRAW: OFF";
     }
-
     rulerBtn.classList.toggle("active", rulerMode);
     rulerStatus.textContent = `RULER: ${rulerMode ? "ON" : "OFF"}`;
-
     if (!rulerMode) {
         rulerPoints = [];
         rulerTooltip.style.display = "none";
@@ -753,22 +721,18 @@ function toggleRuler() {
         redrawAll();
     }
 }
-
 rulerBtn.addEventListener("click", toggleRuler);
-
 function mapDistancePixels(ll1, ll2) {
     const p1 = map.latLngToContainerPoint(ll1);
     const p2 = map.latLngToContainerPoint(ll2);
     return Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
 }
-
 function pixelsToMeters(pixelDist) {
     const zoom  = map.getZoom();
     const scale = Math.pow(2, zoom);
     const pxAt0 = pixelDist / scale;
     return pxAt0 / PIXELS_PER_METER;
 }
-
 function rulerTotalMeters() {
     let total = 0;
     for (let i = 1; i < rulerPoints.length; i++) {
@@ -780,21 +744,18 @@ function rulerTotalMeters() {
     }
     return total;
 }
-
 function formatDistance(meters) {
     if (meters >= 1000) {
         return `${(meters / 1000).toFixed(2)} km  (${Math.round(meters)} m)`;
     }
     return `${Math.round(meters)} m`;
 }
-
 map.on("click", (e) => {
     if (!rulerMode) return;
     rulerPoints.push({ lat: e.latlng.lat, lng: e.latlng.lng });
     redrawAll();
     updateRulerReadout(e.latlng);
 });
-
 map.on("dblclick", (e) => {
     if (!rulerMode) return;
     L.DomEvent.stop(e);
@@ -806,16 +767,12 @@ map.on("dblclick", (e) => {
     redrawAll();
     rulerTooltip.style.display = "none";
 });
-
 map.on("mousemove", (e) => {
     if (!rulerMode || rulerPoints.length === 0) return;
-
     redrawAll();
-
     const last = rulerPoints[rulerPoints.length - 1];
     const [lx, ly] = llToCanvas(last.lat, last.lng);
     const cur = map.latLngToContainerPoint(e.latlng);
-
     ctx.save();
     ctx.strokeStyle = "#ffcc00";
     ctx.lineWidth   = 1.5;
@@ -826,16 +783,13 @@ map.on("mousemove", (e) => {
     ctx.lineTo(cur.x, cur.y);
     ctx.stroke();
     ctx.restore();
-
     const pxDist = Math.sqrt((cur.x - lx) ** 2 + (cur.y - ly) ** 2);
     const meters = pixelsToMeters(pxDist);
-
     rulerTooltip.textContent   = formatDistance(meters);
     rulerTooltip.style.display = "block";
     rulerTooltip.style.left    = (cur.x + 12) + "px";
     rulerTooltip.style.top     = (cur.y - 24) + "px";
 });
-
 function updateRulerReadout(latlng) {
     if (rulerPoints.length < 2) {
         rulerReadout.textContent = "Click to add points — double-click to finish";
@@ -844,17 +798,14 @@ function updateRulerReadout(latlng) {
     const m = rulerTotalMeters();
     rulerReadout.textContent = `TOTAL: ${formatDistance(m)}`;
 }
-
 function drawRulerOverlay() {
     if (rulerPoints.length === 0) return;
-
     ctx.save();
     ctx.strokeStyle = "#ffcc00";
     ctx.fillStyle   = "#ffcc00";
     ctx.lineWidth   = 2;
     ctx.lineCap     = "round";
     ctx.lineJoin    = "round";
-
     if (rulerPoints.length > 1) {
         ctx.beginPath();
         rulerPoints.forEach((pt, i) => {
@@ -863,14 +814,11 @@ function drawRulerOverlay() {
         });
         ctx.stroke();
     }
-
     rulerPoints.forEach((pt, i) => {
         const [cx, cy] = llToCanvas(pt.lat, pt.lng);
-
         ctx.beginPath();
         ctx.arc(cx, cy, 4, 0, Math.PI * 2);
         ctx.fill();
-
         if (i > 0) {
             let cumPx = 0;
             for (let j = 1; j <= i; j++) {
@@ -881,7 +829,6 @@ function drawRulerOverlay() {
             }
             const meters = pixelsToMeters(cumPx);
             const label  = formatDistance(meters);
-
             ctx.font      = "bold 11px 'Share Tech Mono', monospace";
             ctx.textAlign = "left";
             ctx.fillStyle = "rgba(0,0,0,0.6)";
@@ -890,18 +837,35 @@ function drawRulerOverlay() {
             ctx.fillText(label, cx + 7, cy - 6);
         }
     });
-
     ctx.restore();
 }
-
-// ─── THEME TOGGLE ─────────────────────────────────────────────────────────────
+// ─── THEME TOGGLE (FIXED: swaps icon between sun/moon) ───────────────────────
 const themeToggleBtn = document.getElementById("themeToggleBtn");
 let isLightTheme = false;
-
 themeToggleBtn.addEventListener("click", () => {
     isLightTheme = !isLightTheme;
     document.body.classList.toggle("light-theme", isLightTheme);
     themeToggleBtn.title = isLightTheme ? "Switch to dark theme" : "Switch to light theme";
-    // Update icon inner state
     themeToggleBtn.classList.toggle("active", isLightTheme);
+    // Swap icon: sun → moon (light mode), moon → sun (dark mode)
+    const themeIcon = document.getElementById("themeIcon");
+    if (isLightTheme) {
+        // Moon icon
+        themeIcon.innerHTML = `
+            <path d="M13 9a5 5 0 1 1-5.93-4.93A7 7 0 0 0 13 9z"
+                  stroke="currentColor" stroke-width="1.3" fill="none"
+                  stroke-linecap="round" stroke-linejoin="round"/>`;
+    } else {
+        // Sun icon
+        themeIcon.innerHTML = `
+            <circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.3" fill="none"/>
+            <line x1="8" y1="1" x2="8" y2="3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+            <line x1="8" y1="13" x2="8" y2="15" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+            <line x1="1" y1="8" x2="3" y2="8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+            <line x1="13" y1="8" x2="15" y2="8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+            <line x1="2.9" y1="2.9" x2="4.3" y2="4.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+            <line x1="11.7" y1="11.7" x2="13.1" y2="13.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+            <line x1="11.7" y1="4.3" x2="13.1" y2="2.9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+            <line x1="2.9" y1="13.1" x2="4.3" y2="11.7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>`;
+    }
 });
