@@ -41,6 +41,23 @@
     </div>
     <div class="topBar-right">
       <div class="status-pill live"><span class="pulse-dot"></span>LIVE</div>
+
+      <!-- Theme toggle button -->
+      <button class="topBtn" id="themeToggleBtn" title="Switch to light theme">
+        <svg width="16" height="16" viewBox="0 0 16 16" id="themeIcon">
+          <!-- Sun icon (shown in dark mode to switch to light) -->
+          <circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.3" fill="none"/>
+          <line x1="8" y1="1" x2="8" y2="3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          <line x1="8" y1="13" x2="8" y2="15" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          <line x1="1" y1="8" x2="3" y2="8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          <line x1="13" y1="8" x2="15" y2="8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          <line x1="2.9" y1="2.9" x2="4.3" y2="4.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          <line x1="11.7" y1="11.7" x2="13.1" y2="13.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          <line x1="11.7" y1="4.3" x2="13.1" y2="2.9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          <line x1="2.9" y1="13.1" x2="4.3" y2="11.7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+        </svg>
+      </button>
+
       <button class="topBtn" title="Settings">
         <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.1 3.1l1.4 1.4M11.5 11.5l1.4 1.4M3.1 12.9l1.4-1.4M11.5 4.5l1.4-1.4" stroke="currentColor" stroke-width="1.2"/></svg>
       </button>
@@ -56,37 +73,51 @@
     <!-- ── LEFT PANEL ── -->
     <aside id="leftPanel">
 
-      <!-- UNIT SYMBOL PALETTE -->
+      <!-- UNIT SYMBOL PALETTE (scrollable) -->
       <section class="panel-section">
         <div class="section-header">
           <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 2h8v8H2z" stroke="#4fa3ff" stroke-width="1.2" fill="none"/></svg>
           <span>UNIT SYMBOLS</span>
         </div>
 
-        <div class="symbol-group">
-          <div class="group-label">INFANTRY</div>
-          <div class="symbol-row" id="row-infantry"></div>
-        </div>
+        <div class="symbol-scroll-area">
 
-        <div class="symbol-group">
-          <div class="group-label">ARMOR</div>
-          <div class="symbol-row" id="row-tank"></div>
-        </div>
+          <div class="symbol-group">
+            <div class="group-label">INFANTRY</div>
+            <div class="symbol-row" id="row-infantry"></div>
+          </div>
 
-        <div class="symbol-group">
-          <div class="group-label">POSITION</div>
-          <div class="symbol-row" id="row-position"></div>
-        </div>
+          <div class="symbol-group">
+            <div class="group-label">ARMOR</div>
+            <div class="symbol-row" id="row-tank"></div>
+          </div>
 
-        <div class="symbol-group">
-          <div class="group-label">HUMVEE</div>
-          <div class="symbol-row" id="row-humvee"></div>
-        </div>
+          <div class="symbol-group">
+            <div class="group-label">ARTILLERY</div>
+            <div class="symbol-row" id="row-artillery"></div>
+          </div>
 
-        <div class="symbol-group">
-          <div class="group-label">TRUCK</div>
-          <div class="symbol-row" id="row-truck"></div>
-        </div>
+          <div class="symbol-group">
+            <div class="group-label">HELICOPTER</div>
+            <div class="symbol-row" id="row-helicopter"></div>
+          </div>
+
+          <div class="symbol-group">
+            <div class="group-label">POSITION</div>
+            <div class="symbol-row" id="row-position"></div>
+          </div>
+
+          <div class="symbol-group">
+            <div class="group-label">HUMVEE</div>
+            <div class="symbol-row" id="row-humvee"></div>
+          </div>
+
+          <div class="symbol-group">
+            <div class="group-label">TRUCK</div>
+            <div class="symbol-row" id="row-truck"></div>
+          </div>
+
+        </div><!-- end symbol-scroll-area -->
       </section>
 
       <div class="panel-divider"></div>
@@ -184,30 +215,16 @@
       <!-- Drawing canvas overlay — positioned absolutely relative to mapWrapper -->
       <canvas id="drawCanvas"></canvas>
 
-      <!-- Right-click coordinate popup -->
+      <!-- Right-click coordinate popup — BOTH only -->
       <div id="coordPopup" class="coord-popup">
         <div class="coord-popup-header">
           <svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" stroke="#4fa3ff" stroke-width="1" fill="none"/><line x1="5" y1="2" x2="5" y2="5" stroke="#4fa3ff" stroke-width="1.2"/><circle cx="5" cy="7" r="0.8" fill="#4fa3ff"/></svg>
           COORDINATES
         </div>
         <div class="coord-popup-row">
-          <span class="coord-popup-label">X</span>
-          <span class="coord-popup-val mono" id="popupX">—</span>
-          <button class="coord-copy-btn" id="copyX" title="Copy X">
-            <svg width="10" height="10" viewBox="0 0 10 10"><rect x="3" y="3" width="6" height="6" stroke="currentColor" stroke-width="1" fill="none"/><path d="M1 7V1h6" stroke="currentColor" stroke-width="1" fill="none"/></svg>
-          </button>
-        </div>
-        <div class="coord-popup-row">
-          <span class="coord-popup-label">Y</span>
-          <span class="coord-popup-val mono" id="popupY">—</span>
-          <button class="coord-copy-btn" id="copyY" title="Copy Y">
-            <svg width="10" height="10" viewBox="0 0 10 10"><rect x="3" y="3" width="6" height="6" stroke="currentColor" stroke-width="1" fill="none"/><path d="M1 7V1h6" stroke="currentColor" stroke-width="1" fill="none"/></svg>
-          </button>
-        </div>
-        <div class="coord-popup-row">
-          <span class="coord-popup-label">BOTH</span>
+          <span class="coord-popup-label">COORDS</span>
           <span class="coord-popup-val mono" id="popupBoth">—</span>
-          <button class="coord-copy-btn" id="copyBoth" title="Copy both">
+          <button class="coord-copy-btn" id="copyBoth" title="Copy coordinates">
             <svg width="10" height="10" viewBox="0 0 10 10"><rect x="3" y="3" width="6" height="6" stroke="currentColor" stroke-width="1" fill="none"/><path d="M1 7V1h6" stroke="currentColor" stroke-width="1" fill="none"/></svg>
           </button>
         </div>
