@@ -63,10 +63,6 @@ map.on("mousemove", (e) => {
     document.getElementById("coordDisplay").textContent  = `Y: ${lat}, X: ${lng}`;
 });
 
-map.on("zoomend", () => {
-    document.getElementById("zoomLevel").textContent = `Z: ${map.getZoom()}`;
-});
-
 // ─── SYMBOL DEFINITIONS ──────────────────────────────────────────────────────
 const symbolGroups = {
     infantry: ["infantry_alive", "infantry_wounded", "infantry_dead"],
@@ -180,14 +176,21 @@ document.querySelector(".symbolBtn")?.classList.add("active");
 document.getElementById("zoomInBtn").addEventListener("click",  () => map.zoomIn());
 document.getElementById("zoomOutBtn").addEventListener("click", () => map.zoomOut());
 document.getElementById("fitBtn").addEventListener("click",     () => map.fitBounds(bounds));
-document.getElementById("undoBtn").addEventListener("click",    undoLastMarker);
+document.getElementById("undoBtn").addEventListener("click",    undoLast);
 
-// ─── MARKER UNDO ─────────────────────────────────────────────────────────────
-const markerHistory = [];
+// ─── UNIFIED UNDO STACK ───────────────────────────────────────────────────────
+// Each entry: { type: "marker", id: string } | { type: "drawing" }
+const undoStack = [];
 
-async function undoLastMarker() {
-    const last = markerHistory.pop();
-    if (last) await deleteDoc(doc(db, "markers", last));
+async function undoLast() {
+    if (undoStack.length === 0) return;
+    const last = undoStack.pop();
+    if (last.type === "marker") {
+        await deleteDoc(doc(db, "markers", last.id));
+    } else if (last.type === "drawing") {
+        strokes.pop();
+        redrawAll();
+    }
 }
 
 // ─── CLEAR MARKERS ────────────────────────────────────────────────────────────
@@ -197,7 +200,10 @@ document.getElementById("clearMarkersBtn").addEventListener("click", async () =>
     const batch    = writeBatch(db);
     snapshot.forEach(d => batch.delete(d.ref));
     await batch.commit();
-    markerHistory.length = 0;
+    // remove marker entries from undo stack
+    for (let i = undoStack.length - 1; i >= 0; i--) {
+        if (undoStack[i].type === "marker") undoStack.splice(i, 1);
+    }
 });
 
 // ─── FIRESTORE REALTIME ───────────────────────────────────────────────────────
@@ -228,8 +234,8 @@ onSnapshot(markersCollection, (snapshot) => {
             marker.on("contextmenu", async () => {
                 if (confirm("Delete this marker?")) {
                     await deleteDoc(doc(db, "markers", id));
-                    const idx = markerHistory.indexOf(id);
-                    if (idx !== -1) markerHistory.splice(idx, 1);
+                    const idx = undoStack.findIndex(e => e.type === "marker" && e.id === id);
+                    if (idx !== -1) undoStack.splice(idx, 1);
                 }
             });
 
@@ -250,18 +256,121 @@ onSnapshot(markersCollection, (snapshot) => {
 
 // ─── ADD MARKERS ─────────────────────────────────────────────────────────────
 map.on("click", async (e) => {
-    if (drawMode) return;   // don't place markers while drawing
+    if (drawMode || rulerMode) return;
     const docRef = await addDoc(markersCollection, {
         x:       e.latlng.lng,
         y:       e.latlng.lat,
         type:    selectedSymbol,
         created: Date.now()
     });
-    markerHistory.push(docRef.id);
+    undoStack.push({ type: "marker", id: docRef.id });
 });
 
+// ─── RIGHT-CLICK COORDINATE POPUP ────────────────────────────────────────────
+const coordPopup = document.getElementById("coordPopup");
+const popupX     = document.getElementById("popupX");
+const popupY     = document.getElementById("popupY");
+const popupBoth  = document.getElementById("popupBoth");
+
+map.on("contextmenu", (e) => {
+    if (drawMode || rulerMode) return;
+    e.originalEvent.preventDefault();
+
+    const x = parseFloat(e.latlng.lng.toFixed(4));
+    const y = parseFloat(e.latlng.lat.toFixed(4));
+
+    popupX.textContent    = x.toFixed(4);
+    popupY.textContent    = y.toFixed(4);
+    popupBoth.textContent = `Y: ${y.toFixed(4)}, X: ${x.toFixed(4)}`;
+
+    // Position relative to mapWrapper
+    const wrapper = document.getElementById("mapWrapper");
+    const wRect   = wrapper.getBoundingClientRect();
+    const eX      = e.originalEvent.clientX - wRect.left;
+    const eY      = e.originalEvent.clientY - wRect.top;
+
+    let left = eX + 8;
+    let top  = eY + 8;
+
+    // Keep in bounds
+    const popW = 220, popH = 130;
+    if (left + popW > wrapper.clientWidth)  left = eX - popW - 8;
+    if (top  + popH > wrapper.clientHeight) top  = eY - popH - 8;
+
+    coordPopup.style.left    = left + "px";
+    coordPopup.style.top     = top  + "px";
+    coordPopup.style.display = "block";
+});
+
+document.getElementById("coordPopupClose").addEventListener("click", () => {
+    coordPopup.style.display = "none";
+});
+
+map.on("click", () => { coordPopup.style.display = "none"; });
+
+function copyToClipboard(text, btn) {
+    navigator.clipboard.writeText(text).then(() => {
+        const orig = btn.innerHTML;
+        btn.innerHTML = "✓";
+        btn.style.color = "#44ff88";
+        setTimeout(() => { btn.innerHTML = orig; btn.style.color = ""; }, 1200);
+    });
+}
+
+document.getElementById("copyX").addEventListener("click",    () => copyToClipboard(popupX.textContent,    document.getElementById("copyX")));
+document.getElementById("copyY").addEventListener("click",    () => copyToClipboard(popupY.textContent,    document.getElementById("copyY")));
+document.getElementById("copyBoth").addEventListener("click", () => copyToClipboard(popupBoth.textContent, document.getElementById("copyBoth")));
+
+// ─── COORDINATE SEARCH ────────────────────────────────────────────────────────
+const coordSearchInput = document.getElementById("coordSearchInput");
+const coordSearchBtn   = document.getElementById("coordSearchBtn");
+const coordSearchError = document.getElementById("coordSearchError");
+
+function goToCoords() {
+    const val = coordSearchInput.value.trim();
+    coordSearchError.textContent = "";
+
+    // Accept formats:
+    //   "Y: 540.1234, X: 602.5678"
+    //   "540.1234, 602.5678"
+    //   "540.1234 602.5678"
+    const clean = val.replace(/[YyXx:\s]/g, " ").trim();
+    const parts = clean.split(/[\s,]+/).filter(Boolean);
+
+    if (parts.length < 2) {
+        coordSearchError.textContent = "Need Y and X values.";
+        return;
+    }
+
+    const y = parseFloat(parts[0]);
+    const x = parseFloat(parts[1]);
+
+    if (isNaN(y) || isNaN(x)) {
+        coordSearchError.textContent = "Invalid numbers.";
+        return;
+    }
+
+    if (x < 0 || x > imageWidth || y < 0 || y > imageHeight) {
+        coordSearchError.textContent = "Coordinates out of bounds.";
+        return;
+    }
+
+    map.setView([y, x], 1);
+
+    // Flash a temporary crosshair marker
+    const flash = L.circleMarker([y, x], {
+        radius: 12, color: "#4fa3ff", weight: 2,
+        fillColor: "rgba(79,163,255,0.2)", fillOpacity: 1
+    }).addTo(map);
+    setTimeout(() => map.removeLayer(flash), 2000);
+}
+
+coordSearchBtn.addEventListener("click", goToCoords);
+coordSearchInput.addEventListener("keydown", (e) => { if (e.key === "Enter") goToCoords(); });
+
 // ════════════════════════════════════════════════════════════════════
-// DRAWING SYSTEM
+// DRAWING SYSTEM — strokes stored in MAP coordinates (lat/lng)
+// so they stay anchored when the map pans or zooms.
 // ════════════════════════════════════════════════════════════════════
 const canvas = document.getElementById("drawCanvas");
 const ctx    = canvas.getContext("2d");
@@ -271,12 +380,19 @@ let activeTool  = "pen";
 let penColor    = "#ff4444";
 let penWidth    = 3;
 let isDrawing   = false;
-let startX = 0, startY = 0;
 
-// Persistent strokes (so we can redraw under shapes-in-progress)
-let strokes = [];         // array of stroke objects
-let currentStroke = null; // path points for freehand
+// Start point in canvas pixels (for shape preview only)
+let startCanvasX = 0, startCanvasY = 0;
+// Start point in map latlng (stored with stroke)
+let startMapLL   = null;
 
+// Persistent strokes stored in MAP coordinates
+// pen/eraser: { tool, color, width, points: [[lat,lng],...] }
+// line/arrow/circle/rect: { tool, color, width, ll1:{lat,lng}, ll2:{lat,lng} }
+let strokes = [];
+let currentStroke = null;
+
+// ─── CANVAS SIZING ───────────────────────────────────────────────────────────
 function resizeCanvas() {
     const wrapper = document.getElementById("mapWrapper");
     canvas.width  = wrapper.clientWidth;
@@ -288,7 +404,21 @@ resizeCanvas();
 window.addEventListener("resize", resizeCanvas);
 map.on("resize", resizeCanvas);
 
-// ─── TOOL SELECTION ───
+// Redraw whenever map moves or zooms — this is the key fix
+map.on("move zoom moveend zoomend", redrawAll);
+
+// ─── COORDINATE HELPERS ──────────────────────────────────────────────────────
+function llToCanvas(lat, lng) {
+    // Convert a map latlng to canvas pixel coordinates
+    const pt = map.latLngToContainerPoint(L.latLng(lat, lng));
+    return [pt.x, pt.y];
+}
+
+function canvasToLL(x, y) {
+    return map.containerPointToLatLng(L.point(x, y));
+}
+
+// ─── TOOL SELECTION ───────────────────────────────────────────────────────────
 document.querySelectorAll(".drawToolBtn").forEach((btn) => {
     btn.addEventListener("click", () => {
         activeTool = btn.dataset.tool;
@@ -297,13 +427,13 @@ document.querySelectorAll(".drawToolBtn").forEach((btn) => {
         canvas.dataset.tool = activeTool;
     });
 });
-// Activate pen by default
 document.querySelector('[data-tool="pen"]')?.classList.add("active");
 
-// ─── DRAW MODE TOGGLE ───
+// ─── DRAW MODE TOGGLE ─────────────────────────────────────────────────────────
 const toggleBtn = document.getElementById("toggleDrawMode");
 toggleBtn.addEventListener("click", () => {
     drawMode = !drawMode;
+    if (drawMode && rulerMode) toggleRuler(); // can't have both active
     toggleBtn.textContent = drawMode ? "ON" : "OFF";
     toggleBtn.classList.toggle("on", drawMode);
     canvas.classList.toggle("active", drawMode);
@@ -312,7 +442,7 @@ toggleBtn.addEventListener("click", () => {
     document.getElementById("drawModeStatus").textContent = `DRAW: ${drawMode ? "ON" : "OFF"}`;
 });
 
-// ─── COLOR SWATCHES ───
+// ─── COLOR SWATCHES ───────────────────────────────────────────────────────────
 document.querySelectorAll(".swatch").forEach((sw) => {
     sw.addEventListener("click", () => {
         penColor = sw.dataset.color;
@@ -321,7 +451,7 @@ document.querySelectorAll(".swatch").forEach((sw) => {
     });
 });
 
-// ─── PEN WIDTH SLIDER ───
+// ─── PEN WIDTH SLIDER ─────────────────────────────────────────────────────────
 const widthSlider = document.getElementById("penWidth");
 const widthVal    = document.getElementById("penWidthVal");
 widthSlider.addEventListener("input", () => {
@@ -329,16 +459,21 @@ widthSlider.addEventListener("input", () => {
     widthVal.textContent = penWidth;
 });
 
-// ─── CLEAR DRAWINGS ───
+// ─── CLEAR DRAWINGS ───────────────────────────────────────────────────────────
 document.getElementById("clearDrawingsBtn").addEventListener("click", () => {
     strokes = [];
+    // remove drawing entries from undo stack
+    for (let i = undoStack.length - 1; i >= 0; i--) {
+        if (undoStack[i].type === "drawing") undoStack.splice(i, 1);
+    }
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 });
 
-// ─── REDRAW ALL STROKES ───
+// ─── REDRAW ALL STROKES ───────────────────────────────────────────────────────
 function redrawAll() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    strokes.forEach(drawStroke);
+    strokes.forEach(s => drawStroke(s));
+    if (rulerMode && rulerPoints.length > 0) drawRulerOverlay();
 }
 
 function drawStroke(s) {
@@ -350,37 +485,51 @@ function drawStroke(s) {
 
     if (s.tool === "pen") {
         ctx.beginPath();
-        s.points.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y));
+        s.points.forEach(([lat, lng], i) => {
+            const [cx, cy] = llToCanvas(lat, lng);
+            i === 0 ? ctx.moveTo(cx, cy) : ctx.lineTo(cx, cy);
+        });
         ctx.stroke();
 
     } else if (s.tool === "line") {
+        const [x1, y1] = llToCanvas(s.ll1.lat, s.ll1.lng);
+        const [x2, y2] = llToCanvas(s.ll2.lat, s.ll2.lng);
         ctx.beginPath();
-        ctx.moveTo(s.x1, s.y1);
-        ctx.lineTo(s.x2, s.y2);
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
         ctx.stroke();
 
     } else if (s.tool === "arrow") {
-        drawArrow(ctx, s.x1, s.y1, s.x2, s.y2, s.color, s.width);
+        const [x1, y1] = llToCanvas(s.ll1.lat, s.ll1.lng);
+        const [x2, y2] = llToCanvas(s.ll2.lat, s.ll2.lng);
+        drawArrow(ctx, x1, y1, x2, y2, s.color, s.width);
 
     } else if (s.tool === "circle") {
-        const rx = Math.abs(s.x2 - s.x1) / 2;
-        const ry = Math.abs(s.y2 - s.y1) / 2;
-        const cx = s.x1 + (s.x2 - s.x1) / 2;
-        const cy = s.y1 + (s.y2 - s.y1) / 2;
+        const [x1, y1] = llToCanvas(s.ll1.lat, s.ll1.lng);
+        const [x2, y2] = llToCanvas(s.ll2.lat, s.ll2.lng);
+        const rx = Math.abs(x2 - x1) / 2;
+        const ry = Math.abs(y2 - y1) / 2;
+        const cx = x1 + (x2 - x1) / 2;
+        const cy = y1 + (y2 - y1) / 2;
         ctx.beginPath();
         ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
         ctx.stroke();
 
     } else if (s.tool === "rect") {
+        const [x1, y1] = llToCanvas(s.ll1.lat, s.ll1.lng);
+        const [x2, y2] = llToCanvas(s.ll2.lat, s.ll2.lng);
         ctx.beginPath();
-        ctx.strokeRect(s.x1, s.y1, s.x2 - s.x1, s.y2 - s.y1);
+        ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
 
     } else if (s.tool === "eraser") {
         ctx.save();
         ctx.globalCompositeOperation = "destination-out";
         ctx.lineWidth = s.width * 5;
         ctx.beginPath();
-        s.points.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y));
+        s.points.forEach(([lat, lng], i) => {
+            const [cx, cy] = llToCanvas(lat, lng);
+            i === 0 ? ctx.moveTo(cx, cy) : ctx.lineTo(cx, cy);
+        });
         ctx.stroke();
         ctx.restore();
     }
@@ -389,8 +538,8 @@ function drawStroke(s) {
 }
 
 function drawArrow(ctx, x1, y1, x2, y2, color, width) {
-    const headLen  = Math.max(12, width * 4);
-    const angle    = Math.atan2(y2 - y1, x2 - x1);
+    const headLen = Math.max(12, width * 4);
+    const angle   = Math.atan2(y2 - y1, x2 - x1);
 
     ctx.beginPath();
     ctx.moveTo(x1, y1);
@@ -412,8 +561,8 @@ function drawArrow(ctx, x1, y1, x2, y2, color, width) {
     ctx.fill();
 }
 
-// ─── PREVIEW LAYER (shapes-in-progress) ───
-function drawPreview(x2, y2) {
+// ─── SHAPE PREVIEW (canvas-pixel-space, no map-coord conversion needed) ───────
+function drawPreview(curX, curY) {
     redrawAll();
     ctx.save();
     ctx.strokeStyle = penColor;
@@ -424,43 +573,46 @@ function drawPreview(x2, y2) {
 
     if (activeTool === "line") {
         ctx.beginPath();
-        ctx.moveTo(startX, startY);
-        ctx.lineTo(x2, y2);
+        ctx.moveTo(startCanvasX, startCanvasY);
+        ctx.lineTo(curX, curY);
         ctx.stroke();
 
     } else if (activeTool === "arrow") {
-        drawArrow(ctx, startX, startY, x2, y2, penColor, penWidth);
+        drawArrow(ctx, startCanvasX, startCanvasY, curX, curY, penColor, penWidth);
 
     } else if (activeTool === "circle") {
-        const rx = Math.abs(x2 - startX) / 2;
-        const ry = Math.abs(y2 - startY) / 2;
-        const cx = startX + (x2 - startX) / 2;
-        const cy = startY + (y2 - startY) / 2;
+        const rx = Math.abs(curX - startCanvasX) / 2;
+        const ry = Math.abs(curY - startCanvasY) / 2;
+        const cx = startCanvasX + (curX - startCanvasX) / 2;
+        const cy = startCanvasY + (curY - startCanvasY) / 2;
         ctx.beginPath();
         ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
         ctx.stroke();
 
     } else if (activeTool === "rect") {
         ctx.beginPath();
-        ctx.strokeRect(startX, startY, x2 - startX, y2 - startY);
+        ctx.strokeRect(startCanvasX, startCanvasY, curX - startCanvasX, curY - startCanvasY);
     }
 
     ctx.restore();
 }
 
-// ─── MOUSE EVENTS ───────────────────────────────────────────────────────────
+// ─── MOUSE EVENTS ────────────────────────────────────────────────────────────
 canvas.addEventListener("mousedown", (e) => {
     if (!drawMode) return;
     isDrawing = true;
     const { offsetX: x, offsetY: y } = e;
-    startX = x; startY = y;
+    startCanvasX = x;
+    startCanvasY = y;
+    startMapLL   = canvasToLL(x, y);
 
     if (activeTool === "pen" || activeTool === "eraser") {
+        const ll = canvasToLL(x, y);
         currentStroke = {
             tool:   activeTool,
             color:  penColor,
             width:  penWidth,
-            points: [[x, y]]
+            points: [[ll.lat, ll.lng]]
         };
     }
 });
@@ -470,10 +622,10 @@ canvas.addEventListener("mousemove", (e) => {
     const { offsetX: x, offsetY: y } = e;
 
     if (activeTool === "pen" || activeTool === "eraser") {
-        currentStroke.points.push([x, y]);
+        const ll = canvasToLL(x, y);
+        currentStroke.points.push([ll.lat, ll.lng]);
         redrawAll();
         drawStroke(currentStroke);
-
     } else {
         drawPreview(x, y);
     }
@@ -486,17 +638,19 @@ canvas.addEventListener("mouseup", (e) => {
 
     if (activeTool === "pen" || activeTool === "eraser") {
         strokes.push(currentStroke);
+        undoStack.push({ type: "drawing" });
         currentStroke = null;
         redrawAll();
-
     } else {
+        const endLL = canvasToLL(x, y);
         strokes.push({
             tool:  activeTool,
             color: penColor,
             width: penWidth,
-            x1: startX, y1: startY,
-            x2: x,      y2: y
+            ll1:   { lat: startMapLL.lat, lng: startMapLL.lng },
+            ll2:   { lat: endLL.lat,      lng: endLL.lng }
         });
+        undoStack.push({ type: "drawing" });
         redrawAll();
     }
 });
@@ -504,13 +658,14 @@ canvas.addEventListener("mouseup", (e) => {
 canvas.addEventListener("mouseleave", () => {
     if (isDrawing && currentStroke) {
         strokes.push(currentStroke);
+        undoStack.push({ type: "drawing" });
         currentStroke = null;
         isDrawing = false;
         redrawAll();
     }
 });
 
-// ─── TOUCH SUPPORT ──────────────────────────────────────────────────────────
+// ─── TOUCH SUPPORT ───────────────────────────────────────────────────────────
 function getTouchPos(e) {
     const rect = canvas.getBoundingClientRect();
     const t = e.touches[0];
@@ -536,6 +691,195 @@ canvas.addEventListener("touchend", (e) => {
     if (!drawMode) return;
     e.preventDefault();
     canvas.dispatchEvent(new MouseEvent("mouseup", {
-        offsetX: startX, offsetY: startY
+        offsetX: startCanvasX, offsetY: startCanvasY
     }));
 }, { passive: false });
+
+// ════════════════════════════════════════════════════════════════════
+// RULER SYSTEM
+// Scale: 142 pixels = 250 meters (at zoom 0)
+// ════════════════════════════════════════════════════════════════════
+const PIXELS_PER_METER = 142 / 250; // pixels per meter at zoom 0
+
+let rulerMode   = false;
+let rulerPoints = []; // array of {lat, lng} in map coords
+
+const rulerBtn     = document.getElementById("rulerBtn");
+const rulerTooltip = document.getElementById("rulerTooltip");
+const rulerStatus  = document.getElementById("rulerStatus");
+const rulerReadout = document.getElementById("rulerReadout");
+
+function toggleRuler() {
+    rulerMode = !rulerMode;
+    if (rulerMode && drawMode) {
+        // turn off draw mode
+        drawMode = false;
+        document.getElementById("toggleDrawMode").textContent = "OFF";
+        document.getElementById("toggleDrawMode").classList.remove("on");
+        canvas.classList.remove("active");
+        map.dragging.enable();
+        map.scrollWheelZoom.enable();
+        document.getElementById("drawModeStatus").textContent = "DRAW: OFF";
+    }
+
+    rulerBtn.classList.toggle("active", rulerMode);
+    rulerStatus.textContent = `RULER: ${rulerMode ? "ON" : "OFF"}`;
+
+    if (!rulerMode) {
+        rulerPoints = [];
+        rulerTooltip.style.display = "none";
+        rulerReadout.textContent   = "";
+        redrawAll();
+    }
+}
+
+rulerBtn.addEventListener("click", toggleRuler);
+
+// Pixel distance between two map latlng points, accounting for current zoom
+function mapDistancePixels(ll1, ll2) {
+    const p1 = map.latLngToContainerPoint(ll1);
+    const p2 = map.latLngToContainerPoint(ll2);
+    return Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+}
+
+// Convert pixel distance at the *current zoom* to meters
+// At zoom 0 the scale is PIXELS_PER_METER. Each zoom level doubles pixels.
+function pixelsToMeters(pixelDist) {
+    const zoom     = map.getZoom();
+    const scale    = Math.pow(2, zoom);        // zoom 0→1, zoom 1→2, zoom -1→0.5 etc.
+    const pxAt0    = pixelDist / scale;        // equivalent pixels at zoom 0
+    return pxAt0 / PIXELS_PER_METER;
+}
+
+// Total ruler length in meters along the polyline
+function rulerTotalMeters() {
+    let total = 0;
+    for (let i = 1; i < rulerPoints.length; i++) {
+        const px = mapDistancePixels(
+            L.latLng(rulerPoints[i-1].lat, rulerPoints[i-1].lng),
+            L.latLng(rulerPoints[i].lat,   rulerPoints[i].lng)
+        );
+        total += pixelsToMeters(px);
+    }
+    return total;
+}
+
+function formatDistance(meters) {
+    if (meters >= 1000) {
+        return `${(meters / 1000).toFixed(2)} km  (${Math.round(meters)} m)`;
+    }
+    return `${Math.round(meters)} m`;
+}
+
+map.on("click", (e) => {
+    if (!rulerMode) return;
+    rulerPoints.push({ lat: e.latlng.lat, lng: e.latlng.lng });
+    redrawAll();
+    updateRulerReadout(e.latlng);
+});
+
+map.on("dblclick", (e) => {
+    if (!rulerMode) return;
+    // Finish measuring
+    L.DomEvent.stop(e);
+    if (rulerPoints.length > 1) {
+        const m = rulerTotalMeters();
+        rulerReadout.textContent = `TOTAL: ${formatDistance(m)}`;
+    }
+    rulerPoints = [];
+    redrawAll();
+    rulerTooltip.style.display = "none";
+});
+
+map.on("mousemove", (e) => {
+    if (!rulerMode || rulerPoints.length === 0) return;
+
+    // Draw live preview line on canvas
+    redrawAll();
+
+    const last = rulerPoints[rulerPoints.length - 1];
+    const [lx, ly] = llToCanvas(last.lat, last.lng);
+    const cur = map.latLngToContainerPoint(e.latlng);
+
+    ctx.save();
+    ctx.strokeStyle = "#ffcc00";
+    ctx.lineWidth   = 1.5;
+    ctx.setLineDash([5, 4]);
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(lx, ly);
+    ctx.lineTo(cur.x, cur.y);
+    ctx.stroke();
+    ctx.restore();
+
+    // Segment distance tooltip
+    const pxDist = Math.sqrt((cur.x - lx) ** 2 + (cur.y - ly) ** 2);
+    const meters = pixelsToMeters(pxDist);
+
+    rulerTooltip.textContent   = formatDistance(meters);
+    rulerTooltip.style.display = "block";
+    rulerTooltip.style.left    = (cur.x + 12) + "px";
+    rulerTooltip.style.top     = (cur.y - 24) + "px";
+});
+
+function updateRulerReadout(latlng) {
+    if (rulerPoints.length < 2) {
+        rulerReadout.textContent = "Click to add points — double-click to finish";
+        return;
+    }
+    const m = rulerTotalMeters();
+    rulerReadout.textContent = `TOTAL: ${formatDistance(m)}`;
+}
+
+function drawRulerOverlay() {
+    if (rulerPoints.length === 0) return;
+
+    ctx.save();
+    ctx.strokeStyle = "#ffcc00";
+    ctx.fillStyle   = "#ffcc00";
+    ctx.lineWidth   = 2;
+    ctx.lineCap     = "round";
+    ctx.lineJoin    = "round";
+
+    // Draw lines between points
+    if (rulerPoints.length > 1) {
+        ctx.beginPath();
+        rulerPoints.forEach((pt, i) => {
+            const [cx, cy] = llToCanvas(pt.lat, pt.lng);
+            i === 0 ? ctx.moveTo(cx, cy) : ctx.lineTo(cx, cy);
+        });
+        ctx.stroke();
+    }
+
+    // Draw dots at each point + distance label
+    rulerPoints.forEach((pt, i) => {
+        const [cx, cy] = llToCanvas(pt.lat, pt.lng);
+
+        ctx.beginPath();
+        ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (i > 0) {
+            // Show cumulative distance up to this point
+            let cumPx = 0;
+            for (let j = 1; j <= i; j++) {
+                cumPx += mapDistancePixels(
+                    L.latLng(rulerPoints[j-1].lat, rulerPoints[j-1].lng),
+                    L.latLng(rulerPoints[j].lat,   rulerPoints[j].lng)
+                );
+            }
+            const meters = pixelsToMeters(cumPx);
+            const label  = formatDistance(meters);
+
+            ctx.font      = "bold 11px 'Share Tech Mono', monospace";
+            ctx.textAlign = "left";
+            // shadow
+            ctx.fillStyle = "rgba(0,0,0,0.6)";
+            ctx.fillText(label, cx + 8, cy - 5);
+            ctx.fillStyle = "#ffcc00";
+            ctx.fillText(label, cx + 7, cy - 6);
+        }
+    });
+
+    ctx.restore();
+}
