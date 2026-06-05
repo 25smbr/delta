@@ -25,7 +25,8 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
-const markersCollection = collection(db, "markers");
+const markersCollection  = collection(db, "markers");
+const drawingsCollection = collection(db, "drawings");
 
 // ─── MAP ─────────────────────────────────────────────────────────────────────
 const imageWidth  = 1204;
@@ -65,11 +66,13 @@ map.on("mousemove", (e) => {
 
 // ─── SYMBOL DEFINITIONS ──────────────────────────────────────────────────────
 const symbolGroups = {
-    infantry: ["infantry_alive", "infantry_wounded", "infantry_dead"],
-    tank:     ["tank_alive",     "tank_damaged",     "tank_destroyed"],
-    position: ["position_alive",                     "position_destroyed"],
-    humvee:   ["humvee_alive",   "humvee_damaged",   "humvee_destroyed"],
-    truck:    ["truck_alive",    "truck_damaged",    "truck_destroyed"]
+    infantry:  ["infantry_alive",  "infantry_wounded",  "infantry_dead"],
+    tank:      ["tank_alive",      "tank_damaged",      "tank_destroyed"],
+    artillery: ["artillery_alive", "artillery_damaged", "artillery_destroyed"],
+    helicopter:["helicopter_alive","helicopter_damaged","helicopter_destroyed"],
+    position:  ["position_alive",                       "position_destroyed"],
+    humvee:    ["humvee_alive",    "humvee_damaged",    "humvee_destroyed"],
+    truck:     ["truck_alive",     "truck_damaged",     "truck_destroyed"]
 };
 
 const statusColors = {
@@ -83,12 +86,9 @@ const statusColors = {
 let selectedSymbol = "infantry_alive";
 
 // ════════════════════════════════════════════════════════════════════
-// ALL STATE VARIABLES — declared here at top level to avoid
-// Temporal Dead Zone (TDZ) errors when functions reference them
-// before their original let/const lines were reached.
+// ALL STATE VARIABLES
 // ════════════════════════════════════════════════════════════════════
 
-// ─── UNIFIED UNDO STACK ───────────────────────────────────────────────────────
 const undoStack = [];
 
 // ─── DRAWING STATE ───────────────────────────────────────────────────────────
@@ -101,6 +101,7 @@ let isDrawing   = false;
 let startCanvasX = 0, startCanvasY = 0;
 let startMapLL   = null;
 
+// strokes is now the live local copy, synced from Firestore
 let strokes       = [];
 let currentStroke = null;
 
@@ -131,6 +132,20 @@ function symbolSVG(type = "infantry_alive", forMap = false) {
         case "tank":
             center = `<rect x="10" y="17" width="26" height="12" rx="1"
                         fill="none" stroke="#0a0c10" stroke-width="2.5"/>`;
+            break;
+        case "artillery":
+            center = `
+              <line x1="8" y1="30" x2="38" y2="30" stroke="#0a0c10" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="23" y1="30" x2="32" y2="14" stroke="#0a0c10" stroke-width="2.5" stroke-linecap="round"/>
+              <circle cx="13" cy="32" r="4" fill="none" stroke="#0a0c10" stroke-width="2"/>
+              <circle cx="33" cy="32" r="4" fill="none" stroke="#0a0c10" stroke-width="2"/>`;
+            break;
+        case "helicopter":
+            center = `
+              <ellipse cx="23" cy="26" rx="10" ry="6" fill="none" stroke="#0a0c10" stroke-width="2.2"/>
+              <line x1="8" y1="18" x2="38" y2="18" stroke="#0a0c10" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="23" y1="18" x2="23" y2="20" stroke="#0a0c10" stroke-width="2"/>
+              <line x1="30" y1="26" x2="34" y2="32" stroke="#0a0c10" stroke-width="2" stroke-linecap="round"/>`;
             break;
         case "position":
             center = `<circle cx="23" cy="23" r="8"
@@ -214,8 +229,8 @@ async function undoLast() {
     if (last.type === "marker") {
         await deleteDoc(doc(db, "markers", last.id));
     } else if (last.type === "drawing") {
-        strokes.pop();
-        redrawAll();
+        // Delete from Firestore — listener will update local strokes
+        await deleteDoc(doc(db, "drawings", last.id));
     }
 }
 
@@ -231,7 +246,18 @@ document.getElementById("clearMarkersBtn").addEventListener("click", async () =>
     }
 });
 
-// ─── FIRESTORE REALTIME ───────────────────────────────────────────────────────
+// ─── CLEAR DRAWINGS ───────────────────────────────────────────────────────────
+document.getElementById("clearDrawingsBtn").addEventListener("click", async () => {
+    const snapshot = await getDocs(drawingsCollection);
+    const batch    = writeBatch(db);
+    snapshot.forEach(d => batch.delete(d.ref));
+    await batch.commit();
+    for (let i = undoStack.length - 1; i >= 0; i--) {
+        if (undoStack[i].type === "drawing") undoStack.splice(i, 1);
+    }
+});
+
+// ─── FIRESTORE REALTIME — MARKERS ────────────────────────────────────────────
 const displayedMarkers = {};
 
 function createIcon(type) {
@@ -279,6 +305,16 @@ onSnapshot(markersCollection, (snapshot) => {
         `MARKERS: ${Object.keys(displayedMarkers).length}`;
 });
 
+// ─── FIRESTORE REALTIME — DRAWINGS ───────────────────────────────────────────
+// strokes array is kept in sync with Firestore; each stroke has a firestoreId
+onSnapshot(drawingsCollection, (snapshot) => {
+    strokes = [];
+    snapshot.forEach((docSnap) => {
+        strokes.push({ ...docSnap.data(), firestoreId: docSnap.id });
+    });
+    redrawAll();
+});
+
 // ─── ADD MARKERS ─────────────────────────────────────────────────────────────
 map.on("click", async (e) => {
     if (drawMode || rulerMode) return;
@@ -293,8 +329,6 @@ map.on("click", async (e) => {
 
 // ─── RIGHT-CLICK COORDINATE POPUP ────────────────────────────────────────────
 const coordPopup = document.getElementById("coordPopup");
-const popupX     = document.getElementById("popupX");
-const popupY     = document.getElementById("popupY");
 const popupBoth  = document.getElementById("popupBoth");
 
 map.on("contextmenu", (e) => {
@@ -304,8 +338,6 @@ map.on("contextmenu", (e) => {
     const x = parseFloat(e.latlng.lng.toFixed(4));
     const y = parseFloat(e.latlng.lat.toFixed(4));
 
-    popupX.textContent    = x.toFixed(4);
-    popupY.textContent    = y.toFixed(4);
     popupBoth.textContent = `Y: ${y.toFixed(4)}, X: ${x.toFixed(4)}`;
 
     const wrapper = document.getElementById("mapWrapper");
@@ -316,7 +348,7 @@ map.on("contextmenu", (e) => {
     let left = eX + 8;
     let top  = eY + 8;
 
-    const popW = 220, popH = 130;
+    const popW = 220, popH = 80;
     if (left + popW > wrapper.clientWidth)  left = eX - popW - 8;
     if (top  + popH > wrapper.clientHeight) top  = eY - popH - 8;
 
@@ -340,8 +372,6 @@ function copyToClipboard(text, btn) {
     });
 }
 
-document.getElementById("copyX").addEventListener("click",    () => copyToClipboard(popupX.textContent,    document.getElementById("copyX")));
-document.getElementById("copyY").addEventListener("click",    () => copyToClipboard(popupY.textContent,    document.getElementById("copyY")));
 document.getElementById("copyBoth").addEventListener("click", () => copyToClipboard(popupBoth.textContent, document.getElementById("copyBoth")));
 
 // ─── COORDINATE SEARCH ────────────────────────────────────────────────────────
@@ -387,7 +417,7 @@ coordSearchBtn.addEventListener("click", goToCoords);
 coordSearchInput.addEventListener("keydown", (e) => { if (e.key === "Enter") goToCoords(); });
 
 // ════════════════════════════════════════════════════════════════════
-// DRAWING SYSTEM — strokes stored in MAP coordinates (lat/lng)
+// DRAWING SYSTEM — strokes stored in Firestore (synced in real-time)
 // ════════════════════════════════════════════════════════════════════
 const canvas = document.getElementById("drawCanvas");
 const ctx    = canvas.getContext("2d");
@@ -455,15 +485,6 @@ const widthVal    = document.getElementById("penWidthVal");
 widthSlider.addEventListener("input", () => {
     penWidth = parseInt(widthSlider.value);
     widthVal.textContent = penWidth;
-});
-
-// ─── CLEAR DRAWINGS ───────────────────────────────────────────────────────────
-document.getElementById("clearDrawingsBtn").addEventListener("click", () => {
-    strokes = [];
-    for (let i = undoStack.length - 1; i >= 0; i--) {
-        if (undoStack[i].type === "drawing") undoStack.splice(i, 1);
-    }
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
 });
 
 // ─── REDRAW ALL STROKES ───────────────────────────────────────────────────────
@@ -628,37 +649,46 @@ canvas.addEventListener("mousemove", (e) => {
     }
 });
 
-canvas.addEventListener("mouseup", (e) => {
+canvas.addEventListener("mouseup", async (e) => {
     if (!drawMode || !isDrawing) return;
     isDrawing = false;
     const { offsetX: x, offsetY: y } = e;
 
     if (activeTool === "pen" || activeTool === "eraser") {
-        strokes.push(currentStroke);
-        undoStack.push({ type: "drawing" });
+        // Save to Firestore
+        const docRef = await addDoc(drawingsCollection, {
+            ...currentStroke,
+            created: Date.now()
+        });
+        undoStack.push({ type: "drawing", id: docRef.id });
         currentStroke = null;
-        redrawAll();
+        // Firestore listener will trigger redrawAll
     } else {
         const endLL = canvasToLL(x, y);
-        strokes.push({
+        const stroke = {
             tool:  activeTool,
             color: penColor,
             width: penWidth,
             ll1:   { lat: startMapLL.lat, lng: startMapLL.lng },
-            ll2:   { lat: endLL.lat,      lng: endLL.lng }
-        });
-        undoStack.push({ type: "drawing" });
-        redrawAll();
+            ll2:   { lat: endLL.lat,      lng: endLL.lng },
+            created: Date.now()
+        };
+        const docRef = await addDoc(drawingsCollection, stroke);
+        undoStack.push({ type: "drawing", id: docRef.id });
+        // Firestore listener will trigger redrawAll
     }
 });
 
-canvas.addEventListener("mouseleave", () => {
+canvas.addEventListener("mouseleave", async () => {
     if (isDrawing && currentStroke) {
-        strokes.push(currentStroke);
-        undoStack.push({ type: "drawing" });
+        const docRef = await addDoc(drawingsCollection, {
+            ...currentStroke,
+            created: Date.now()
+        });
+        undoStack.push({ type: "drawing", id: docRef.id });
         currentStroke = null;
         isDrawing = false;
-        redrawAll();
+        // Firestore listener will trigger redrawAll
     }
 });
 
@@ -863,3 +893,15 @@ function drawRulerOverlay() {
 
     ctx.restore();
 }
+
+// ─── THEME TOGGLE ─────────────────────────────────────────────────────────────
+const themeToggleBtn = document.getElementById("themeToggleBtn");
+let isLightTheme = false;
+
+themeToggleBtn.addEventListener("click", () => {
+    isLightTheme = !isLightTheme;
+    document.body.classList.toggle("light-theme", isLightTheme);
+    themeToggleBtn.title = isLightTheme ? "Switch to dark theme" : "Switch to light theme";
+    // Update icon inner state
+    themeToggleBtn.classList.toggle("active", isLightTheme);
+});
