@@ -206,6 +206,128 @@ button { cursor: pointer; font-family: var(--font-ui); }
 }
 .symbolBtn svg { width: 46px; height: 46px; }
 
+/* ─── COORDINATE SEARCH ─── */
+.coord-search-row {
+  display: flex; gap: 4px;
+  margin-bottom: 4px;
+}
+.coord-input {
+  flex: 1;
+  background: var(--bg-section);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 10px;
+  padding: 5px 7px;
+  outline: none;
+  transition: border-color .15s;
+}
+.coord-input::placeholder { color: var(--text-dim); }
+.coord-input:focus { border-color: var(--accent); }
+
+.coord-go-btn {
+  padding: 5px 8px;
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--accent);
+  font-size: 10px; font-weight: 700; letter-spacing: 1px;
+  font-family: var(--font-ui);
+  transition: all .15s;
+}
+.coord-go-btn:hover { background: rgba(79,163,255,0.25); }
+
+.coord-error {
+  font-size: 9px;
+  color: var(--danger);
+  letter-spacing: 0.5px;
+  min-height: 14px;
+  padding-bottom: 2px;
+}
+
+/* ─── RIGHT-CLICK COORDINATE POPUP ─── */
+.coord-popup {
+  display: none;
+  position: absolute;
+  z-index: 1500;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-light);
+  border-radius: 5px;
+  padding: 8px 10px 8px;
+  min-width: 210px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.7);
+  user-select: none;
+}
+
+.coord-popup-header {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 9px; font-weight: 700; letter-spacing: 2px;
+  color: var(--text-dim);
+  margin-bottom: 7px;
+  text-transform: uppercase;
+}
+
+.coord-popup-row {
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 4px;
+}
+
+.coord-popup-label {
+  font-size: 9px; font-weight: 700; letter-spacing: 1.5px;
+  color: var(--text-dim);
+  width: 30px; flex-shrink: 0;
+  text-transform: uppercase;
+}
+
+.coord-popup-val {
+  flex: 1;
+  font-size: 11px;
+  color: var(--accent);
+  letter-spacing: 0.5px;
+}
+
+.coord-copy-btn {
+  width: 20px; height: 20px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-dim);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px;
+  transition: all .15s;
+  flex-shrink: 0;
+}
+.coord-copy-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+
+.coord-popup-close {
+  position: absolute; top: 6px; right: 6px;
+  width: 18px; height: 18px;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 10px;
+  display: flex; align-items: center; justify-content: center;
+  transition: color .15s;
+}
+.coord-popup-close:hover { color: var(--danger); }
+
+/* ─── RULER TOOLTIP ─── */
+.ruler-tooltip {
+  display: none;
+  position: absolute;
+  z-index: 1400;
+  background: rgba(10,12,15,0.85);
+  border: 1px solid #ffcc00;
+  border-radius: 3px;
+  color: #ffcc00;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px 7px;
+  pointer-events: none;
+  white-space: nowrap;
+  letter-spacing: 0.5px;
+}
+
 /* ─── DRAW TOOLS ─── */
 .draw-tools-grid {
   display: grid;
@@ -320,7 +442,7 @@ button { cursor: pointer; font-family: var(--font-ui); }
 #drawCanvas {
   position: absolute; top: 0; left: 0;
   width: 100%; height: 100%;
-  pointer-events: none;   /* enabled dynamically */
+  pointer-events: none;
   z-index: 500;
 }
 #drawCanvas.active { pointer-events: all; cursor: crosshair; }
@@ -373,6 +495,7 @@ button { cursor: pointer; font-family: var(--font-ui); }
 .status-sep { color: var(--border-light); }
 .status-center {
   font-size: 10px; color: var(--text-label); letter-spacing: .5px;
+  font-family: var(--font-mono);
 }
 
 /* ─── LEAFLET OVERRIDES ─── */
