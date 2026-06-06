@@ -1,23 +1,33 @@
-/* ═══════════════════════════════════════════════
-   DELTA / MONITOR — Tactical Situational Awareness
-═══════════════════════════════════════════════ */
+/* ========================
+   DELTA / MONITOR  Tactical Situational Awareness
+======================== */
 @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap');
 :root {
-  --bg-base:      #0a0c0f;
-  --bg-panel:     #0e1117;
-  --bg-section:   #121620;
-  --bg-hover:     #1a1f2b;
-  --bg-active:    #1c2333;
-  --border:       #1e2535;
-  --border-light: #2a3245;
-  --accent:       #4fa3ff;
-  --accent-dim:   rgba(79, 163, 255, 0.15);
-  --accent-glow:  rgba(79, 163, 255, 0.35);
+  /* Brand palette: blue #3A52A9  dark #2D2E33 */
+  --brand-blue:   #3A52A9;
+  --brand-dark:   #2D2E33;
+
+  /* Backgrounds  derived from brand-dark */
+  --bg-base:      #1a1b1f;
+  --bg-panel:     #22232a;
+  --bg-section:   #2d2e35;
+  --bg-hover:     #363740;
+  --bg-active:    #3d3e4b;
+
+  /* Borders */
+  --border:       #3a3b47;
+  --border-light: #50525f;
+
+  /* Accent  brand blue lightened for UI readability on dark backgrounds */
+  --accent:       #7090d8;
+  --accent-dim:   rgba(58, 82, 169, 0.22);
+  --accent-glow:  rgba(58, 82, 169, 0.45);
+
   --danger:       #ff3b3b;
   --danger-dim:   rgba(255, 59, 59, 0.12);
-  --text-primary: #c8d4e8;
-  --text-dim:     #5c6b85;
-  --text-label:   #8a9bb8;
+  --text-primary: #c8d0ea;
+  --text-dim:     #64697e;
+  --text-label:   #8a90ad;
   --font-ui:      'Rajdhani', sans-serif;
   --font-mono:    'Share Tech Mono', monospace;
   --topbar-h:     42px;
@@ -38,7 +48,7 @@ html, body {
 button { cursor: pointer; font-family: var(--font-ui); }
 .mono  { font-family: var(--font-mono); }
 
-/* ─── TOP BAR ─── */
+/*  TOP BAR  */
 #topBar {
   position: fixed; top: 0; left: 0; right: 0; z-index: 3000;
   height: var(--topbar-h);
@@ -83,7 +93,7 @@ button { cursor: pointer; font-family: var(--font-ui); }
   50%       { opacity: .4; transform: scale(.7); }
 }
 
-/* ─── APP BODY ─── */
+/*  APP BODY  */
 #appBody {
   position: fixed;
   top: var(--topbar-h); bottom: var(--statusbar-h);
@@ -91,7 +101,7 @@ button { cursor: pointer; font-family: var(--font-ui); }
   display: flex;
 }
 
-/* ─── LEFT PANEL ─── */
+/*  LEFT PANEL  */
 #leftPanel {
   position: relative;
   width: var(--left-w);
@@ -108,7 +118,7 @@ button { cursor: pointer; font-family: var(--font-ui); }
   border-right-color: transparent;
 }
 
-/* Collapse button — always above map (z-index 2500),
+/* Collapse button  always above map (z-index 2500),
    absolutely positioned so it floats free of the panel width */
 #collapseLeftBtn {
   position: absolute;
@@ -138,7 +148,7 @@ button { cursor: pointer; font-family: var(--font-ui); }
   transform: rotate(180deg);
 }
 
-/* ─── PANEL INNER — fixed height, flex column, not scrollable itself ─── */
+/*  PANEL INNER  fixed height, flex column, not scrollable itself  */
 .panel-inner {
   width: var(--left-w);
   height: 100%;
@@ -232,7 +242,7 @@ button { cursor: pointer; font-family: var(--font-ui); }
   transition: background 0.3s;
 }
 
-/* ─── SYMBOL GROUPS ─── */
+/*  SYMBOL GROUPS  */
 .symbol-group { margin-bottom: 8px; }
 .group-label {
   font-size: 9px; font-weight: 700; letter-spacing: 2px;
@@ -252,7 +262,7 @@ button { cursor: pointer; font-family: var(--font-ui); }
 .symbolBtn.active { border-color: var(--accent); background: var(--accent-dim); box-shadow: 0 0 8px var(--accent-glow); }
 .symbolBtn svg    { width: 44px; height: 55px; }
 
-/* ─── COORDINATE SEARCH ─── */
+/*  COORDINATE SEARCH  */
 .coord-search-row { display: flex; gap: 4px; margin-bottom: 4px; }
 .coord-input {
   flex: 1; background: var(--bg-section); border: 1px solid var(--border);
@@ -266,10 +276,10 @@ button { cursor: pointer; font-family: var(--font-ui); }
   border-radius: 4px; color: var(--accent); font-size: 10px; font-weight: 700;
   letter-spacing: 1px; font-family: var(--font-ui); transition: all .15s;
 }
-.coord-go-btn:hover { background: rgba(79,163,255,0.25); }
+.coord-go-btn:hover { background: rgba(58,82,169,0.3); }
 .coord-error { font-size: 9px; color: var(--danger); letter-spacing: 0.5px; min-height: 14px; padding-bottom: 2px; }
 
-/* ─── RIGHT-CLICK COORDINATE POPUP ─── */
+/*  RIGHT-CLICK COORDINATE POPUP  */
 .coord-popup {
   display: none; position: absolute; z-index: 1500;
   background: var(--bg-panel); border: 1px solid var(--border-light);
@@ -301,7 +311,7 @@ button { cursor: pointer; font-family: var(--font-ui); }
 }
 .coord-popup-close:hover { color: var(--danger); }
 
-/* ─── RULER TOOLTIP ─── */
+/*  RULER TOOLTIP  */
 .ruler-tooltip {
   display: none; position: absolute; z-index: 1400;
   background: rgba(10,12,15,0.85); border: 1px solid #ffcc00; border-radius: 3px;
@@ -309,7 +319,7 @@ button { cursor: pointer; font-family: var(--font-ui); }
   padding: 3px 7px; pointer-events: none; white-space: nowrap; letter-spacing: 0.5px;
 }
 
-/* ─── DRAW TOOLS ─── */
+/*  DRAW TOOLS  */
 .draw-tools-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-bottom: 8px; }
 .drawToolBtn {
   height: 36px; background: var(--bg-section); border: 1px solid var(--border);
@@ -356,7 +366,7 @@ button { cursor: pointer; font-family: var(--font-ui); }
 }
 .danger-btn:hover { background: rgba(255,59,59,.22); border-color: var(--danger); }
 
-/* ─── MAP WRAPPER ─── */
+/*  MAP WRAPPER  */
 #mapWrapper { flex: 1; position: relative; overflow: hidden; }
 #map { width: 100%; height: 100%; background: #0a0c10; transition: background 0.3s; }
 #drawCanvas {
@@ -367,7 +377,7 @@ button { cursor: pointer; font-family: var(--font-ui); }
 #drawCanvas[data-tool="eraser"] { cursor: cell; }
 #drawCanvas[data-tool="pen"]    { cursor: crosshair; }
 
-/* ─── RIGHT PANEL ─── */
+/*  RIGHT PANEL  */
 #rightPanel {
   width: var(--right-w); background: var(--bg-panel); border-left: 1px solid var(--border);
   display: flex; flex-direction: column; align-items: center;
@@ -383,7 +393,7 @@ button { cursor: pointer; font-family: var(--font-ui); }
 .rightBtn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
 .right-divider { width: 22px; height: 1px; background: var(--border); margin: 4px 0; transition: background 0.3s; }
 
-/* ─── STATUS BAR ─── */
+/*  STATUS BAR  */
 #statusBar {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 3000;
   height: var(--statusbar-h); background: var(--bg-panel); border-top: 1px solid var(--border);
@@ -394,7 +404,7 @@ button { cursor: pointer; font-family: var(--font-ui); }
 .status-item { font-size: 10px; letter-spacing: 1px; color: var(--text-dim); text-transform: uppercase; transition: color 0.3s; }
 .status-sep  { color: var(--border-light); }
 
-/* ─── LEAFLET OVERRIDES ─── */
+/*  LEAFLET OVERRIDES  */
 .leaflet-container { background: #0a0c10 !important; font-family: var(--font-ui) !important; }
 .leaflet-control-zoom { display: none; }
 .leaflet-bar { display: none; }
@@ -406,9 +416,9 @@ button { cursor: pointer; font-family: var(--font-ui); }
 .leaflet-popup-tip { background: var(--bg-panel); }
 .leaflet-popup-close-button { color: var(--text-dim) !important; }
 
-/* ════════════════════════════════════════════════════════
+/* ============================
    LIGHT THEME
-════════════════════════════════════════════════════════ */
+============================ */
 body.light-theme {
   --bg-base:      #eef1f6;
   --bg-panel:     #ffffff;
@@ -442,7 +452,7 @@ body.light-theme .mode-toggle.on    { background: rgba(22,163,74,.07); }
 body.light-theme .coord-go-btn:hover { background: rgba(37,99,235,.15); }
 body.light-theme .scrollable-symbols::-webkit-scrollbar-thumb { background: var(--border-light); }
 
-/* ─── LIGHT THEME: symbol interior strokes darkened, but border/status colors preserved ─── */
+/*  LIGHT THEME: symbol interior strokes darkened, but border/status colors preserved  */
 /*
    Strategy: in light mode we ONLY darken the symbol-interior drawing elements
    (the lines/shapes that represent infantry cross, tank box, etc).
@@ -452,10 +462,10 @@ body.light-theme .scrollable-symbols::-webkit-scrollbar-thumb { background: var(
    We target the interior strokes by their explicit stroke color (#d0d8e8 in dark mode).
    In light mode we replace that light grey with a dark readable color.
 */
-/* NATO symbols use #111 for all designator strokes/fills — visible on both themes.
+/* NATO symbols use #111 for all designator strokes/fills  visible on both themes.
    The salmon fill (#f87171) and status bar colors are intentionally kept as-is. */
 
-/* ─── FILTER CHIPS ────────────────────────────────────────────────────────── */
+/*  FILTER CHIPS  */
 .filter-chips {
   display: flex; flex-wrap: wrap; gap: 4px;
   padding: 4px 0 6px;
@@ -482,7 +492,7 @@ body.light-theme .scrollable-symbols::-webkit-scrollbar-thumb { background: var(
 .filter-chip:hover { opacity: 1; border-color: var(--border-light); }
 body.light-theme .filter-chip.active { color: var(--accent); }
 
-/* ─── CHAT IDENTITY BAR ───────────────────────────────────────────────────── */
+/*  CHAT IDENTITY BAR  */
 .chat-identity-bar {
   display: flex; align-items: center; gap: 5px;
   padding: 6px 10px 5px;
@@ -518,7 +528,7 @@ body.light-theme .filter-chip.active { color: var(--accent); }
 }
 .chat-role-select:focus { border-color: var(--accent); }
 
-/* ─── CHAT ROLE LABEL ─────────────────────────────────────────────────────── */
+/*  CHAT ROLE LABEL  */
 .chat-msg-role {
   font-size: 8.5px; font-weight: 700; letter-spacing: 1px;
   font-family: var(--font-mono);
@@ -526,9 +536,9 @@ body.light-theme .filter-chip.active { color: var(--accent); }
   margin-left: 2px;
 }
 
-/* ════════════════════════════════════════════════════════
-   VEZHA — LIVE STREAMING VIEW
-════════════════════════════════════════════════════════ */
+/* ============================
+   VEZHA  LIVE STREAMING VIEW
+============================ */
 #vezhaView {
   display: none;
   position: fixed;
@@ -541,7 +551,7 @@ body.light-theme .filter-chip.active { color: var(--accent); }
 }
 #vezhaView.active { display: flex; }
 
-/* ─── MAIN AREA (grid + controls) ─── */
+/*  MAIN AREA (grid + controls)  */
 .vezha-main {
   flex: 1;
   min-width: 0;
@@ -549,7 +559,7 @@ body.light-theme .filter-chip.active { color: var(--accent); }
   flex-direction: column;
 }
 
-/* ─── MOSAIC GRID ─── */
+/*  MOSAIC GRID  */
 .vezha-grid {
   flex: 1;
   min-height: 0;
@@ -576,7 +586,7 @@ body.light-theme .filter-chip.active { color: var(--accent); }
 .vezha-grid[data-count="5"],
 .vezha-grid[data-count="6"]               { grid-template-columns: 1fr 1fr 1fr; }
 
-/* ─── VIDEO TILE ─── */
+/*  VIDEO TILE  */
 .vezha-tile {
   position: relative;
   background: #000;
@@ -592,9 +602,9 @@ body.light-theme .filter-chip.active { color: var(--accent); }
   font-size: 10px; letter-spacing: 1px; padding: 3px 8px; border-radius: 3px;
   pointer-events: none;
 }
-.vezha-tile-self .vezha-tile-label { background: rgba(79,163,255,0.25); color: var(--accent); }
+.vezha-tile-self .vezha-tile-label { background: rgba(58,82,169,0.3); color: var(--accent); }
 
-/* ─── EMPTY STATE ─── */
+/*  EMPTY STATE  */
 .vezha-empty {
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
@@ -611,7 +621,7 @@ body.light-theme .filter-chip.active { color: var(--accent); }
   color: var(--text-dim); opacity: 0.55; max-width: 280px; text-align: center;
 }
 
-/* ─── CONTROLS BAR ─── */
+/*  CONTROLS BAR  */
 .vezha-controls {
   height: 52px; flex-shrink: 0;
   background: var(--bg-panel); border-top: 1px solid var(--border);
@@ -627,7 +637,7 @@ body.light-theme .filter-chip.active { color: var(--accent); }
   font-size: 11px; font-weight: 700; letter-spacing: 1.5px;
   font-family: var(--font-ui); cursor: pointer; transition: all .15s;
 }
-.vezha-ctrl-btn:hover { background: rgba(79,163,255,0.25); }
+.vezha-ctrl-btn:hover { background: rgba(58,82,169,0.3); }
 .vezha-danger-btn {
   background: var(--danger-dim) !important;
   border-color: var(--danger) !important;
@@ -637,20 +647,20 @@ body.light-theme .filter-chip.active { color: var(--accent); }
 .vezha-ctrl-sep { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
 .vezha-status   { font-size: 10px; letter-spacing: 1px; color: var(--text-dim); }
 
-/* ─── CHAT SIDEBAR ─── */
-/* ── Chat sidebar & collapse ──────────────────────────────────────── */
+/*  CHAT SIDEBAR  */
+/*  Chat sidebar & collapse  */
 .vezha-chat-sidebar {
   width: 260px; flex-shrink: 0;
   background: var(--bg-panel);
   border-left: 1px solid var(--border);
   display: flex; flex-direction: row;   /* collapse-tab | chat-inner */
   position: relative;
-  /* NO overflow:hidden — collapse tab must be visible */
+  /* NO overflow:hidden  collapse tab must be visible */
   transition: width 0.25s ease, background 0.3s, border-color 0.3s;
 }
 .vezha-chat-sidebar.collapsed { width: 26px; min-width: 26px; }
 
-/* Inner content column — clips during collapse animation */
+/* Inner content column  clips during collapse animation */
 .chat-inner {
   flex: 1; min-width: 0;
   display: flex; flex-direction: column;
@@ -661,7 +671,7 @@ body.light-theme .filter-chip.active { color: var(--accent); }
   opacity: 0; pointer-events: none;
 }
 
-/* ── Collapse / expand tab (always visible, left strip of sidebar) ── */
+/*  Collapse / expand tab (always visible, left strip of sidebar)  */
 .chat-collapse-btn {
   flex-shrink: 0;
   order: -1;                           /* leftmost child */
@@ -679,7 +689,7 @@ body.light-theme .filter-chip.active { color: var(--accent); }
 }
 .chat-collapse-btn:hover {
   color: var(--accent);
-  background: rgba(79,163,255,0.08);
+  background: rgba(58,82,169,0.12);
 }
 .vezha-chat-header {
   display: flex; align-items: center; gap: 7px;
@@ -727,7 +737,7 @@ body.light-theme .filter-chip.active { color: var(--accent); }
 }
 .chat-msg-mine .chat-msg-text {
   background: var(--accent-dim);
-  border-color: rgba(79,163,255,0.2);
+  border-color: rgba(58,82,169,0.25);
 }
 
 /* Input row */
@@ -751,9 +761,9 @@ body.light-theme .filter-chip.active { color: var(--accent); }
   display: flex; align-items: center; justify-content: center;
   cursor: pointer; transition: all .15s;
 }
-.vezha-chat-send:hover { background: rgba(79,163,255,0.3); }
+.vezha-chat-send:hover { background: rgba(58,82,169,0.35); }
 
-/* ─── LIGHT THEME ─── */
+/*  LIGHT THEME  */
 body.light-theme #vezhaView          { background: var(--bg-base); }
 body.light-theme .vezha-tile         { border-color: var(--border); }
 body.light-theme .vezha-tile-self    { border-color: var(--accent); }
@@ -762,16 +772,16 @@ body.light-theme .vezha-danger-btn:hover{ background: rgba(220,38,38,0.1) !impor
 body.light-theme .chat-msg-mine .chat-msg-text { background: rgba(37,99,235,0.07); border-color: rgba(37,99,235,0.2); }
 body.light-theme .vezha-chat-send:hover { background: rgba(37,99,235,0.15); }
 
-/* ─── MARKER LABEL OVERLAYS ──────────────────────────────────────────────────
-   .mkr-wrap is 140×140 px; icon SVG is 46×46 centred at (47,47).
+/*  MARKER LABEL OVERLAYS 
+   .mkr-wrap is 140140 px; icon SVG is 4646 centred at (47,47).
    iconAnchor [70,70] = map lat/lng point = SVG centre.
-   ─────────────────────────────────────────────────────────────────────────── */
+    */
 .mkr-wrap {
   position: relative;
   width: 140px; height: 140px;
   pointer-events: none;
 }
-/* SVG is 46×57 (diamond 46×46 + 11 px bar) → icon element is 46×57 */
+/* SVG is 4657 (diamond 4646 + 11 px bar)  icon element is 4657 */
 .mkr-icon {
   position: absolute;
   left: 47px; top: 44px;     /* shift up 3 px so diamond centre stays at y=67 */
@@ -779,7 +789,7 @@ body.light-theme .vezha-chat-send:hover { background: rgba(37,99,235,0.15); }
   pointer-events: auto;
   cursor: pointer;
 }
-/* ── Label boxes — styled like the user's reference sketch ────────── */
+/*  Label boxes  styled like the user's reference sketch  */
 .ml {
   position: absolute;
   font-family: var(--font-mono);
@@ -796,13 +806,13 @@ body.light-theme .vezha-chat-send:hover { background: rgba(37,99,235,0.15); }
 }
 .ml:empty { display: none; }
 
-/* ─ top-left: DATE ─ full date must not be clipped → no max-width */
+/*  top-left: DATE  full date must not be clipped  no max-width */
 .ml-tl {
   bottom: 97px; right: 93px;
   text-align: right;
   max-width: 130px;          /* wide enough for DD/MM/YY HH:MM:SS */
 }
-/* ─ center-top: AMOUNT ─ short, bold */
+/*  center-top: AMOUNT  short, bold */
 .ml-tc {
   bottom: 102px;
   left: 50%; transform: translateX(-50%);
@@ -813,9 +823,9 @@ body.light-theme .vezha-chat-send:hover { background: rgba(37,99,235,0.15); }
   border-color: rgba(160,185,220,0.5);
   min-width: 24px;
 }
-/* ─ top-right: INFO ─ */
+/*  top-right: INFO  */
 .ml-tr { bottom: 97px; left: 93px; max-width: 90px; }
-/* ─ bottom-right: SOURCE ─ */
+/*  bottom-right: SOURCE  */
 .ml-br { top: 102px; left: 93px; max-width: 90px; }
 
 /* Light-mode overrides */
@@ -830,9 +840,9 @@ body.light-theme .ml-tc {
   border-color: rgba(30,60,100,0.35);
 }
 
-/* ─── MARKER EDIT POPUP ──────────────────────────────────────────────────────
+/*  MARKER EDIT POPUP 
    .mep-outer is the Leaflet popup wrapper class
-   ─────────────────────────────────────────────────────────────────────────── */
+    */
 .mep-outer .leaflet-popup-content-wrapper {
   background: var(--bg-panel);
   border: 1px solid var(--border);
@@ -890,7 +900,7 @@ body.light-theme .ml-tc {
   transition: background 0.15s;
   margin-top: 2px;
 }
-.mep-save:hover { background: rgba(79,163,255,0.3); }
+.mep-save:hover { background: rgba(58,82,169,0.35); }
 
 /* light-mode popup */
 body.light-theme .mep-outer .leaflet-popup-content-wrapper {
