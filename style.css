@@ -38,6 +38,257 @@ html, body {
 button { cursor: pointer; font-family: var(--font-ui); }
 .mono  { font-family: var(--font-mono); }
 
+/* ════════════════════════════════════════════════════════
+   LOGIN SCREEN
+════════════════════════════════════════════════════════ */
+#loginScreen {
+  position: fixed; inset: 0; z-index: 9000;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-base);
+}
+
+/* Subtle grid background */
+.login-bg-grid {
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(79,163,255,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(79,163,255,0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+}
+
+.login-card {
+  position: relative; z-index: 1;
+  width: 340px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  padding: 28px 28px 20px;
+  box-shadow: 0 8px 48px rgba(0,0,0,0.7), 0 0 0 1px rgba(79,163,255,0.06);
+  animation: loginFadeIn 0.35s ease;
+}
+@keyframes loginFadeIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.login-header {
+  display: flex; align-items: center; gap: 14px;
+  margin-bottom: 20px;
+}
+.login-shield { display: flex; align-items: center; flex-shrink: 0; }
+.login-brand  {
+  font-size: 18px; font-weight: 700; letter-spacing: 3px; color: var(--accent);
+}
+.login-brand span { color: var(--border-light); font-weight: 300; }
+.login-sub    {
+  font-size: 8px; letter-spacing: 2.5px; color: var(--text-dim);
+  margin-top: 2px; text-transform: uppercase;
+}
+.login-divider {
+  height: 1px; background: var(--border); margin-bottom: 18px;
+}
+
+.login-error {
+  background: rgba(255,59,59,0.08); border: 1px solid rgba(255,59,59,0.3);
+  border-radius: 3px; padding: 7px 10px; margin-bottom: 12px;
+  font-size: 11px; color: var(--danger); letter-spacing: 0.5px;
+}
+.login-success {
+  background: rgba(0,220,100,0.07); border: 1px solid rgba(0,220,100,0.25);
+  border-radius: 3px; padding: 7px 10px; margin-bottom: 12px;
+  font-size: 11px; color: #00dc64; letter-spacing: 0.5px;
+}
+
+.login-field  { margin-bottom: 12px; }
+.login-label  {
+  display: block; font-size: 9px; font-weight: 700;
+  letter-spacing: 2px; color: var(--text-dim);
+  text-transform: uppercase; margin-bottom: 5px;
+}
+.login-input {
+  width: 100%;
+  background: var(--bg-section); border: 1px solid var(--border);
+  border-radius: 4px; color: var(--text-primary);
+  font-size: 12px; padding: 8px 10px;
+  outline: none; transition: border-color .15s, background .15s;
+}
+.login-input::placeholder { color: var(--text-dim); }
+.login-input:focus { border-color: var(--accent); background: var(--bg-hover); }
+
+.login-pw-wrap { position: relative; display: flex; align-items: center; }
+.login-pw-wrap .login-input { padding-right: 36px; }
+.login-pw-toggle {
+  position: absolute; right: 8px;
+  background: transparent; border: none; color: var(--text-dim);
+  display: flex; align-items: center; justify-content: center;
+  padding: 2px; transition: color .15s;
+}
+.login-pw-toggle:hover { color: var(--accent); }
+
+.login-row-between {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 14px; flex-wrap: wrap; gap: 6px;
+}
+.login-check-label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 9px; font-weight: 700; letter-spacing: 1.5px;
+  color: var(--text-dim); text-transform: uppercase; cursor: pointer;
+}
+.login-check {
+  width: 13px; height: 13px; accent-color: var(--accent); cursor: pointer;
+}
+.login-link {
+  background: transparent; border: none; padding: 0;
+  font-size: 9px; font-weight: 700; letter-spacing: 1.5px;
+  color: var(--accent); text-transform: uppercase;
+  text-decoration: underline; cursor: pointer; opacity: 0.8;
+  transition: opacity .15s;
+}
+.login-link:hover { opacity: 1; }
+
+.login-submit {
+  width: 100%; padding: 10px 14px;
+  background: var(--accent-dim); border: 1px solid var(--accent);
+  border-radius: 4px; color: var(--accent);
+  font-size: 11px; font-weight: 700; letter-spacing: 2px;
+  font-family: var(--font-ui); text-transform: uppercase;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  transition: all .15s;
+}
+.login-submit:hover:not(:disabled) {
+  background: rgba(79,163,255,0.25); box-shadow: 0 0 12px var(--accent-glow);
+}
+.login-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.login-footer {
+  display: flex; align-items: center; gap: 7px;
+  margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border);
+  font-size: 9px; font-weight: 600; letter-spacing: 2px;
+  color: var(--text-dim); text-transform: uppercase;
+}
+.login-status-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--text-dim); flex-shrink: 0;
+  animation: loginPulse 2s ease-in-out infinite;
+}
+@keyframes loginPulse {
+  0%,100% { opacity: 1; } 50% { opacity: 0.3; }
+}
+
+/* ════════════════════════════════════════════════════════
+   USER PANEL (slide-in dropdown from top-right)
+════════════════════════════════════════════════════════ */
+.user-panel {
+  position: fixed;
+  top: calc(var(--topbar-h) + 6px);
+  right: 10px;
+  z-index: 4000;
+  width: 300px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-light);
+  border-radius: 5px;
+  padding: 14px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+  animation: panelSlideIn 0.2s ease;
+}
+@keyframes panelSlideIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.user-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
+.user-panel-title {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 9px; font-weight: 700; letter-spacing: 2px;
+  color: var(--text-dim); text-transform: uppercase;
+}
+.user-panel-close {
+  background: transparent; border: none; color: var(--text-dim);
+  font-size: 10px; width: 18px; height: 18px;
+  display: flex; align-items: center; justify-content: center;
+  transition: color .15s;
+}
+.user-panel-close:hover { color: var(--danger); }
+
+.user-panel-email {
+  font-size: 12px; color: var(--text-primary);
+  margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis;
+}
+.user-panel-role {
+  font-size: 9px; font-weight: 700; letter-spacing: 2px;
+  text-transform: uppercase; margin-bottom: 12px;
+  display: inline-block; padding: 2px 7px; border-radius: 3px;
+}
+.role-admin {
+  color: #ffcc00; background: rgba(255,204,0,0.1);
+  border: 1px solid rgba(255,204,0,0.3);
+}
+.role-user {
+  color: var(--accent); background: var(--accent-dim);
+  border: 1px solid rgba(79,163,255,0.2);
+}
+
+.user-panel-divider { height: 1px; background: var(--border); margin: 10px 0; }
+
+/* Admin section */
+.user-panel-section-label {
+  font-size: 9px; font-weight: 700; letter-spacing: 2px;
+  color: var(--text-dim); text-transform: uppercase; margin-bottom: 8px;
+}
+.admin-user-list {
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 240px; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+.admin-user-list::-webkit-scrollbar { width: 4px; }
+.admin-user-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.admin-loading { font-size: 10px; color: var(--text-dim); padding: 4px 0; }
+.admin-user-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 6px 8px;
+  background: var(--bg-section); border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.admin-user-info {
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+}
+.admin-user-email {
+  font-size: 10px; color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px;
+}
+.admin-user-badge {
+  font-size: 8px; font-weight: 700; letter-spacing: 1.5px;
+  text-transform: uppercase; display: inline-block;
+  padding: 1px 5px; border-radius: 2px;
+}
+.admin-user-controls { display: flex; gap: 4px; flex-shrink: 0; }
+.admin-btn {
+  padding: 3px 7px; font-size: 8px; font-weight: 700;
+  letter-spacing: 1px; border-radius: 3px; font-family: var(--font-ui);
+  text-transform: uppercase; transition: all .15s; border: 1px solid;
+}
+.admin-btn-ok    { background: rgba(0,220,100,0.08); border-color: rgba(0,220,100,0.3); color: #00dc64; }
+.admin-btn-ok:hover { background: rgba(0,220,100,0.18); }
+.admin-btn-danger { background: var(--danger-dim); border-color: rgba(255,59,59,0.3); color: var(--danger); }
+.admin-btn-danger:hover { background: rgba(255,59,59,0.22); }
+.admin-btn-role  { background: var(--accent-dim); border-color: rgba(79,163,255,0.3); color: var(--accent); }
+.admin-btn-role:hover { background: rgba(79,163,255,0.25); }
+.admin-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.user-panel-logout {
+  width: 100%; padding: 8px 10px; margin-top: 4px;
+  background: var(--danger-dim); border: 1px solid rgba(255,59,59,0.25);
+  border-radius: 4px; color: var(--danger);
+  font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  transition: all .15s;
+}
+.user-panel-logout:hover { background: rgba(255,59,59,0.22); border-color: var(--danger); }
+
 /* ─── TOP BAR ─── */
 #topBar {
   position: fixed; top: 0; left: 0; right: 0; z-index: 3000;
@@ -99,7 +350,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
   background: var(--bg-panel);
   border-right: 1px solid var(--border);
   flex-shrink: 0;
-  /* overflow visible so the collapse button can escape */
   overflow: visible;
   transition: width 0.25s ease, border-color 0.25s ease, background 0.3s;
 }
@@ -108,8 +358,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
   border-right-color: transparent;
 }
 
-/* Collapse button — always above map (z-index 2500),
-   absolutely positioned so it floats free of the panel width */
 #collapseLeftBtn {
   position: absolute;
   top: 8px;
@@ -127,8 +375,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
 #collapseLeftBtn:hover {
   background: var(--bg-hover); border-color: var(--border-light); color: var(--text-primary);
 }
-
-/* When collapsed: float button out to the right of the zero-width panel */
 #leftPanel.collapsed #collapseLeftBtn {
   right: -30px;
   background: var(--bg-panel);
@@ -138,14 +384,15 @@ button { cursor: pointer; font-family: var(--font-ui); }
   transform: rotate(180deg);
 }
 
-/* ─── PANEL INNER — fixed height, flex column, not scrollable itself ─── */
+/* ─── PANEL INNER ─── */
 .panel-inner {
   width: var(--left-w);
   height: 100%;
-  overflow: hidden;           /* panel itself does NOT scroll */
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  padding-top: 34px;          /* space for the abs-positioned collapse button */
+  /* FIX: only pad top enough for the collapse button (no extra space) */
+  padding-top: 36px;
   transition: opacity 0.2s;
 }
 #leftPanel.collapsed .panel-inner {
@@ -154,14 +401,14 @@ button { cursor: pointer; font-family: var(--font-ui); }
 }
 
 .panel-section {
-  padding: 8px 10px 0;
-  flex-shrink: 0;             /* fixed sections don't grow/shrink */
+  padding: 0 10px;
+  flex-shrink: 0;
 }
 
-/* The symbols section is flex-grow so it fills remaining space */
+/* The symbols section fills remaining space */
 #section-symbols {
   flex: 1 1 0;
-  min-height: 0;              /* allow shrinking below content size */
+  min-height: 0;
   display: flex;
   flex-direction: column;
   padding-bottom: 0;
@@ -175,7 +422,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
   flex-shrink: 0;
 }
 
-/* Section collapse button (small arrow per section) */
 .section-collapse-btn {
   margin-left: auto;
   width: 18px; height: 18px;
@@ -188,14 +434,9 @@ button { cursor: pointer; font-family: var(--font-ui); }
 .section-collapse-btn:hover {
   background: var(--bg-hover); border-color: var(--border-light); color: var(--text-primary);
 }
-.section-collapse-btn.collapsed svg {
-  transform: rotate(-90deg);
-}
-.section-collapse-btn svg {
-  transition: transform 0.2s ease;
-}
+.section-collapse-btn.collapsed svg { transform: rotate(-90deg); }
+.section-collapse-btn svg { transition: transform 0.2s ease; }
 
-/* section-body: generic collapsed state */
 .section-body {
   overflow: hidden;
   transition: max-height 0.25s ease, opacity 0.2s;
@@ -207,13 +448,12 @@ button { cursor: pointer; font-family: var(--font-ui); }
   opacity: 0;
 }
 
-/* The symbols body is the ONLY scrollable element */
 .scrollable-symbols {
   flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  max-height: none !important; /* override the generic max-height for open state */
+  max-height: none !important;
   padding-bottom: 6px;
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
@@ -222,7 +462,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
 .scrollable-symbols::-webkit-scrollbar-track { background: transparent; }
 .scrollable-symbols::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
-/* When symbols section is collapsed, kill the flex growth */
 #section-symbols:has(.section-body.collapsed) {
   flex: 0 0 auto;
 }
@@ -230,6 +469,12 @@ button { cursor: pointer; font-family: var(--font-ui); }
 .panel-divider {
   height: 1px; background: var(--border); margin: 0 10px; flex-shrink: 0;
   transition: background 0.3s;
+}
+
+/* Give non-symbols sections some top breathing room */
+#section-coords,
+#section-draw {
+  padding-top: 8px;
 }
 
 /* ─── SYMBOL GROUPS ─── */
@@ -440,41 +685,29 @@ body.light-theme .mode-toggle       { background: rgba(220,38,38,.06); }
 body.light-theme .mode-toggle.on    { background: rgba(22,163,74,.07); }
 body.light-theme .coord-go-btn:hover { background: rgba(37,99,235,.15); }
 body.light-theme .scrollable-symbols::-webkit-scrollbar-thumb { background: var(--border-light); }
+body.light-theme .login-card { box-shadow: 0 8px 48px rgba(0,0,0,0.12), 0 0 0 1px rgba(37,99,235,0.06); }
+body.light-theme .login-bg-grid {
+  background-image:
+    linear-gradient(rgba(37,99,235,0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37,99,235,0.05) 1px, transparent 1px);
+}
+body.light-theme .user-panel { box-shadow: 0 8px 32px rgba(0,0,0,0.12); }
+body.light-theme .role-admin { color: #b45309; background: rgba(180,83,9,0.08); border-color: rgba(180,83,9,0.2); }
 
-/* ─── LIGHT THEME: symbol interior strokes darkened, but border/status colors preserved ─── */
-/*
-   Strategy: in light mode we ONLY darken the symbol-interior drawing elements
-   (the lines/shapes that represent infantry cross, tank box, etc).
-   We do NOT override the outer rect stroke (which carries the status color)
-   nor the damage/dead overlay fills.
-   
-   We target the interior strokes by their explicit stroke color (#d0d8e8 in dark mode).
-   In light mode we replace that light grey with a dark readable color.
-*/
+/* ─── LIGHT THEME: symbol interior strokes ─── */
 body.light-theme .leaflet-marker-icon svg [stroke="#d0d8e8"],
 body.light-theme .symbolBtn svg [stroke="#d0d8e8"] {
   stroke: #2d3a4a !important;
 }
-
-/* The dead/destroyed X overlay is drawn with stroke="#ff4444" on lines — keep that red
-   but make it slightly deeper for light bg readability */
 body.light-theme .leaflet-marker-icon svg line[stroke="#ff4444"],
 body.light-theme .symbolBtn svg line[stroke="#ff4444"] {
   stroke: #c0152a !important;
 }
-
-/* damaged overlay line (stroke="#ff8800") — deepen slightly */
 body.light-theme .leaflet-marker-icon svg line[stroke="#ff8800"],
 body.light-theme .symbolBtn svg line[stroke="#ff8800"] {
   stroke: #c45e00 !important;
 }
-
-/* The fill="#ff4444" on arrow-heads of the dead overlay — deepen */
 body.light-theme .leaflet-marker-icon svg [fill="#ff4444"],
 body.light-theme .symbolBtn svg [fill="#ff4444"] {
   fill: #c0152a !important;
 }
-
-/* The outer rect border carries the status color (--borderColor in JS).
-   Those use: #4fa3ff (alive), #ffcc00 (wounded), #ff8800 (damaged), #ff4444 (dead/destroyed).
-   We intentionally do NOT override these so colors remain meaningful in light mode. */
