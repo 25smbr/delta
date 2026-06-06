@@ -478,3 +478,135 @@ body.light-theme .symbolBtn svg [fill="#ff4444"] {
 /* The outer rect border carries the status color (--borderColor in JS).
    Those use: #4fa3ff (alive), #ffcc00 (wounded), #ff8800 (damaged), #ff4444 (dead/destroyed).
    We intentionally do NOT override these so colors remain meaningful in light mode. */
+
+/* ════════════════════════════════════════════════════════
+   VEZHA — LIVE STREAMING VIEW
+════════════════════════════════════════════════════════ */
+#vezhaView {
+  display: none;
+  position: fixed;
+  top: var(--topbar-h);
+  bottom: var(--statusbar-h);
+  left: 0; right: 0;
+  flex-direction: column;
+  background: var(--bg-base);
+  z-index: 10;
+  transition: background 0.3s;
+}
+#vezhaView.active { display: flex; }
+
+/* ─── MOSAIC GRID ─── */
+.vezha-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr));
+  gap: 6px;
+  padding: 10px;
+  overflow-y: auto;
+  align-content: start;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.vezha-grid::-webkit-scrollbar       { width: 4px; }
+.vezha-grid::-webkit-scrollbar-track { background: transparent; }
+.vezha-grid::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* Auto-adjust columns based on tile count via JS-set attribute */
+.vezha-grid[data-count="1"]  { grid-template-columns: 1fr; }
+.vezha-grid[data-count="2"]  { grid-template-columns: 1fr 1fr; }
+.vezha-grid[data-count="3"],
+.vezha-grid[data-count="4"]  { grid-template-columns: 1fr 1fr; }
+.vezha-grid[data-count="5"],
+.vezha-grid[data-count="6"]  { grid-template-columns: 1fr 1fr 1fr; }
+
+/* ─── VIDEO TILE ─── */
+.vezha-tile {
+  position: relative;
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  transition: border-color 0.2s;
+}
+.vezha-tile.vezha-tile-self { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-glow); }
+.vezha-tile video {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.vezha-tile-label {
+  position: absolute;
+  bottom: 8px; left: 8px;
+  background: rgba(0,0,0,0.65);
+  color: var(--text-primary);
+  font-size: 10px; letter-spacing: 1px;
+  padding: 3px 8px; border-radius: 3px;
+  pointer-events: none;
+}
+.vezha-tile-self .vezha-tile-label { background: rgba(79,163,255,0.25); color: var(--accent); }
+
+/* ─── EMPTY STATE ─── */
+.vezha-empty {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 60px 20px;
+  color: var(--text-dim);
+}
+.vezha-empty svg { opacity: 0.4; }
+.vezha-empty span {
+  font-size: 11px; font-weight: 700; letter-spacing: 2.5px;
+  text-transform: uppercase; color: var(--text-dim);
+}
+.vezha-hint {
+  font-size: 10px !important; font-weight: 400 !important;
+  letter-spacing: 0.5px !important; text-transform: none !important;
+  color: var(--text-dim); opacity: 0.6; max-width: 320px; text-align: center;
+}
+
+/* ─── CONTROLS BAR ─── */
+.vezha-controls {
+  height: 54px;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 20px;
+  flex-shrink: 0;
+  transition: background 0.3s, border-color 0.3s;
+}
+.vezha-ctrl-btn {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 16px;
+  background: var(--accent-dim); border: 1px solid var(--accent);
+  border-radius: 4px; color: var(--accent);
+  font-size: 11px; font-weight: 700; letter-spacing: 1.5px;
+  font-family: var(--font-ui); cursor: pointer;
+  transition: all .15s;
+}
+.vezha-ctrl-btn:hover { background: rgba(79,163,255,0.25); }
+.vezha-danger-btn {
+  background: var(--danger-dim) !important;
+  border-color: var(--danger) !important;
+  color: var(--danger) !important;
+}
+.vezha-danger-btn:hover { background: rgba(255,59,59,0.22) !important; }
+.vezha-ctrl-sep {
+  width: 1px; height: 24px; background: var(--border); margin: 0 4px;
+}
+.vezha-status {
+  font-size: 10px; letter-spacing: 1px; color: var(--text-dim);
+}
+
+/* ─── LIGHT THEME OVERRIDES ─── */
+body.light-theme #vezhaView { background: var(--bg-base); }
+body.light-theme .vezha-tile { border-color: var(--border); }
+body.light-theme .vezha-tile-self { border-color: var(--accent); }
+body.light-theme .vezha-ctrl-btn:hover { background: rgba(37,99,235,0.15); }
+body.light-theme .vezha-danger-btn:hover { background: rgba(220,38,38,0.1) !important; }
