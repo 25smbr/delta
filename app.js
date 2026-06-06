@@ -10,7 +10,9 @@ import {
     getDocs,
     writeBatch,
     query,
-    where
+    where,
+    updateDoc,
+    orderBy
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 // ─── FIREBASE ───────────────────────────────────────────────────────────────
 const firebaseConfig = {
@@ -106,42 +108,63 @@ function symbolSVG(type = "infantry_alive", forMap = false) {
     let center = "";
     switch (unit) {
         case "infantry":
+            // Stick figure — top-down person
             center = `
-              <line x1="10" y1="10" x2="36" y2="36" stroke="${strokeColor}" stroke-width="2.8"/>
-              <line x1="36" y1="10" x2="10" y2="36" stroke="${strokeColor}" stroke-width="2.8"/>`;
+              <circle cx="23" cy="13" r="4.5" stroke="${strokeColor}" stroke-width="2.2" fill="none"/>
+              <line x1="23" y1="18" x2="23" y2="30" stroke="${strokeColor}" stroke-width="2.2" stroke-linecap="round"/>
+              <line x1="14" y1="23" x2="32" y2="23" stroke="${strokeColor}" stroke-width="2.2" stroke-linecap="round"/>
+              <line x1="23" y1="30" x2="16" y2="40" stroke="${strokeColor}" stroke-width="2.2" stroke-linecap="round"/>
+              <line x1="23" y1="30" x2="30" y2="40" stroke="${strokeColor}" stroke-width="2.2" stroke-linecap="round"/>`;
             break;
         case "tank":
-            center = `<rect x="10" y="17" width="26" height="12" rx="1"
-                        fill="none" stroke="${strokeColor}" stroke-width="2.5"/>`;
+            // Top-down hull + turret circle + barrel
+            center = `
+              <rect x="10" y="17" width="26" height="16" rx="3" stroke="${strokeColor}" stroke-width="2.2" fill="none"/>
+              <circle cx="23" cy="25" r="5" stroke="${strokeColor}" stroke-width="2" fill="none"/>
+              <line x1="23" y1="20" x2="23" y2="7" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round"/>`;
             break;
         case "artillery":
+            // Two wheels + axle + angled barrel
             center = `
-              <line x1="8" y1="30" x2="38" y2="30" stroke="${strokeColor}" stroke-width="2.5" stroke-linecap="round"/>
-              <line x1="23" y1="30" x2="32" y2="14" stroke="${strokeColor}" stroke-width="2.5" stroke-linecap="round"/>
-              <circle cx="13" cy="32" r="4" fill="none" stroke="${strokeColor}" stroke-width="2"/>
-              <circle cx="33" cy="32" r="4" fill="none" stroke="${strokeColor}" stroke-width="2"/>`;
+              <circle cx="14" cy="33" r="5" stroke="${strokeColor}" stroke-width="2" fill="none"/>
+              <circle cx="32" cy="33" r="5" stroke="${strokeColor}" stroke-width="2" fill="none"/>
+              <line x1="9" y1="33" x2="37" y2="33" stroke="${strokeColor}" stroke-width="2.2" stroke-linecap="round"/>
+              <line x1="23" y1="33" x2="31" y2="11" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round"/>`;
             break;
         case "helicopter":
+            // Rotor cross + centre body
             center = `
-              <ellipse cx="23" cy="26" rx="10" ry="6" fill="none" stroke="${strokeColor}" stroke-width="2.2"/>
-              <line x1="8" y1="18" x2="38" y2="18" stroke="${strokeColor}" stroke-width="2.5" stroke-linecap="round"/>
-              <line x1="23" y1="18" x2="23" y2="20" stroke="${strokeColor}" stroke-width="2"/>
-              <line x1="30" y1="26" x2="34" y2="32" stroke="${strokeColor}" stroke-width="2" stroke-linecap="round"/>`;
+              <circle cx="23" cy="23" r="4.5" stroke="${strokeColor}" stroke-width="2" fill="none"/>
+              <line x1="23" y1="6" x2="23" y2="18" stroke="${strokeColor}" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="23" y1="28" x2="23" y2="40" stroke="${strokeColor}" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="6" y1="23" x2="18" y2="23" stroke="${strokeColor}" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="28" y1="23" x2="40" y2="23" stroke="${strokeColor}" stroke-width="2.5" stroke-linecap="round"/>`;
             break;
         case "position":
-            center = `<circle cx="23" cy="23" r="8"
-                        fill="none" stroke="${strokeColor}" stroke-width="2.5"/>`;
+            // Diamond with inner dot — observation post
+            center = `
+              <path d="M23 7 L39 23 L23 39 L7 23 Z" stroke="${strokeColor}" stroke-width="2.2" fill="none" stroke-linejoin="round"/>
+              <circle cx="23" cy="23" r="3" stroke="${strokeColor}" stroke-width="1.8" fill="none"/>`;
             break;
         case "humvee":
-            center = `<rect x="12" y="17" width="22" height="12" rx="1"
-                        fill="none" stroke="${strokeColor}" stroke-width="2.5"/>`;
+            // Top-down 4×4: body + 4 wheel blocks
+            center = `
+              <rect x="13" y="14" width="20" height="20" rx="2" stroke="${strokeColor}" stroke-width="2.2" fill="none"/>
+              <line x1="13" y1="21" x2="33" y2="21" stroke="${strokeColor}" stroke-width="1.5"/>
+              <rect x="8"  y="13" width="5" height="7" rx="1.5" stroke="${strokeColor}" stroke-width="1.8" fill="none"/>
+              <rect x="33" y="13" width="5" height="7" rx="1.5" stroke="${strokeColor}" stroke-width="1.8" fill="none"/>
+              <rect x="8"  y="28" width="5" height="7" rx="1.5" stroke="${strokeColor}" stroke-width="1.8" fill="none"/>
+              <rect x="33" y="28" width="5" height="7" rx="1.5" stroke="${strokeColor}" stroke-width="1.8" fill="none"/>`;
             break;
         case "truck":
+            // Cargo bed + smaller cab + 4 wheels
             center = `
-              <rect x="9" y="16" width="18" height="12" rx="1"
-                fill="none" stroke="${strokeColor}" stroke-width="2.5"/>
-              <rect x="27" y="19" width="10" height="9" rx="1"
-                fill="none" stroke="${strokeColor}" stroke-width="2.5"/>`;
+              <rect x="7"  y="16" width="18" height="16" rx="1.5" stroke="${strokeColor}" stroke-width="2.2" fill="none"/>
+              <rect x="25" y="19" width="12" height="10" rx="2"   stroke="${strokeColor}" stroke-width="2.2" fill="none"/>
+              <rect x="5"  y="14" width="4"  height="6"  rx="1.5" stroke="${strokeColor}" stroke-width="1.5" fill="none"/>
+              <rect x="19" y="14" width="4"  height="6"  rx="1.5" stroke="${strokeColor}" stroke-width="1.5" fill="none"/>
+              <rect x="5"  y="28" width="4"  height="6"  rx="1.5" stroke="${strokeColor}" stroke-width="1.5" fill="none"/>
+              <rect x="19" y="28" width="4"  height="6"  rx="1.5" stroke="${strokeColor}" stroke-width="1.5" fill="none"/>`;
             break;
     }
     let overlay = "";
@@ -892,16 +915,19 @@ document.querySelectorAll(".section-collapse-btn").forEach((btn) => {
 // ════════════════════════════════════════════════════════════════════
 const vezha_sessions = collection(db, "vezha_sessions");
 const vezha_signals  = collection(db, "vezha_signals");
+const vezha_chat     = collection(db, "vezha_chat");
 
-// Unique ID for this browser session
-const myPeerId = "peer_" + Math.random().toString(36).substr(2, 9);
+const myPeerId   = "peer_" + Math.random().toString(36).substr(2, 9);
+const myShortId  = myPeerId.slice(-6).toUpperCase();
 let vezhaActive    = false;
 let localStream    = null;
 let mySessionRef   = null;
-let vezhaUnsubs    = [];      // Firestore listener unsubscribe fns
-let processedSigs  = new Set(); // signal doc IDs already handled
-const peers        = {};      // peerId -> { pc: RTCPeerConnection }
+let vezhaUnsubs    = [];
+let chatUnsub      = null;
+let processedSigs  = new Set();
+const peers        = {};
 let vezhaEnterTime = 0;
+let heartbeatTimer = null;
 
 const ICE_CONFIG = {
     iceServers: [
@@ -910,37 +936,54 @@ const ICE_CONFIG = {
     ]
 };
 
+// Best-effort cleanup on tab close
+window.addEventListener("beforeunload", () => {
+    if (mySessionRef) deleteDoc(mySessionRef);
+});
+
 // ─── VIEW SWITCHING ───────────────────────────────────────────────────────────
 const mapViewBtn   = document.getElementById("mapViewBtn");
 const vezhaViewBtn = document.getElementById("vezhaViewBtn");
 const brandModule  = document.getElementById("brandModule");
 
-mapViewBtn.addEventListener("click", () => {
-    if (!vezhaActive) return;
-    exitVezha();
-});
+mapViewBtn.addEventListener("click",   () => { if (vezhaActive)  exitVezha(); });
+vezhaViewBtn.addEventListener("click", () => { if (!vezhaActive) enterVezha(); });
 
-vezhaViewBtn.addEventListener("click", () => {
-    if (vezhaActive) return;
-    enterVezha();
-});
-
-function enterVezha() {
+async function enterVezha() {
     vezhaActive    = true;
     vezhaEnterTime = Date.now();
 
-    document.getElementById("appBody").style.display  = "none";
+    document.getElementById("appBody").style.display = "none";
     document.getElementById("vezhaView").classList.add("active");
     brandModule.textContent = "VEZHA";
-
     mapViewBtn.classList.remove("active");
     vezhaViewBtn.classList.add("active");
 
-    // Register my presence
-    addDoc(vezha_sessions, { userId: myPeerId, created: Date.now() })
-        .then(ref => { mySessionRef = ref; });
+    // ── Purge stale sessions (no heartbeat for >60 s) ──
+    try {
+        const all = await getDocs(vezha_sessions);
+        const b   = writeBatch(db);
+        let dirty = false;
+        all.forEach(d => {
+            const ls = d.data().lastSeen || d.data().created || 0;
+            if (Date.now() - ls > 60000) { b.delete(d.ref); dirty = true; }
+        });
+        if (dirty) await b.commit();
+    } catch (e) { /* non-fatal */ }
 
-    // Listen for signals directed to me
+    // ── Register presence ──
+    mySessionRef = await addDoc(vezha_sessions, {
+        userId: myPeerId, lastSeen: Date.now(), created: Date.now()
+    });
+
+    // ── Heartbeat every 15 s ──
+    heartbeatTimer = setInterval(async () => {
+        if (mySessionRef) {
+            try { await updateDoc(mySessionRef, { lastSeen: Date.now() }); } catch (_) {}
+        }
+    }, 15000);
+
+    // ── Listen for WebRTC signals directed to me ──
     const unsubSig = onSnapshot(
         query(vezha_signals, where("to", "==", myPeerId)),
         snapshot => {
@@ -957,21 +1000,38 @@ function enterVezha() {
     );
     vezhaUnsubs.push(unsubSig);
 
-    // Listen for peers entering/leaving
+    // ── Listen for peer sessions ──
     const unsubSess = onSnapshot(vezha_sessions, snapshot => {
         snapshot.docChanges().forEach(change => {
             const uid = change.doc.data().userId;
             if (uid === myPeerId) return;
-            if (change.type === "added" && localStream) {
-                createOffer(uid);
-            }
-            if (change.type === "removed") {
-                removePeer(uid);
+            if (change.type === "added"   && localStream) createOffer(uid);
+            if (change.type === "removed") removePeer(uid);
+        });
+        // Count only peers with a recent heartbeat
+        const now = Date.now();
+        let count = 0;
+        snapshot.forEach(d => {
+            const data = d.data();
+            if (data.userId !== myPeerId) {
+                const ls = data.lastSeen || data.created || 0;
+                if (now - ls < 45000) count++;
             }
         });
-        updateVezhaStatus(snapshot.size);
+        document.getElementById("vezhaStatus").textContent = `OPERATORS: ${count} ONLINE`;
     });
     vezhaUnsubs.push(unsubSess);
+
+    // ── Subscribe to chat ──
+    document.getElementById("vezhaChatMessages").innerHTML = "";
+    chatUnsub = onSnapshot(
+        query(vezha_chat, orderBy("created", "asc")),
+        snapshot => {
+            snapshot.docChanges().forEach(change => {
+                if (change.type === "added") renderChatMessage(change.doc.data());
+            });
+        }
+    );
 
     updateTileLayout();
 }
@@ -980,16 +1040,16 @@ function exitVezha() {
     stopSharing();
     vezhaActive = false;
 
+    clearInterval(heartbeatTimer); heartbeatTimer = null;
     if (mySessionRef) { deleteDoc(mySessionRef); mySessionRef = null; }
-    vezhaUnsubs.forEach(u => u());
-    vezhaUnsubs = [];
+    vezhaUnsubs.forEach(u => u()); vezhaUnsubs = [];
+    if (chatUnsub) { chatUnsub(); chatUnsub = null; }
     processedSigs.clear();
     Object.keys(peers).forEach(removePeer);
 
     document.getElementById("vezhaView").classList.remove("active");
     document.getElementById("appBody").style.display = "flex";
     brandModule.textContent = "MONITOR";
-
     vezhaViewBtn.classList.remove("active");
     mapViewBtn.classList.add("active");
 }
@@ -1001,16 +1061,12 @@ document.getElementById("stopSharingBtn").addEventListener("click", stopSharing)
 async function shareScreen() {
     try {
         localStream = await navigator.mediaDevices.getDisplayMedia({
-            video: { cursor: "always" },
-            audio: true
+            video: { cursor: "always" }, audio: true
         });
         localStream.getVideoTracks()[0].addEventListener("ended", stopSharing);
-
         addVideoTile("self", localStream, "YOU  ·  BROADCASTING");
         document.getElementById("shareScreenBtn").style.display = "none";
         document.getElementById("stopSharingBtn").style.display = "flex";
-
-        // Offer stream to all currently active peers
         const snap = await getDocs(vezha_sessions);
         snap.forEach(d => {
             if (d.data().userId !== myPeerId) createOffer(d.data().userId);
@@ -1026,11 +1082,7 @@ function stopSharing() {
     localStream = null;
     removeTile("self");
     document.getElementById("shareScreenBtn").style.display = "flex";
-    document.getElementById("stopSharingBtn").style.display = "none";
-    // Close outgoing connections so peers see the stream end
-    Object.keys(peers).forEach(uid => {
-        peers[uid].pc.getSenders().forEach(s => s.track && s.track.stop());
-    });
+    document.getElementById("stopSharingBtn").style.display  = "none";
 }
 
 // ─── PEER CONNECTION ──────────────────────────────────────────────────────────
@@ -1038,28 +1090,17 @@ function getOrCreatePeer(userId) {
     if (peers[userId]) return peers[userId].pc;
     const pc = new RTCPeerConnection(ICE_CONFIG);
     peers[userId] = { pc };
-
     pc.addEventListener("icecandidate", e => {
         if (e.candidate) {
-            addDoc(vezha_signals, {
-                from: myPeerId, to: userId,
-                type: "ice", data: e.candidate.toJSON(),
-                created: Date.now()
-            });
+            addDoc(vezha_signals, { from: myPeerId, to: userId, type: "ice", data: e.candidate.toJSON(), created: Date.now() });
         }
     });
-
     pc.addEventListener("track", e => {
-        const stream = e.streams[0];
-        addVideoTile(userId, stream, "OPERATOR · " + userId.slice(-6).toUpperCase());
+        addVideoTile(userId, e.streams[0], "OP · " + userId.slice(-6).toUpperCase());
     });
-
     pc.addEventListener("connectionstatechange", () => {
-        if (["disconnected", "failed", "closed"].includes(pc.connectionState)) {
-            removePeer(userId);
-        }
+        if (["disconnected", "failed", "closed"].includes(pc.connectionState)) removePeer(userId);
     });
-
     return pc;
 }
 
@@ -1068,11 +1109,7 @@ async function createOffer(userId) {
     if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-    addDoc(vezha_signals, {
-        from: myPeerId, to: userId,
-        type: "offer", data: { sdp: offer.sdp, type: offer.type },
-        created: Date.now()
-    });
+    addDoc(vezha_signals, { from: myPeerId, to: userId, type: "offer", data: { sdp: offer.sdp, type: offer.type }, created: Date.now() });
 }
 
 async function handleSignal(sig, docId) {
@@ -1084,24 +1121,15 @@ async function handleSignal(sig, docId) {
             await pc.setRemoteDescription(new RTCSessionDescription(data));
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
-            addDoc(vezha_signals, {
-                from: myPeerId, to: from,
-                type: "answer", data: { sdp: answer.sdp, type: answer.type },
-                created: Date.now()
-            });
+            addDoc(vezha_signals, { from: myPeerId, to: from, type: "answer", data: { sdp: answer.sdp, type: answer.type }, created: Date.now() });
         } else if (type === "answer") {
             const pc = peers[from]?.pc;
-            if (pc && pc.signalingState !== "stable") {
-                await pc.setRemoteDescription(new RTCSessionDescription(data));
-            }
+            if (pc && pc.signalingState !== "stable") await pc.setRemoteDescription(new RTCSessionDescription(data));
         } else if (type === "ice") {
             const pc = peers[from]?.pc;
             if (pc) await pc.addIceCandidate(new RTCIceCandidate(data));
         }
-    } catch (err) {
-        console.error("Signal handling error:", err);
-    }
-    // Clean up processed signal from Firestore
+    } catch (err) { console.error("Signal handling error:", err); }
     try { await deleteDoc(doc(db, "vezha_signals", docId)); } catch (_) {}
 }
 
@@ -1115,33 +1143,23 @@ function removePeer(userId) {
 // ─── VIDEO TILES ──────────────────────────────────────────────────────────────
 function addVideoTile(id, stream, label) {
     removeTile(id);
-    const grid  = document.getElementById("vezhaGrid");
-    const empty = document.getElementById("vezhaEmpty");
-    if (empty) empty.style.display = "none";
-
-    const tile  = document.createElement("div");
+    const grid = document.getElementById("vezhaGrid");
+    const tile = document.createElement("div");
     tile.className = "vezha-tile" + (id === "self" ? " vezha-tile-self" : "");
     tile.id = "tile-" + id;
-
     const video = document.createElement("video");
-    video.autoplay    = true;
-    video.muted       = (id === "self");
-    video.playsInline = true;
-    video.srcObject   = stream;
-
+    video.autoplay = true; video.muted = (id === "self"); video.playsInline = true;
+    video.srcObject = stream;
     const lbl = document.createElement("div");
-    lbl.className   = "vezha-tile-label mono";
-    lbl.textContent = label;
-
-    tile.appendChild(video);
-    tile.appendChild(lbl);
+    lbl.className = "vezha-tile-label mono"; lbl.textContent = label;
+    tile.appendChild(video); tile.appendChild(lbl);
     grid.appendChild(tile);
     updateTileLayout();
 }
 
 function removeTile(id) {
-    const tile = document.getElementById("tile-" + id);
-    if (tile) { tile.remove(); updateTileLayout(); }
+    document.getElementById("tile-" + id)?.remove();
+    updateTileLayout();
 }
 
 function updateTileLayout() {
@@ -1152,10 +1170,42 @@ function updateTileLayout() {
     if (empty) empty.style.display = count === 0 ? "flex" : "none";
 }
 
-function updateVezhaStatus(total) {
-    const online = Math.max(0, total - 1); // exclude self
-    document.getElementById("vezhaStatus").textContent =
-        `OPERATORS: ${online} ONLINE`;
+// ─── CHAT ─────────────────────────────────────────────────────────────────────
+document.getElementById("vezhaChatSend").addEventListener("click", sendChat);
+document.getElementById("vezhaChatInput").addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); }
+});
+
+async function sendChat() {
+    const input = document.getElementById("vezhaChatInput");
+    const text  = input.value.trim();
+    if (!text || !vezhaActive) return;
+    input.value = "";
+    try {
+        await addDoc(vezha_chat, { userId: myPeerId, shortId: myShortId, text, created: Date.now() });
+    } catch (err) { console.error("Chat error:", err); }
+}
+
+function renderChatMessage(data) {
+    const isMine = data.userId === myPeerId;
+    const msgs   = document.getElementById("vezhaChatMessages");
+    const el     = document.createElement("div");
+    el.className = "chat-msg" + (isMine ? " chat-msg-mine" : "");
+    const d   = new Date(data.created);
+    const hh  = String(d.getHours()).padStart(2, "0");
+    const mm  = String(d.getMinutes()).padStart(2, "0");
+    el.innerHTML = `
+      <div class="chat-msg-meta">
+        <span class="chat-msg-author">${isMine ? "YOU" : (data.shortId || data.userId.slice(-6).toUpperCase())}</span>
+        <span class="chat-msg-time mono">${hh}:${mm}</span>
+      </div>
+      <div class="chat-msg-text">${escHtml(data.text)}</div>`;
+    msgs.appendChild(el);
+    msgs.scrollTop = msgs.scrollHeight;
+}
+
+function escHtml(s) {
+    return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 }
 
 // ─── THEME TOGGLE ────────────────────────────────────────────────────────────
