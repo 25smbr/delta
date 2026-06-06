@@ -39,7 +39,6 @@
     </div>
     <div class="topBar-right">
       <div class="status-pill live"><span class="pulse-dot"></span>LIVE</div>
-      <!-- Theme toggle button -->
       <button class="topBtn" id="themeToggleBtn" title="Switch to light theme">
         <svg width="16" height="16" viewBox="0 0 16 16" id="themeIcon">
           <circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.3" fill="none"/>
@@ -61,61 +60,68 @@
       </button>
     </div>
   </header>
+
   <!-- ═══════════════ MAIN AREA ═══════════════ -->
   <div id="appBody">
+
     <!-- ── LEFT PANEL ── -->
     <aside id="leftPanel">
-      <!-- Collapse button — sits at the top-right edge of the panel -->
-      <button id="collapseLeftBtn" title="Collapse panel">
-        <svg width="12" height="12" viewBox="0 0 12 12">
-          <polyline points="8,2 4,6 8,10" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
 
+      <!-- Scrollable content -->
       <div class="panel-inner">
-        <!-- UNIT SYMBOL PALETTE (scrollable) -->
+
+        <!-- Collapse toggle pinned inside the scroll area header -->
+        <div class="panel-toprow">
+          <button id="collapseLeftBtn" title="Collapse panel">
+            <svg width="12" height="12" viewBox="0 0 12 12">
+              <polyline points="8,2 4,6 8,10" stroke="currentColor" stroke-width="1.5"
+                fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- UNIT SYMBOL PALETTE -->
         <section class="panel-section">
           <div class="section-header">
             <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 2h8v8H2z" stroke="#4fa3ff" stroke-width="1.2" fill="none"/></svg>
             <span>UNIT SYMBOLS</span>
           </div>
-          <div class="symbol-scroll-area">
-            <div class="symbol-group">
-              <div class="group-label">INFANTRY</div>
-              <div class="symbol-row" id="row-infantry"></div>
-            </div>
-            <div class="symbol-group">
-              <div class="group-label">ARMOR</div>
-              <div class="symbol-row" id="row-tank"></div>
-            </div>
-            <div class="symbol-group">
-              <div class="group-label">ARTILLERY</div>
-              <div class="symbol-row" id="row-artillery"></div>
-            </div>
-            <div class="symbol-group">
-              <div class="group-label">HELICOPTER</div>
-              <div class="symbol-row" id="row-helicopter"></div>
-            </div>
-            <div class="symbol-group">
-              <div class="group-label">POSITION</div>
-              <div class="symbol-row" id="row-position"></div>
-            </div>
-            <div class="symbol-group">
-              <div class="group-label">HUMVEE</div>
-              <div class="symbol-row" id="row-humvee"></div>
-            </div>
-            <div class="symbol-group">
-              <div class="group-label">TRUCK</div>
-              <div class="symbol-row" id="row-truck"></div>
-            </div>
-            <!-- Clear Markers lives here, right after the last symbol group -->
-            <button id="clearMarkersBtn" class="danger-btn" style="margin-top:8px;">
-              <svg width="12" height="12" viewBox="0 0 12 12"><path d="M1 3h10M4 3V1h4v2M5 5v5M7 5v5M2 3l1 8h6l1-8" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
-              CLEAR ALL MARKERS
-            </button>
+          <div class="symbol-group">
+            <div class="group-label">INFANTRY</div>
+            <div class="symbol-row" id="row-infantry"></div>
           </div>
+          <div class="symbol-group">
+            <div class="group-label">ARMOR</div>
+            <div class="symbol-row" id="row-tank"></div>
+          </div>
+          <div class="symbol-group">
+            <div class="group-label">ARTILLERY</div>
+            <div class="symbol-row" id="row-artillery"></div>
+          </div>
+          <div class="symbol-group">
+            <div class="group-label">HELICOPTER</div>
+            <div class="symbol-row" id="row-helicopter"></div>
+          </div>
+          <div class="symbol-group">
+            <div class="group-label">POSITION</div>
+            <div class="symbol-row" id="row-position"></div>
+          </div>
+          <div class="symbol-group">
+            <div class="group-label">HUMVEE</div>
+            <div class="symbol-row" id="row-humvee"></div>
+          </div>
+          <div class="symbol-group">
+            <div class="group-label">TRUCK</div>
+            <div class="symbol-row" id="row-truck"></div>
+          </div>
+          <button id="clearMarkersBtn" class="danger-btn" style="margin-top:8px;">
+            <svg width="12" height="12" viewBox="0 0 12 12"><path d="M1 3h10M4 3V1h4v2M5 5v5M7 5v5M2 3l1 8h6l1-8" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
+            CLEAR ALL MARKERS
+          </button>
         </section>
+
         <div class="panel-divider"></div>
+
         <!-- SEARCH COORDINATES -->
         <section class="panel-section">
           <div class="section-header">
@@ -128,7 +134,9 @@
           </div>
           <div id="coordSearchError" class="coord-error"></div>
         </section>
+
         <div class="panel-divider"></div>
+
         <!-- DRAWING TOOLS -->
         <section class="panel-section">
           <div class="section-header">
@@ -156,13 +164,11 @@
               <svg width="18" height="18" viewBox="0 0 18 18"><rect x="2" y="8" width="14" height="7" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M2 11 h14" stroke="currentColor" stroke-width="1"/><path d="M7 15 v2 M11 15 v2" stroke="currentColor" stroke-width="1.5"/></svg>
             </button>
           </div>
-          <!-- Pen Width -->
           <div class="slider-row">
             <span class="slider-label">WIDTH</span>
             <input type="range" id="penWidth" min="1" max="20" value="3" class="tac-slider">
             <span class="slider-val mono" id="penWidthVal">3</span>
           </div>
-          <!-- Color Presets -->
           <div class="color-row">
             <span class="slider-label">COLOR</span>
             <div class="color-swatches">
@@ -174,20 +180,19 @@
               <button class="swatch" data-color="#ffffff" style="background:#ffffff" title="White"></button>
             </div>
           </div>
-          <!-- Erase All Drawings -->
           <button id="clearDrawingsBtn" class="danger-btn">
             <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 2h8v8H2z" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M4 4l4 4M8 4l-4 4" stroke="currentColor" stroke-width="1.2"/></svg>
             CLEAR DRAWINGS
           </button>
         </section>
+
       </div><!-- end panel-inner -->
     </aside>
+
     <!-- MAP -->
     <div id="mapWrapper">
       <div id="map"></div>
-      <!-- Drawing canvas overlay -->
       <canvas id="drawCanvas"></canvas>
-      <!-- Right-click coordinate popup -->
       <div id="coordPopup" class="coord-popup">
         <div class="coord-popup-header">
           <svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" stroke="#4fa3ff" stroke-width="1" fill="none"/><line x1="5" y1="2" x2="5" y2="5" stroke="#4fa3ff" stroke-width="1.2"/><circle cx="5" cy="7" r="0.8" fill="#4fa3ff"/></svg>
@@ -202,9 +207,9 @@
         </div>
         <button id="coordPopupClose" class="coord-popup-close">✕</button>
       </div>
-      <!-- Ruler tooltip -->
       <div id="rulerTooltip" class="ruler-tooltip"></div>
     </div>
+
     <!-- ── RIGHT SIDEBAR ── -->
     <aside id="rightPanel">
       <button class="rightBtn active" title="Zoom In" id="zoomInBtn">
@@ -231,6 +236,7 @@
       </button>
     </aside>
   </div>
+
   <!-- ═══════════════ STATUS BAR ═══════════════ -->
   <footer id="statusBar">
     <div class="status-left">
@@ -244,6 +250,7 @@
       <span class="status-item" id="rulerReadout"></span>
     </div>
   </footer>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module" src="app.js"></script>
 </body>
