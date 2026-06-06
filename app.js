@@ -4,6 +4,7 @@ import {
     getFirestore,
     collection,
     addDoc,
+    setDoc,
     deleteDoc,
     doc,
     onSnapshot,
@@ -393,7 +394,11 @@ map.on("click", async (e) => {
     const now  = new Date(Date.now() + 2 * 3600 * 1000);
     const p    = n => String(n).padStart(2, "0");
     const dateStr = `${p(now.getUTCDate())}/${p(now.getUTCMonth()+1)}/${String(now.getUTCFullYear()).slice(-2)} ${p(now.getUTCHours())}:${p(now.getUTCMinutes())}:${p(now.getUTCSeconds())}`;
-    const docRef = await addDoc(markersCollection, {
+    // Pre-generate the ref ID synchronously so pendingEditMarkerId is set
+    // BEFORE Firestore fires the onSnapshot for the local-cache write.
+    const newRef = doc(markersCollection);
+    pendingEditMarkerId = newRef.id;
+    await setDoc(newRef, {
         x:       e.latlng.lng,
         y:       e.latlng.lat,
         type:    selectedSymbol,
@@ -403,8 +408,7 @@ map.on("click", async (e) => {
         info:    "",
         source:  ""
     });
-    pendingEditMarkerId = docRef.id;
-    undoStack.push({ type: "marker", id: docRef.id });
+    undoStack.push({ type: "marker", id: newRef.id });
 });
 
 // ─── MARKER EDIT POPUP ───────────────────────────────────────────────────────
