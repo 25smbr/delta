@@ -39,24 +39,17 @@ L.imageOverlay("map.png", bounds).addTo(map);
 map.fitBounds(bounds);
 map.setMaxBounds(bounds);
 map.setView([imageHeight / 2, imageWidth / 2], 0);
-// ─── CLOCK (UTC+1) ──────────────────────────────────────────────────────────
+// ─── CLOCK (UTC+2) ──────────────────────────────────────────────────────────
 function updateClock() {
     const now = new Date();
     const z = (n) => String(n).padStart(2, "0");
-    // Offset by +1 hour for UTC+1
-    const utcPlus1 = new Date(now.getTime() + 3600000);
+    // Offset by +2 hours for UTC+2
+    const utcPlus2 = new Date(now.getTime() + 7200000);
     document.getElementById("clock").textContent =
-        `${z(utcPlus1.getUTCHours())}:${z(utcPlus1.getUTCMinutes())}:${z(utcPlus1.getUTCSeconds())}`;
+        `${z(utcPlus2.getUTCHours())}:${z(utcPlus2.getUTCMinutes())}:${z(utcPlus2.getUTCSeconds())}`;
 }
 updateClock();
 setInterval(updateClock, 1000);
-// ─── STATUS BAR ──────────────────────────────────────────────────────────────
-map.on("mousemove", (e) => {
-    const lat = e.latlng.lat.toFixed(4);
-    const lng = e.latlng.lng.toFixed(4);
-    document.getElementById("statusCoords").textContent = `Y: ${lat}  X: ${lng}`;
-    document.getElementById("coordDisplay").textContent  = `Y: ${lat}, X: ${lng}`;
-});
 // ─── SYMBOL DEFINITIONS ──────────────────────────────────────────────────────
 const symbolGroups = {
     infantry:  ["infantry_alive",  "infantry_wounded",  "infantry_dead"],
@@ -103,45 +96,47 @@ function symbolSVG(type = "infantry_alive", forMap = false) {
     const unit   = parts.slice(0, -1).join("_");
     const size   = forMap ? 46 : 46;
     const borderColor = statusColors[status] || "#4fa3ff";
+    // Use a lighter stroke color for better contrast on dark backgrounds
+    const strokeColor = "#d0d8e8";
     let center = "";
     switch (unit) {
         case "infantry":
             center = `
-              <line x1="10" y1="10" x2="36" y2="36" stroke="#0a0c10" stroke-width="2.8"/>
-              <line x1="36" y1="10" x2="10" y2="36" stroke="#0a0c10" stroke-width="2.8"/>`;
+              <line x1="10" y1="10" x2="36" y2="36" stroke="${strokeColor}" stroke-width="2.8"/>
+              <line x1="36" y1="10" x2="10" y2="36" stroke="${strokeColor}" stroke-width="2.8"/>`;
             break;
         case "tank":
             center = `<rect x="10" y="17" width="26" height="12" rx="1"
-                        fill="none" stroke="#0a0c10" stroke-width="2.5"/>`;
+                        fill="none" stroke="${strokeColor}" stroke-width="2.5"/>`;
             break;
         case "artillery":
             center = `
-              <line x1="8" y1="30" x2="38" y2="30" stroke="#0a0c10" stroke-width="2.5" stroke-linecap="round"/>
-              <line x1="23" y1="30" x2="32" y2="14" stroke="#0a0c10" stroke-width="2.5" stroke-linecap="round"/>
-              <circle cx="13" cy="32" r="4" fill="none" stroke="#0a0c10" stroke-width="2"/>
-              <circle cx="33" cy="32" r="4" fill="none" stroke="#0a0c10" stroke-width="2"/>`;
+              <line x1="8" y1="30" x2="38" y2="30" stroke="${strokeColor}" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="23" y1="30" x2="32" y2="14" stroke="${strokeColor}" stroke-width="2.5" stroke-linecap="round"/>
+              <circle cx="13" cy="32" r="4" fill="none" stroke="${strokeColor}" stroke-width="2"/>
+              <circle cx="33" cy="32" r="4" fill="none" stroke="${strokeColor}" stroke-width="2"/>`;
             break;
         case "helicopter":
             center = `
-              <ellipse cx="23" cy="26" rx="10" ry="6" fill="none" stroke="#0a0c10" stroke-width="2.2"/>
-              <line x1="8" y1="18" x2="38" y2="18" stroke="#0a0c10" stroke-width="2.5" stroke-linecap="round"/>
-              <line x1="23" y1="18" x2="23" y2="20" stroke="#0a0c10" stroke-width="2"/>
-              <line x1="30" y1="26" x2="34" y2="32" stroke="#0a0c10" stroke-width="2" stroke-linecap="round"/>`;
+              <ellipse cx="23" cy="26" rx="10" ry="6" fill="none" stroke="${strokeColor}" stroke-width="2.2"/>
+              <line x1="8" y1="18" x2="38" y2="18" stroke="${strokeColor}" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="23" y1="18" x2="23" y2="20" stroke="${strokeColor}" stroke-width="2"/>
+              <line x1="30" y1="26" x2="34" y2="32" stroke="${strokeColor}" stroke-width="2" stroke-linecap="round"/>`;
             break;
         case "position":
             center = `<circle cx="23" cy="23" r="8"
-                        fill="none" stroke="#0a0c10" stroke-width="2.5"/>`;
+                        fill="none" stroke="${strokeColor}" stroke-width="2.5"/>`;
             break;
         case "humvee":
             center = `<rect x="12" y="17" width="22" height="12" rx="1"
-                        fill="none" stroke="#0a0c10" stroke-width="2.5"/>`;
+                        fill="none" stroke="${strokeColor}" stroke-width="2.5"/>`;
             break;
         case "truck":
             center = `
               <rect x="9" y="16" width="18" height="12" rx="1"
-                fill="none" stroke="#0a0c10" stroke-width="2.5"/>
+                fill="none" stroke="${strokeColor}" stroke-width="2.5"/>
               <rect x="27" y="19" width="10" height="9" rx="1"
-                fill="none" stroke="#0a0c10" stroke-width="2.5"/>`;
+                fill="none" stroke="${strokeColor}" stroke-width="2.5"/>`;
             break;
     }
     let overlay = "";
@@ -200,11 +195,8 @@ async function undoLast() {
     if (last.type === "marker") {
         await deleteDoc(doc(db, "markers", last.id));
     } else if (last.type === "drawing") {
-        // Remove from local strokes immediately so the UI updates
         strokes = strokes.filter(s => s.firestoreId !== last.id);
         redrawAll();
-        // Also delete from Firestore (the onSnapshot "removed" event will be a no-op
-        // since we already removed it locally)
         try {
             await deleteDoc(doc(db, "drawings", last.id));
         } catch (err) {
@@ -223,17 +215,14 @@ document.getElementById("clearMarkersBtn").addEventListener("click", async () =>
         if (undoStack[i].type === "marker") undoStack.splice(i, 1);
     }
 });
-// ─── CLEAR DRAWINGS (FIXED) ──────────────────────────────────────────────────
+// ─── CLEAR DRAWINGS ──────────────────────────────────────────────────────────
 document.getElementById("clearDrawingsBtn").addEventListener("click", async () => {
     if (!confirm("Delete ALL drawings? This cannot be undone.")) return;
-    // Clear local state immediately so the UI updates
     strokes = [];
     redrawAll();
-    // Remove drawing entries from undo stack
     for (let i = undoStack.length - 1; i >= 0; i--) {
         if (undoStack[i].type === "drawing") undoStack.splice(i, 1);
     }
-    // Delete all drawing docs from Firestore
     try {
         const snapshot = await getDocs(drawingsCollection);
         if (!snapshot.empty) {
@@ -284,16 +273,12 @@ onSnapshot(markersCollection, (snapshot) => {
     document.getElementById("markerCount").textContent =
         `MARKERS: ${Object.keys(displayedMarkers).length}`;
 });
-// ─── FIRESTORE REALTIME — DRAWINGS (FIXED: incremental sync) ─────────────────
-// Uses docChanges() for incremental updates instead of full rebuild.
-// This prevents strokes from disappearing during the rebuild gap, and ensures
-// drawings from all connected users are properly merged.
+// ─── FIRESTORE REALTIME — DRAWINGS ───────────────────────────────────────────
 onSnapshot(drawingsCollection, (snapshot) => {
     snapshot.docChanges().forEach((change) => {
         const id   = change.doc.id;
         const data = change.doc.data();
         if (change.type === "added") {
-            // Only add if we don't already have this stroke (prevents duplicates)
             if (!strokes.some(s => s.firestoreId === id)) {
                 strokes.push({ ...data, firestoreId: id });
             }
@@ -389,7 +374,7 @@ function goToCoords() {
 coordSearchBtn.addEventListener("click", goToCoords);
 coordSearchInput.addEventListener("keydown", (e) => { if (e.key === "Enter") goToCoords(); });
 // ════════════════════════════════════════════════════════════════════
-// DRAWING SYSTEM — strokes stored in Firestore (synced in real-time)
+// DRAWING SYSTEM
 // ════════════════════════════════════════════════════════════════════
 const canvas = document.getElementById("drawCanvas");
 const ctx    = canvas.getContext("2d");
@@ -413,7 +398,6 @@ function canvasToLL(x, y) {
     return map.containerPointToLatLng(L.point(x, y));
 }
 // ─── POINT FORMAT HELPER ─────────────────────────────────────────────────────
-// Handles both old format [lat, lng] and new format {lat, lng}
 function getPointCoords(pt) {
     if (Array.isArray(pt)) return { lat: pt[0], lng: pt[1] };
     return pt;
@@ -459,7 +443,6 @@ widthSlider.addEventListener("input", () => {
 function redrawAll() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     strokes.forEach(s => drawStroke(s));
-    // Also draw the stroke currently being drawn (if any)
     if (currentStroke) drawStroke(currentStroke);
     if (rulerMode && rulerPoints.length > 0) drawRulerOverlay();
 }
@@ -569,7 +552,7 @@ function drawPreview(curX, curY) {
     }
     ctx.restore();
 }
-// ─── MOUSE EVENTS (FIXED: points stored as {lat, lng} objects) ───────────────
+// ─── MOUSE EVENTS ────────────────────────────────────────────────────────────
 canvas.addEventListener("mousedown", (e) => {
     if (!drawMode) return;
     isDrawing = true;
@@ -616,7 +599,6 @@ canvas.addEventListener("mouseup", async (e) => {
             undoStack.push({ type: "drawing", id: docRef.id });
         } catch (err) {
             console.error("Failed to save drawing:", err);
-            // Keep it locally even if Firestore fails
             const localId = "_local_" + Date.now() + "_" + Math.random();
             strokes.push({ ...strokeData, firestoreId: localId });
             undoStack.push({ type: "drawing", id: localId });
@@ -839,7 +821,16 @@ function drawRulerOverlay() {
     });
     ctx.restore();
 }
-// ─── THEME TOGGLE (FIXED: swaps icon between sun/moon) ───────────────────────
+// ─── LEFT PANEL COLLAPSE ─────────────────────────────────────────────────────
+const collapseBtn  = document.getElementById("collapseLeftBtn");
+const leftPanel    = document.getElementById("leftPanel");
+let panelCollapsed = false;
+collapseBtn.addEventListener("click", () => {
+    panelCollapsed = !panelCollapsed;
+    leftPanel.classList.toggle("collapsed", panelCollapsed);
+    collapseBtn.classList.toggle("flipped", panelCollapsed);
+});
+// ─── THEME TOGGLE ────────────────────────────────────────────────────────────
 const themeToggleBtn = document.getElementById("themeToggleBtn");
 let isLightTheme = false;
 themeToggleBtn.addEventListener("click", () => {
@@ -847,16 +838,13 @@ themeToggleBtn.addEventListener("click", () => {
     document.body.classList.toggle("light-theme", isLightTheme);
     themeToggleBtn.title = isLightTheme ? "Switch to dark theme" : "Switch to light theme";
     themeToggleBtn.classList.toggle("active", isLightTheme);
-    // Swap icon: sun → moon (light mode), moon → sun (dark mode)
     const themeIcon = document.getElementById("themeIcon");
     if (isLightTheme) {
-        // Moon icon
         themeIcon.innerHTML = `
             <path d="M13 9a5 5 0 1 1-5.93-4.93A7 7 0 0 0 13 9z"
                   stroke="currentColor" stroke-width="1.3" fill="none"
                   stroke-linecap="round" stroke-linejoin="round"/>`;
     } else {
-        // Sun icon
         themeIcon.innerHTML = `
             <circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.3" fill="none"/>
             <line x1="8" y1="1" x2="8" y2="3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
