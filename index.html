@@ -61,7 +61,7 @@
     <!-- ── LEFT PANEL ── -->
     <aside id="leftPanel">
 
-      <!-- Collapse button: lives outside panel-inner so it's never clipped -->
+      <!-- Collapse toggle — always visible, outside the scrollable inner -->
       <button id="collapseLeftBtn" title="Collapse panel">
         <svg width="12" height="12" viewBox="0 0 12 12">
           <polyline points="8,2 4,6 8,10" stroke="currentColor" stroke-width="1.5"
@@ -69,151 +69,116 @@
         </svg>
       </button>
 
-      <!-- Fixed header area (non-scrolling) -->
-      <div class="panel-fixed">
+      <!-- Scrollable content -->
+      <div class="panel-inner">
 
-        <!-- ── SECTION: UNIT SYMBOLS ── -->
-        <div class="panel-section-wrap" id="wrap-symbols">
-          <div class="panel-section-header" data-target="body-symbols">
-            <div class="section-header">
-              <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 2h8v8H2z" stroke="#4fa3ff" stroke-width="1.2" fill="none"/></svg>
-              <span>UNIT SYMBOLS</span>
-            </div>
-            <button class="section-collapse-btn" data-target="body-symbols" title="Toggle section">
-              <svg width="10" height="10" viewBox="0 0 10 10">
-                <polyline points="2,3 5,7 8,3" stroke="currentColor" stroke-width="1.5"
-                  fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </button>
+        <!-- UNIT SYMBOL PALETTE -->
+        <section class="panel-section">
+          <div class="section-header">
+            <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 2h8v8H2z" stroke="#4fa3ff" stroke-width="1.2" fill="none"/></svg>
+            <span>UNIT SYMBOLS</span>
           </div>
-          <!-- Symbols body is scrollable -->
-          <div class="section-body scrollable-section" id="body-symbols">
-            <div class="symbol-group">
-              <div class="group-label">INFANTRY</div>
-              <div class="symbol-row" id="row-infantry"></div>
-            </div>
-            <div class="symbol-group">
-              <div class="group-label">ARMOR</div>
-              <div class="symbol-row" id="row-tank"></div>
-            </div>
-            <div class="symbol-group">
-              <div class="group-label">ARTILLERY</div>
-              <div class="symbol-row" id="row-artillery"></div>
-            </div>
-            <div class="symbol-group">
-              <div class="group-label">HELICOPTER</div>
-              <div class="symbol-row" id="row-helicopter"></div>
-            </div>
-            <div class="symbol-group">
-              <div class="group-label">POSITION</div>
-              <div class="symbol-row" id="row-position"></div>
-            </div>
-            <div class="symbol-group">
-              <div class="group-label">HUMVEE</div>
-              <div class="symbol-row" id="row-humvee"></div>
-            </div>
-            <div class="symbol-group">
-              <div class="group-label">TRUCK</div>
-              <div class="symbol-row" id="row-truck"></div>
-            </div>
-            <button id="clearMarkersBtn" class="danger-btn" style="margin-top:8px;">
-              <svg width="12" height="12" viewBox="0 0 12 12"><path d="M1 3h10M4 3V1h4v2M5 5v5M7 5v5M2 3l1 8h6l1-8" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
-              CLEAR ALL MARKERS
-            </button>
+          <div class="symbol-group">
+            <div class="group-label">INFANTRY</div>
+            <div class="symbol-row" id="row-infantry"></div>
           </div>
-        </div>
+          <div class="symbol-group">
+            <div class="group-label">ARMOR</div>
+            <div class="symbol-row" id="row-tank"></div>
+          </div>
+          <div class="symbol-group">
+            <div class="group-label">ARTILLERY</div>
+            <div class="symbol-row" id="row-artillery"></div>
+          </div>
+          <div class="symbol-group">
+            <div class="group-label">HELICOPTER</div>
+            <div class="symbol-row" id="row-helicopter"></div>
+          </div>
+          <div class="symbol-group">
+            <div class="group-label">POSITION</div>
+            <div class="symbol-row" id="row-position"></div>
+          </div>
+          <div class="symbol-group">
+            <div class="group-label">HUMVEE</div>
+            <div class="symbol-row" id="row-humvee"></div>
+          </div>
+          <div class="symbol-group">
+            <div class="group-label">TRUCK</div>
+            <div class="symbol-row" id="row-truck"></div>
+          </div>
+          <button id="clearMarkersBtn" class="danger-btn" style="margin-top:8px;">
+            <svg width="12" height="12" viewBox="0 0 12 12"><path d="M1 3h10M4 3V1h4v2M5 5v5M7 5v5M2 3l1 8h6l1-8" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
+            CLEAR ALL MARKERS
+          </button>
+        </section>
 
         <div class="panel-divider"></div>
 
-        <!-- ── SECTION: GO TO COORDINATES ── -->
-        <div class="panel-section-wrap" id="wrap-coords">
-          <div class="panel-section-header" data-target="body-coords">
-            <div class="section-header">
-              <svg width="12" height="12" viewBox="0 0 12 12"><circle cx="5" cy="5" r="4" stroke="#4fa3ff" stroke-width="1.2" fill="none"/><line x1="8" y1="8" x2="11" y2="11" stroke="#4fa3ff" stroke-width="1.2"/></svg>
-              <span>GO TO COORDINATES</span>
-            </div>
-            <button class="section-collapse-btn" data-target="body-coords" title="Toggle section">
-              <svg width="10" height="10" viewBox="0 0 10 10">
-                <polyline points="2,3 5,7 8,3" stroke="currentColor" stroke-width="1.5"
-                  fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </button>
+        <!-- SEARCH COORDINATES -->
+        <section class="panel-section">
+          <div class="section-header">
+            <svg width="12" height="12" viewBox="0 0 12 12"><circle cx="5" cy="5" r="4" stroke="#4fa3ff" stroke-width="1.2" fill="none"/><line x1="8" y1="8" x2="11" y2="11" stroke="#4fa3ff" stroke-width="1.2"/></svg>
+            <span>GO TO COORDINATES</span>
           </div>
-          <div class="section-body" id="body-coords">
-            <div class="panel-section">
-              <div class="coord-search-row">
-                <input type="text" id="coordSearchInput" class="coord-input mono" placeholder="X: 0.0000, Y: 0.0000" />
-                <button id="coordSearchBtn" class="coord-go-btn" title="Go to coordinates">GO</button>
-              </div>
-              <div id="coordSearchError" class="coord-error"></div>
-            </div>
+          <div class="coord-search-row">
+            <input type="text" id="coordSearchInput" class="coord-input mono" placeholder="X: 0.0000, Y: 0.0000" />
+            <button id="coordSearchBtn" class="coord-go-btn" title="Go to coordinates">GO</button>
           </div>
-        </div>
+          <div id="coordSearchError" class="coord-error"></div>
+        </section>
 
         <div class="panel-divider"></div>
 
-        <!-- ── SECTION: DRAW TOOLS ── -->
-        <div class="panel-section-wrap" id="wrap-draw">
-          <div class="panel-section-header" data-target="body-draw">
-            <div class="section-header">
-              <svg width="12" height="12" viewBox="0 0 12 12"><path d="M8 1l3 3-7 7H1V8L8 1z" stroke="#4fa3ff" stroke-width="1.2" fill="none"/></svg>
-              <span>DRAW TOOLS</span>
-              <button id="toggleDrawMode" class="mode-toggle" title="Toggle drawing mode">OFF</button>
-            </div>
-            <button class="section-collapse-btn" data-target="body-draw" title="Toggle section">
-              <svg width="10" height="10" viewBox="0 0 10 10">
-                <polyline points="2,3 5,7 8,3" stroke="currentColor" stroke-width="1.5"
-                  fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
+        <!-- DRAWING TOOLS -->
+        <section class="panel-section">
+          <div class="section-header">
+            <svg width="12" height="12" viewBox="0 0 12 12"><path d="M8 1l3 3-7 7H1V8L8 1z" stroke="#4fa3ff" stroke-width="1.2" fill="none"/></svg>
+            <span>DRAW TOOLS</span>
+            <button id="toggleDrawMode" class="mode-toggle" title="Toggle drawing mode">OFF</button>
+          </div>
+          <div class="draw-tools-grid">
+            <button class="drawToolBtn" data-tool="pen" title="Pen">
+              <svg width="18" height="18" viewBox="0 0 18 18"><path d="M3 15 L12 4 L14 6 L5 17 Z" stroke="currentColor" stroke-width="1.3" fill="none"/><path d="M12 4 L14 2 L16 4 L14 6 Z" stroke="currentColor" stroke-width="1.3" fill="none"/><line x1="3" y1="15" x2="1" y2="17" stroke="currentColor" stroke-width="1.3"/></svg>
+            </button>
+            <button class="drawToolBtn" data-tool="line" title="Line">
+              <svg width="18" height="18" viewBox="0 0 18 18"><line x1="3" y1="15" x2="15" y2="3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="3" cy="15" r="2" fill="currentColor"/><circle cx="15" cy="3" r="2" fill="currentColor"/></svg>
+            </button>
+            <button class="drawToolBtn" data-tool="arrow" title="Arrow">
+              <svg width="18" height="18" viewBox="0 0 18 18"><line x1="3" y1="15" x2="13" y2="5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M13 5 L9 5 L13 9 Z" fill="currentColor"/></svg>
+            </button>
+            <button class="drawToolBtn" data-tool="circle" title="Circle">
+              <svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+            </button>
+            <button class="drawToolBtn" data-tool="rect" title="Rectangle">
+              <svg width="18" height="18" viewBox="0 0 18 18"><rect x="3" y="5" width="12" height="8" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+            </button>
+            <button class="drawToolBtn" data-tool="eraser" title="Eraser">
+              <svg width="18" height="18" viewBox="0 0 18 18"><rect x="2" y="8" width="14" height="7" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M2 11 h14" stroke="currentColor" stroke-width="1"/><path d="M7 15 v2 M11 15 v2" stroke="currentColor" stroke-width="1.5"/></svg>
             </button>
           </div>
-          <div class="section-body" id="body-draw">
-            <div class="panel-section" style="padding-top:4px;">
-              <div class="draw-tools-grid">
-                <button class="drawToolBtn" data-tool="pen" title="Pen">
-                  <svg width="18" height="18" viewBox="0 0 18 18"><path d="M3 15 L12 4 L14 6 L5 17 Z" stroke="currentColor" stroke-width="1.3" fill="none"/><path d="M12 4 L14 2 L16 4 L14 6 Z" stroke="currentColor" stroke-width="1.3" fill="none"/><line x1="3" y1="15" x2="1" y2="17" stroke="currentColor" stroke-width="1.3"/></svg>
-                </button>
-                <button class="drawToolBtn" data-tool="line" title="Line">
-                  <svg width="18" height="18" viewBox="0 0 18 18"><line x1="3" y1="15" x2="15" y2="3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="3" cy="15" r="2" fill="currentColor"/><circle cx="15" cy="3" r="2" fill="currentColor"/></svg>
-                </button>
-                <button class="drawToolBtn" data-tool="arrow" title="Arrow">
-                  <svg width="18" height="18" viewBox="0 0 18 18"><line x1="3" y1="15" x2="13" y2="5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M13 5 L9 5 L13 9 Z" fill="currentColor"/></svg>
-                </button>
-                <button class="drawToolBtn" data-tool="circle" title="Circle">
-                  <svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="2" fill="none"/></svg>
-                </button>
-                <button class="drawToolBtn" data-tool="rect" title="Rectangle">
-                  <svg width="18" height="18" viewBox="0 0 18 18"><rect x="3" y="5" width="12" height="8" stroke="currentColor" stroke-width="2" fill="none"/></svg>
-                </button>
-                <button class="drawToolBtn" data-tool="eraser" title="Eraser">
-                  <svg width="18" height="18" viewBox="0 0 18 18"><rect x="2" y="8" width="14" height="7" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M2 11 h14" stroke="currentColor" stroke-width="1"/><path d="M7 15 v2 M11 15 v2" stroke="currentColor" stroke-width="1.5"/></svg>
-                </button>
-              </div>
-              <div class="slider-row">
-                <span class="slider-label">WIDTH</span>
-                <input type="range" id="penWidth" min="1" max="20" value="3" class="tac-slider">
-                <span class="slider-val mono" id="penWidthVal">3</span>
-              </div>
-              <div class="color-row">
-                <span class="slider-label">COLOR</span>
-                <div class="color-swatches">
-                  <button class="swatch active" data-color="#ff4444" style="background:#ff4444" title="Red"></button>
-                  <button class="swatch" data-color="#44aaff" style="background:#44aaff" title="Blue"></button>
-                  <button class="swatch" data-color="#44ff88" style="background:#44ff88" title="Green"></button>
-                  <button class="swatch" data-color="#ffcc00" style="background:#ffcc00" title="Yellow"></button>
-                  <button class="swatch" data-color="#ff8800" style="background:#ff8800" title="Orange"></button>
-                  <button class="swatch" data-color="#ffffff" style="background:#ffffff" title="White"></button>
-                </div>
-              </div>
-              <button id="clearDrawingsBtn" class="danger-btn">
-                <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 2h8v8H2z" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M4 4l4 4M8 4l-4 4" stroke="currentColor" stroke-width="1.2"/></svg>
-                CLEAR DRAWINGS
-              </button>
+          <div class="slider-row">
+            <span class="slider-label">WIDTH</span>
+            <input type="range" id="penWidth" min="1" max="20" value="3" class="tac-slider">
+            <span class="slider-val mono" id="penWidthVal">3</span>
+          </div>
+          <div class="color-row">
+            <span class="slider-label">COLOR</span>
+            <div class="color-swatches">
+              <button class="swatch active" data-color="#ff4444" style="background:#ff4444" title="Red"></button>
+              <button class="swatch" data-color="#44aaff" style="background:#44aaff" title="Blue"></button>
+              <button class="swatch" data-color="#44ff88" style="background:#44ff88" title="Green"></button>
+              <button class="swatch" data-color="#ffcc00" style="background:#ffcc00" title="Yellow"></button>
+              <button class="swatch" data-color="#ff8800" style="background:#ff8800" title="Orange"></button>
+              <button class="swatch" data-color="#ffffff" style="background:#ffffff" title="White"></button>
             </div>
           </div>
-        </div>
+          <button id="clearDrawingsBtn" class="danger-btn">
+            <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 2h8v8H2z" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M4 4l4 4M8 4l-4 4" stroke="currentColor" stroke-width="1.2"/></svg>
+            CLEAR DRAWINGS
+          </button>
+        </section>
 
-      </div><!-- end panel-fixed -->
+      </div><!-- end panel-inner -->
     </aside>
 
     <!-- MAP -->
@@ -282,4 +247,3 @@
 <script type="module" src="app.js"></script>
 </body>
 </html>
-HTMLEOF
