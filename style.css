@@ -92,10 +92,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
   font-size: 14px; letter-spacing: 1px; color: var(--accent);
   transition: color 0.3s ease;
 }
-.coord-display {
-  font-size: 11px; color: var(--text-dim); letter-spacing: 0.5px;
-  transition: color 0.3s ease;
-}
 .status-pill {
   display: flex; align-items: center; gap: 5px;
   padding: 3px 8px;
@@ -131,16 +127,63 @@ button { cursor: pointer; font-family: var(--font-ui); }
   height: 100%;
   background: var(--bg-panel);
   border-right: 1px solid var(--border);
+  overflow: hidden;
+  flex-shrink: 0;
+  position: relative;
+  transition: width 0.25s ease, background 0.3s ease, border-color 0.3s ease;
+}
+#leftPanel.collapsed {
+  width: 0;
+  border-right-color: transparent;
+}
+/* Inner scroll wrapper — hides when panel collapses */
+.panel-inner {
+  width: var(--left-w);
+  height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-  flex-shrink: 0;
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
-  transition: background 0.3s ease, border-color 0.3s ease;
+  opacity: 1;
+  transition: opacity 0.2s ease;
 }
-#leftPanel::-webkit-scrollbar { width: 4px; }
-#leftPanel::-webkit-scrollbar-track { background: transparent; }
-#leftPanel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+#leftPanel.collapsed .panel-inner {
+  opacity: 0;
+  pointer-events: none;
+}
+.panel-inner::-webkit-scrollbar { width: 4px; }
+.panel-inner::-webkit-scrollbar-track { background: transparent; }
+.panel-inner::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+/* ─── COLLAPSE BUTTON ─── */
+#collapseLeftBtn {
+  position: absolute;
+  top: 8px;
+  right: 6px;
+  z-index: 10;
+  width: 22px; height: 22px;
+  background: var(--bg-section);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-dim);
+  display: flex; align-items: center; justify-content: center;
+  transition: all .15s, right 0.25s ease;
+  flex-shrink: 0;
+}
+#collapseLeftBtn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-light);
+  color: var(--text-primary);
+}
+/* When panel is collapsed, pin the button to the left edge of the map area */
+#leftPanel.collapsed #collapseLeftBtn {
+  right: -30px;
+  background: var(--bg-panel);
+  border-color: var(--border);
+}
+/* Flip the chevron arrow when collapsed */
+#collapseLeftBtn.flipped svg {
+  transform: rotate(180deg);
+}
 .panel-section { padding: 10px 10px 6px; }
 .section-header {
   display: flex; align-items: center; gap: 6px;
@@ -463,11 +506,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
   transition: color 0.3s ease;
 }
 .status-sep { color: var(--border-light); }
-.status-center {
-  font-size: 10px; color: var(--text-label); letter-spacing: .5px;
-  font-family: var(--font-mono);
-  transition: color 0.3s ease;
-}
 /* ─── LEAFLET OVERRIDES ─── */
 .leaflet-container {
   background: #0a0c10 !important;
@@ -488,7 +526,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
 .leaflet-popup-close-button { color: var(--text-dim) !important; }
 /* ════════════════════════════════════════════════════════════════════
    LIGHT THEME
-   Toggled via body.light-theme class
 ════════════════════════════════════════════════════════════════════ */
 body.light-theme {
   --bg-base:      #eef1f6;
@@ -507,14 +544,12 @@ body.light-theme {
   --text-dim:     #64748b;
   --text-label:   #475569;
 }
-/* Map & Leaflet background */
 body.light-theme #map {
   background: #e2e6ee;
 }
 body.light-theme .leaflet-container {
   background: #e2e6ee !important;
 }
-/* Status pill (LIVE indicator) */
 body.light-theme .status-pill.live {
   background: rgba(22, 163, 74, 0.07);
   border-color: rgba(22, 163, 74, 0.3);
@@ -523,25 +558,20 @@ body.light-theme .status-pill.live {
 body.light-theme .pulse-dot {
   background: #16a34a;
 }
-/* Swatch active border — use dark instead of white */
 body.light-theme .swatch.active {
   border-color: #1e293b;
 }
-/* Ruler tooltip */
 body.light-theme .ruler-tooltip {
   background: rgba(255, 255, 255, 0.92);
   border-color: #d97706;
   color: #d97706;
 }
-/* Coordinate popup shadow */
 body.light-theme .coord-popup {
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
 }
-/* Slider track */
 body.light-theme .tac-slider {
   background: var(--border-light);
 }
-/* Danger buttons */
 body.light-theme .danger-btn {
   border-color: rgba(220, 38, 38, 0.2);
 }
@@ -549,23 +579,21 @@ body.light-theme .danger-btn:hover {
   background: rgba(220, 38, 38, 0.1);
   border-color: var(--danger);
 }
-/* Brand shield SVG — handled via currentColor, but inner SVG is hardcoded.
-   Override the shield accent for light mode. */
 body.light-theme .brand-shield svg path {
   stroke: var(--accent);
 }
-/* Mode toggle in light theme */
 body.light-theme .mode-toggle {
   background: rgba(220, 38, 38, 0.06);
 }
 body.light-theme .mode-toggle.on {
   background: rgba(22, 163, 74, 0.07);
 }
-/* Coord go button hover */
 body.light-theme .coord-go-btn:hover {
   background: rgba(37, 99, 235, 0.15);
 }
-/* Scrollbar in light theme */
-body.light-theme #leftPanel::-webkit-scrollbar-thumb {
+body.light-theme .panel-inner::-webkit-scrollbar-thumb {
   background: var(--border-light);
+}
+body.light-theme #collapseLeftBtn {
+  background: var(--bg-section);
 }
