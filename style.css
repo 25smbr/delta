@@ -93,11 +93,11 @@ button { cursor: pointer; font-family: var(--font-ui); }
 
 /* ─── LEFT PANEL ─── */
 #leftPanel {
+  position: relative;
   width: var(--left-w);
   height: 100%;
   background: var(--bg-panel);
   border-right: 1px solid var(--border);
-  overflow: hidden;          /* clips content during collapse animation */
   flex-shrink: 0;
   transition: width 0.25s ease, border-color 0.25s ease, background 0.3s;
 }
@@ -106,12 +106,43 @@ button { cursor: pointer; font-family: var(--font-ui); }
   border-right-color: transparent;
 }
 
+/* Collapse button — always rendered outside the scrollable area,
+   positioned absolutely so it remains visible even when width = 0 */
+#collapseLeftBtn {
+  position: absolute;
+  top: 8px;
+  right: 6px;
+  z-index: 10;
+  width: 22px; height: 22px;
+  background: var(--bg-section);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-dim);
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s, border-color .15s, color .15s, right 0.25s ease;
+  flex-shrink: 0;
+}
+#collapseLeftBtn:hover {
+  background: var(--bg-hover); border-color: var(--border-light); color: var(--text-primary);
+}
+
+/* When collapsed, flip the arrow and push button to the right of the 0-width panel */
+#leftPanel.collapsed #collapseLeftBtn {
+  right: -30px;
+  background: var(--bg-panel);
+  border-color: var(--border-light);
+}
+#leftPanel.collapsed #collapseLeftBtn svg {
+  transform: rotate(180deg);
+}
+
 /* Scrollable inner wrapper */
 .panel-inner {
-  width: var(--left-w);     /* fixed width so content doesn't squish during animation */
+  width: var(--left-w);
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
+  padding-top: 34px; /* space for the absolute-positioned collapse button */
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
   transition: opacity 0.2s;
@@ -123,40 +154,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
 .panel-inner::-webkit-scrollbar       { width: 4px; }
 .panel-inner::-webkit-scrollbar-track { background: transparent; }
 .panel-inner::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-
-/* Top row with collapse button */
-.panel-toprow {
-  display: flex;
-  justify-content: flex-end;
-  padding: 6px 6px 0;
-}
-#collapseLeftBtn {
-  width: 22px; height: 22px;
-  background: var(--bg-section);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  color: var(--text-dim);
-  display: flex; align-items: center; justify-content: center;
-  transition: all .15s;
-  flex-shrink: 0;
-}
-#collapseLeftBtn:hover {
-  background: var(--bg-hover); border-color: var(--border-light); color: var(--text-primary);
-}
-#collapseLeftBtn.flipped svg { transform: rotate(180deg); }
-
-/* Collapsed state: show button sticking out past the panel edge */
-#leftPanel.collapsed .panel-toprow {
-  /* panel width is 0, so we push the button outside via position */
-  position: relative;
-}
-#leftPanel.collapsed #collapseLeftBtn {
-  position: absolute;
-  left: 4px;
-  background: var(--bg-panel);
-  border-color: var(--border-light);
-  opacity: 1;
-}
 
 .panel-section { padding: 8px 10px 6px; }
 .section-header {
@@ -219,7 +216,11 @@ button { cursor: pointer; font-family: var(--font-ui); }
   color: var(--text-dim); margin-bottom: 7px; text-transform: uppercase;
 }
 .coord-popup-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
-.coord-popup-label { font-size: 9px; font-weight: 700; letter-spacing: 1.5px; color: var(--text-dim); width: 30px; flex-shrink: 0; text-transform: uppercase; }
+/* Fix #1: wider label so "COORDS" doesn't crowd the value */
+.coord-popup-label {
+  font-size: 9px; font-weight: 700; letter-spacing: 1.5px; color: var(--text-dim);
+  width: 46px; flex-shrink: 0; text-transform: uppercase;
+}
 .coord-popup-val { flex: 1; font-size: 11px; color: var(--accent); letter-spacing: 0.5px; }
 .coord-copy-btn {
   width: 20px; height: 20px; background: transparent; border: 1px solid var(--border);
@@ -374,3 +375,25 @@ body.light-theme .mode-toggle       { background: rgba(220,38,38,.06); }
 body.light-theme .mode-toggle.on    { background: rgba(22,163,74,.07); }
 body.light-theme .coord-go-btn:hover { background: rgba(37,99,235,.15); }
 body.light-theme .panel-inner::-webkit-scrollbar-thumb { background: var(--border-light); }
+
+/* Fix #3: darken symbol strokes in light mode for better contrast */
+body.light-theme .leaflet-marker-icon svg line,
+body.light-theme .leaflet-marker-icon svg rect,
+body.light-theme .leaflet-marker-icon svg circle,
+body.light-theme .leaflet-marker-icon svg ellipse,
+body.light-theme .leaflet-marker-icon svg path {
+  stroke: #1e293b !important;
+}
+/* Also darken the symbol buttons in the palette */
+body.light-theme .symbolBtn svg line,
+body.light-theme .symbolBtn svg rect,
+body.light-theme .symbolBtn svg circle,
+body.light-theme .symbolBtn svg ellipse,
+body.light-theme .symbolBtn svg path {
+  stroke: #1e293b !important;
+}
+/* And the status/damage overlays (filled paths like the X for dead/destroyed) */
+body.light-theme .leaflet-marker-icon svg [fill="#ff4444"],
+body.light-theme .symbolBtn svg [fill="#ff4444"] {
+  fill: #b91c1c !important;
+}
