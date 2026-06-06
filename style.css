@@ -22,7 +22,7 @@
   --font-mono:    'Share Tech Mono', monospace;
   --topbar-h:     42px;
   --statusbar-h:  26px;
-  --left-w:       210px;
+  --left-w:       224px;
   --right-w:      42px;
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -240,16 +240,17 @@ button { cursor: pointer; font-family: var(--font-ui); }
   border-left: 2px solid var(--accent); padding: 3px 0 4px 5px;
   margin-bottom: 4px; transition: color 0.3s, border-color 0.3s;
 }
-.symbol-row { display: flex; flex-wrap: nowrap; gap: 4px; }
+.symbol-row { display: flex; flex-wrap: nowrap; gap: 3px; }
 .symbolBtn {
-  width: 54px; height: 54px; flex-shrink: 0;
+  width: 48px; height: 62px; flex-shrink: 0;
   background: var(--bg-section); border: 1px solid var(--border); border-radius: 4px;
   display: flex; align-items: center; justify-content: center;
   padding: 2px; transition: all .15s;
+  overflow: hidden;
 }
 .symbolBtn:hover  { border-color: var(--border-light); background: var(--bg-hover); }
 .symbolBtn.active { border-color: var(--accent); background: var(--accent-dim); box-shadow: 0 0 8px var(--accent-glow); }
-.symbolBtn svg    { width: 46px; height: 46px; }
+.symbolBtn svg    { width: 44px; height: 55px; }
 
 /* ─── COORDINATE SEARCH ─── */
 .coord-search-row { display: flex; gap: 4px; margin-bottom: 4px; }
@@ -451,33 +452,8 @@ body.light-theme .scrollable-symbols::-webkit-scrollbar-thumb { background: var(
    We target the interior strokes by their explicit stroke color (#d0d8e8 in dark mode).
    In light mode we replace that light grey with a dark readable color.
 */
-body.light-theme .leaflet-marker-icon svg [stroke="#d0d8e8"],
-body.light-theme .symbolBtn svg [stroke="#d0d8e8"] {
-  stroke: #2d3a4a !important;
-}
-
-/* The dead/destroyed X overlay is drawn with stroke="#ff4444" on lines — keep that red
-   but make it slightly deeper for light bg readability */
-body.light-theme .leaflet-marker-icon svg line[stroke="#ff4444"],
-body.light-theme .symbolBtn svg line[stroke="#ff4444"] {
-  stroke: #c0152a !important;
-}
-
-/* damaged overlay line (stroke="#ff8800") — deepen slightly */
-body.light-theme .leaflet-marker-icon svg line[stroke="#ff8800"],
-body.light-theme .symbolBtn svg line[stroke="#ff8800"] {
-  stroke: #c45e00 !important;
-}
-
-/* The fill="#ff4444" on arrow-heads of the dead overlay — deepen */
-body.light-theme .leaflet-marker-icon svg [fill="#ff4444"],
-body.light-theme .symbolBtn svg [fill="#ff4444"] {
-  fill: #c0152a !important;
-}
-
-/* The outer rect border carries the status color (--borderColor in JS).
-   Those use: #4fa3ff (alive), #ffcc00 (wounded), #ff8800 (damaged), #ff4444 (dead/destroyed).
-   We intentionally do NOT override these so colors remain meaningful in light mode. */
+/* NATO symbols use #111 for all designator strokes/fills — visible on both themes.
+   The salmon fill (#f87171) and status bar colors are intentionally kept as-is. */
 
 /* ════════════════════════════════════════════════════════
    VEZHA — LIVE STREAMING VIEW
