@@ -40,7 +40,7 @@ button { cursor: pointer; font-family: var(--font-ui); }
 
 /* ─── TOP BAR ─── */
 #topBar {
-  position: fixed; top: 0; left: 0; right: 0; z-index: 2000;
+  position: fixed; top: 0; left: 0; right: 0; z-index: 3000;
   height: var(--topbar-h);
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
@@ -99,6 +99,8 @@ button { cursor: pointer; font-family: var(--font-ui); }
   background: var(--bg-panel);
   border-right: 1px solid var(--border);
   flex-shrink: 0;
+  /* overflow visible so the collapse button can escape */
+  overflow: visible;
   transition: width 0.25s ease, border-color 0.25s ease, background 0.3s;
 }
 #leftPanel.collapsed {
@@ -106,13 +108,13 @@ button { cursor: pointer; font-family: var(--font-ui); }
   border-right-color: transparent;
 }
 
-/* Collapse button — always rendered outside the scrollable area,
-   positioned absolutely so it remains visible even when width = 0 */
+/* Collapse button — always above map (z-index 2500),
+   absolutely positioned so it floats free of the panel width */
 #collapseLeftBtn {
   position: absolute;
   top: 8px;
   right: 6px;
-  z-index: 10;
+  z-index: 2500;
   width: 22px; height: 22px;
   background: var(--bg-section);
   border: 1px solid var(--border);
@@ -126,7 +128,7 @@ button { cursor: pointer; font-family: var(--font-ui); }
   background: var(--bg-hover); border-color: var(--border-light); color: var(--text-primary);
 }
 
-/* When collapsed, flip the arrow and push button to the right of the 0-width panel */
+/* When collapsed: float button out to the right of the zero-width panel */
 #leftPanel.collapsed #collapseLeftBtn {
   right: -30px;
   background: var(--bg-panel);
@@ -136,34 +138,98 @@ button { cursor: pointer; font-family: var(--font-ui); }
   transform: rotate(180deg);
 }
 
-/* Scrollable inner wrapper */
+/* ─── PANEL INNER — fixed height, flex column, not scrollable itself ─── */
 .panel-inner {
   width: var(--left-w);
   height: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding-top: 34px; /* space for the absolute-positioned collapse button */
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
+  overflow: hidden;           /* panel itself does NOT scroll */
+  display: flex;
+  flex-direction: column;
+  padding-top: 34px;          /* space for the abs-positioned collapse button */
   transition: opacity 0.2s;
 }
 #leftPanel.collapsed .panel-inner {
   opacity: 0;
   pointer-events: none;
 }
-.panel-inner::-webkit-scrollbar       { width: 4px; }
-.panel-inner::-webkit-scrollbar-track { background: transparent; }
-.panel-inner::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
-.panel-section { padding: 8px 10px 6px; }
+.panel-section {
+  padding: 8px 10px 0;
+  flex-shrink: 0;             /* fixed sections don't grow/shrink */
+}
+
+/* The symbols section is flex-grow so it fills remaining space */
+#section-symbols {
+  flex: 1 1 0;
+  min-height: 0;              /* allow shrinking below content size */
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 0;
+}
+
 .section-header {
   display: flex; align-items: center; gap: 6px;
   font-size: 10px; font-weight: 700; letter-spacing: 2px;
   color: var(--text-dim); padding-bottom: 8px; text-transform: uppercase;
   transition: color 0.3s;
+  flex-shrink: 0;
 }
+
+/* Section collapse button (small arrow per section) */
+.section-collapse-btn {
+  margin-left: auto;
+  width: 18px; height: 18px;
+  background: transparent; border: 1px solid var(--border);
+  border-radius: 3px; color: var(--text-dim);
+  display: flex; align-items: center; justify-content: center;
+  transition: all .15s;
+  flex-shrink: 0;
+}
+.section-collapse-btn:hover {
+  background: var(--bg-hover); border-color: var(--border-light); color: var(--text-primary);
+}
+.section-collapse-btn.collapsed svg {
+  transform: rotate(-90deg);
+}
+.section-collapse-btn svg {
+  transition: transform 0.2s ease;
+}
+
+/* section-body: generic collapsed state */
+.section-body {
+  overflow: hidden;
+  transition: max-height 0.25s ease, opacity 0.2s;
+  max-height: 1000px;
+  opacity: 1;
+}
+.section-body.collapsed {
+  max-height: 0 !important;
+  opacity: 0;
+}
+
+/* The symbols body is the ONLY scrollable element */
+.scrollable-symbols {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  max-height: none !important; /* override the generic max-height for open state */
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.scrollable-symbols::-webkit-scrollbar       { width: 4px; }
+.scrollable-symbols::-webkit-scrollbar-track { background: transparent; }
+.scrollable-symbols::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* When symbols section is collapsed, kill the flex growth */
+#section-symbols:has(.section-body.collapsed) {
+  flex: 0 0 auto;
+}
+
 .panel-divider {
-  height: 1px; background: var(--border); margin: 0 10px; transition: background 0.3s;
+  height: 1px; background: var(--border); margin: 0 10px; flex-shrink: 0;
+  transition: background 0.3s;
 }
 
 /* ─── SYMBOL GROUPS ─── */
@@ -216,7 +282,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
   color: var(--text-dim); margin-bottom: 7px; text-transform: uppercase;
 }
 .coord-popup-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
-/* Fix #1: wider label so "COORDS" doesn't crowd the value */
 .coord-popup-label {
   font-size: 9px; font-weight: 700; letter-spacing: 1.5px; color: var(--text-dim);
   width: 46px; flex-shrink: 0; text-transform: uppercase;
@@ -253,7 +318,7 @@ button { cursor: pointer; font-family: var(--font-ui); }
 .drawToolBtn:hover  { background: var(--bg-hover); border-color: var(--border-light); color: var(--text-primary); }
 .drawToolBtn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
 .mode-toggle {
-  margin-left: auto; padding: 2px 6px;
+  padding: 2px 6px;
   font-size: 9px; font-weight: 700; letter-spacing: 1px; font-family: var(--font-mono);
   border-radius: 3px; background: var(--danger-dim); border: 1px solid var(--danger);
   color: var(--danger); transition: all .15s;
@@ -319,7 +384,7 @@ button { cursor: pointer; font-family: var(--font-ui); }
 
 /* ─── STATUS BAR ─── */
 #statusBar {
-  position: fixed; bottom: 0; left: 0; right: 0; z-index: 2000;
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 3000;
   height: var(--statusbar-h); background: var(--bg-panel); border-top: 1px solid var(--border);
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 12px; transition: background 0.3s, border-color 0.3s;
@@ -374,26 +439,42 @@ body.light-theme .brand-shield svg path { stroke: var(--accent); }
 body.light-theme .mode-toggle       { background: rgba(220,38,38,.06); }
 body.light-theme .mode-toggle.on    { background: rgba(22,163,74,.07); }
 body.light-theme .coord-go-btn:hover { background: rgba(37,99,235,.15); }
-body.light-theme .panel-inner::-webkit-scrollbar-thumb { background: var(--border-light); }
+body.light-theme .scrollable-symbols::-webkit-scrollbar-thumb { background: var(--border-light); }
 
-/* Fix #3: darken symbol strokes in light mode for better contrast */
-body.light-theme .leaflet-marker-icon svg line,
-body.light-theme .leaflet-marker-icon svg rect,
-body.light-theme .leaflet-marker-icon svg circle,
-body.light-theme .leaflet-marker-icon svg ellipse,
-body.light-theme .leaflet-marker-icon svg path {
-  stroke: #1e293b !important;
+/* ─── LIGHT THEME: symbol interior strokes darkened, but border/status colors preserved ─── */
+/*
+   Strategy: in light mode we ONLY darken the symbol-interior drawing elements
+   (the lines/shapes that represent infantry cross, tank box, etc).
+   We do NOT override the outer rect stroke (which carries the status color)
+   nor the damage/dead overlay fills.
+   
+   We target the interior strokes by their explicit stroke color (#d0d8e8 in dark mode).
+   In light mode we replace that light grey with a dark readable color.
+*/
+body.light-theme .leaflet-marker-icon svg [stroke="#d0d8e8"],
+body.light-theme .symbolBtn svg [stroke="#d0d8e8"] {
+  stroke: #2d3a4a !important;
 }
-/* Also darken the symbol buttons in the palette */
-body.light-theme .symbolBtn svg line,
-body.light-theme .symbolBtn svg rect,
-body.light-theme .symbolBtn svg circle,
-body.light-theme .symbolBtn svg ellipse,
-body.light-theme .symbolBtn svg path {
-  stroke: #1e293b !important;
+
+/* The dead/destroyed X overlay is drawn with stroke="#ff4444" on lines — keep that red
+   but make it slightly deeper for light bg readability */
+body.light-theme .leaflet-marker-icon svg line[stroke="#ff4444"],
+body.light-theme .symbolBtn svg line[stroke="#ff4444"] {
+  stroke: #c0152a !important;
 }
-/* And the status/damage overlays (filled paths like the X for dead/destroyed) */
+
+/* damaged overlay line (stroke="#ff8800") — deepen slightly */
+body.light-theme .leaflet-marker-icon svg line[stroke="#ff8800"],
+body.light-theme .symbolBtn svg line[stroke="#ff8800"] {
+  stroke: #c45e00 !important;
+}
+
+/* The fill="#ff4444" on arrow-heads of the dead overlay — deepen */
 body.light-theme .leaflet-marker-icon svg [fill="#ff4444"],
 body.light-theme .symbolBtn svg [fill="#ff4444"] {
-  fill: #b91c1c !important;
+  fill: #c0152a !important;
 }
+
+/* The outer rect border carries the status color (--borderColor in JS).
+   Those use: #4fa3ff (alive), #ffcc00 (wounded), #ff8800 (damaged), #ff4444 (dead/destroyed).
+   We intentionally do NOT override these so colors remain meaningful in light mode. */
