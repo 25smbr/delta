@@ -314,7 +314,8 @@ map.on("contextmenu", (e) => {
     e.originalEvent.preventDefault();
     const x = parseFloat(e.latlng.lng.toFixed(4));
     const y = parseFloat(e.latlng.lat.toFixed(4));
-    popupBoth.textContent = `Y: ${y.toFixed(4)}, X: ${x.toFixed(4)}`;
+    // Fix #1: show X first, then Y
+    popupBoth.textContent = `X: ${x.toFixed(4)}, Y: ${y.toFixed(4)}`;
     const wrapper = document.getElementById("mapWrapper");
     const wRect   = wrapper.getBoundingClientRect();
     const eX      = e.originalEvent.clientX - wRect.left;
@@ -348,14 +349,32 @@ const coordSearchError = document.getElementById("coordSearchError");
 function goToCoords() {
     const val = coordSearchInput.value.trim();
     coordSearchError.textContent = "";
-    const clean = val.replace(/[YyXx:\s]/g, " ").trim();
+    // Fix #1: accept X first then Y (or Y first then X — parse by label if present)
+    const clean = val.replace(/[XxYy:\s]/g, " ").trim();
     const parts = clean.split(/[\s,]+/).filter(Boolean);
     if (parts.length < 2) {
-        coordSearchError.textContent = "Need Y and X values.";
+        coordSearchError.textContent = "Need X and Y values.";
         return;
     }
-    const y = parseFloat(parts[0]);
-    const x = parseFloat(parts[1]);
+    // Check if input has explicit labels to determine order
+    const upperVal = val.toUpperCase();
+    const xIdx = upperVal.indexOf("X");
+    const yIdx = upperVal.indexOf("Y");
+    let x, y;
+    if (xIdx !== -1 && yIdx !== -1) {
+        // Labels present — parse by label order
+        if (xIdx < yIdx) {
+            x = parseFloat(parts[0]);
+            y = parseFloat(parts[1]);
+        } else {
+            y = parseFloat(parts[0]);
+            x = parseFloat(parts[1]);
+        }
+    } else {
+        // No labels — assume X first, Y second (new default)
+        x = parseFloat(parts[0]);
+        y = parseFloat(parts[1]);
+    }
     if (isNaN(y) || isNaN(x)) {
         coordSearchError.textContent = "Invalid numbers.";
         return;
