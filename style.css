@@ -596,7 +596,48 @@ body.light-theme .symbolBtn svg [fill="#ff4444"] {
   background: var(--bg-panel);
   border-left: 1px solid var(--border);
   display: flex; flex-direction: column;
-  transition: background 0.3s, border-color 0.3s;
+  position: relative;
+  overflow: hidden;
+  transition: width 0.25s ease, background 0.3s, border-color 0.3s;
+}
+.vezha-chat-sidebar.collapsed {
+  width: 28px;
+  min-width: 28px;
+}
+/* Hide inner content when collapsed (except the toggle button) */
+.vezha-chat-sidebar.collapsed > *:not(.chat-collapse-btn) {
+  display: none;
+}
+
+/* Chat collapse / expand button */
+.chat-collapse-btn {
+  flex-shrink: 0;
+  align-self: center;
+  position: absolute;
+  left: 0; top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  width: 22px; height: 52px;
+  background: var(--bg-section);
+  border: 1px solid var(--border);
+  border-right: none;
+  border-radius: 4px 0 0 4px;
+  margin-left: -22px;             /* pulls the tab outside the sidebar */
+  color: var(--text-dim);
+  font-size: 14px; font-weight: 700;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: color 0.15s, background 0.15s, border-color 0.3s;
+  padding: 0;
+}
+.chat-collapse-btn:hover { color: var(--accent); border-color: var(--accent); }
+/* In collapsed state the sidebar is just 28px wide; center button inside */
+.vezha-chat-sidebar.collapsed .chat-collapse-btn {
+  left: 50%; transform: translate(-50%, -50%);
+  margin-left: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  width: 20px; height: 44px;
 }
 .vezha-chat-header {
   display: flex; align-items: center; gap: 7px;
@@ -678,3 +719,124 @@ body.light-theme .vezha-ctrl-btn:hover  { background: rgba(37,99,235,0.15); }
 body.light-theme .vezha-danger-btn:hover{ background: rgba(220,38,38,0.1) !important; }
 body.light-theme .chat-msg-mine .chat-msg-text { background: rgba(37,99,235,0.07); border-color: rgba(37,99,235,0.2); }
 body.light-theme .vezha-chat-send:hover { background: rgba(37,99,235,0.15); }
+
+/* ─── MARKER LABEL OVERLAYS ──────────────────────────────────────────────────
+   .mkr-wrap is 140×140 px; icon SVG is 46×46 centred at (47,47).
+   iconAnchor [70,70] = map lat/lng point = SVG centre.
+   ─────────────────────────────────────────────────────────────────────────── */
+.mkr-wrap {
+  position: relative;
+  width: 140px; height: 140px;
+  pointer-events: none;
+}
+.mkr-icon {
+  position: absolute;
+  left: 47px; top: 47px;
+  width: 46px; height: 46px;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.ml {
+  position: absolute;
+  font-family: var(--font-mono);
+  font-size: 9px; line-height: 1.35;
+  color: #d8e4f0;
+  background: rgba(6, 12, 22, 0.75);
+  padding: 1px 4px;
+  border-radius: 2px;
+  white-space: nowrap;
+  max-width: 76px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.ml:empty { display: none; }
+/* top-left  (date)   — upper-left of icon */
+.ml-tl { bottom: 95px; right: 95px; text-align: right; }
+/* center-top (amount) — centered above icon */
+.ml-tc {
+  bottom: 98px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  background: rgba(6,12,22,0.85);
+  font-weight: 700; font-size: 10px;
+  color: #ffffff;
+}
+/* top-right (info)   — upper-right of icon */
+.ml-tr { bottom: 95px; left: 95px; }
+/* bottom-right (source) — lower-right of icon */
+.ml-br { top: 96px; left: 95px; }
+
+/* light-mode label text */
+body.light-theme .ml { color: #0a1828; background: rgba(255,255,255,0.82); }
+body.light-theme .ml-tc { background: rgba(255,255,255,0.9); color: #0a1828; }
+
+/* ─── MARKER EDIT POPUP ──────────────────────────────────────────────────────
+   .mep-outer is the Leaflet popup wrapper class
+   ─────────────────────────────────────────────────────────────────────────── */
+.mep-outer .leaflet-popup-content-wrapper {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  padding: 0;
+  color: var(--text-primary);
+}
+.mep-outer .leaflet-popup-tip-container { display: none; }
+.mep-outer .leaflet-popup-content { margin: 0; }
+.mep-popup {
+  padding: 12px 14px 10px;
+  display: flex; flex-direction: column; gap: 8px;
+  min-width: 200px;
+}
+.mep-row {
+  display: flex; align-items: center; gap: 8px;
+}
+.mep-label {
+  font-family: var(--font-mono);
+  font-size: 9px; font-weight: 700;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--text-dim);
+  width: 34px; flex-shrink: 0;
+}
+.mep-date {
+  font-family: var(--font-mono);
+  font-size: 10px; color: var(--text-dim);
+}
+.mep-sel, .mep-inp {
+  flex: 1;
+  background: var(--bg-section);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 4px 7px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.mep-sel:focus, .mep-inp:focus { border-color: var(--accent); }
+.mep-inp::placeholder { color: var(--text-dim); font-size: 9px; }
+.mep-save {
+  align-self: flex-end;
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 1.5px;
+  padding: 5px 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+  margin-top: 2px;
+}
+.mep-save:hover { background: rgba(79,163,255,0.3); }
+
+/* light-mode popup */
+body.light-theme .mep-outer .leaflet-popup-content-wrapper {
+  background: var(--bg-panel);
+  border-color: var(--border);
+}
+body.light-theme .mep-save:hover { background: rgba(37,99,235,0.15); }
