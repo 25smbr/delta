@@ -22,7 +22,7 @@
   --font-mono:    'Share Tech Mono', monospace;
   --topbar-h:     42px;
   --statusbar-h:  26px;
-  --left-w:       224px;
+  --left-w:       236px;
   --right-w:      42px;
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -454,6 +454,77 @@ body.light-theme .scrollable-symbols::-webkit-scrollbar-thumb { background: var(
 */
 /* NATO symbols use #111 for all designator strokes/fills — visible on both themes.
    The salmon fill (#f87171) and status bar colors are intentionally kept as-is. */
+
+/* ─── FILTER CHIPS ────────────────────────────────────────────────────────── */
+.filter-chips {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  padding: 4px 0 6px;
+}
+.filter-chip {
+  font-family: var(--font-mono);
+  font-size: 8.5px; font-weight: 700; letter-spacing: 1px;
+  padding: 3px 7px; border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--bg-section);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.15s;
+  text-transform: uppercase;
+}
+.filter-chip.active {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+.filter-chip:not(.active) {
+  opacity: 0.45;
+}
+.filter-chip:hover { opacity: 1; border-color: var(--border-light); }
+body.light-theme .filter-chip.active { color: var(--accent); }
+
+/* ─── CHAT IDENTITY BAR ───────────────────────────────────────────────────── */
+.chat-identity-bar {
+  display: flex; align-items: center; gap: 5px;
+  padding: 6px 10px 5px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--bg-section);
+  transition: background 0.3s, border-color 0.3s;
+}
+.chat-identity-input {
+  flex: 1; min-width: 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: 9px; font-weight: 700; letter-spacing: 1.5px;
+  padding: 3px 6px; outline: none;
+  text-transform: uppercase;
+  transition: border-color 0.15s, background 0.3s;
+}
+.chat-identity-input::placeholder { color: var(--text-dim); font-size: 8.5px; }
+.chat-identity-input:focus { border-color: var(--accent); }
+.chat-role-select {
+  flex-shrink: 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 8.5px; font-weight: 700; letter-spacing: 0.8px;
+  padding: 3px 4px; outline: none; cursor: pointer;
+  text-transform: uppercase;
+  transition: border-color 0.15s, background 0.3s;
+}
+.chat-role-select:focus { border-color: var(--accent); }
+
+/* ─── CHAT ROLE LABEL ─────────────────────────────────────────────────────── */
+.chat-msg-role {
+  font-size: 8.5px; font-weight: 700; letter-spacing: 1px;
+  font-family: var(--font-mono);
+  opacity: 0.75;
+  margin-left: 2px;
+}
 
 /* ════════════════════════════════════════════════════════
    VEZHA — LIVE STREAMING VIEW
