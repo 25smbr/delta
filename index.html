@@ -15,9 +15,30 @@
   <header id="topBar">
     <div class="topBar-left">
       <div class="brand-shield">
-        <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-          <path d="M11 1 L21 6 L21 16 L11 21 L1 16 L1 6 Z" stroke="#4fa3ff" stroke-width="1.5" fill="rgba(79,163,255,0.1)"/>
-          <path d="M11 5 L17 8.5 L17 15 L11 18 L5 15 L5 8.5 Z" fill="rgba(79,163,255,0.2)" stroke="#4fa3ff" stroke-width="1"/>
+        <!-- Crest: shield + crosshair + sword + wings -->
+        <svg width="26" height="30" viewBox="0 0 30 34" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- Shield body -->
+          <path d="M1 4 Q1 1.5 3.5 1.5 L26.5 1.5 Q29 1.5 29 4 L29 19 Q29 30 15 33 Q1 30 1 19 Z"
+                fill="#3A52A9" stroke="#2D2E33" stroke-width="2"/>
+          <!-- Inner shield highlight -->
+          <path d="M4 5.5 Q4 4 5.5 4 L24.5 4 Q26 4 26 5.5 L26 18.5 Q26 27.5 15 30.5 Q4 27.5 4 18.5 Z"
+                fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="0.8"/>
+          <!-- Target / crosshair ring -->
+          <circle cx="15" cy="16.5" r="8" stroke="#c8d0ea" stroke-width="1.4"/>
+          <!-- Sword blade (vertical, blade up) -->
+          <line x1="15" y1="5.5" x2="15" y2="28" stroke="#c8d0ea" stroke-width="2" stroke-linecap="round"/>
+          <!-- Cross-guard -->
+          <line x1="10.5" y1="15.5" x2="19.5" y2="15.5" stroke="#c8d0ea" stroke-width="2" stroke-linecap="round"/>
+          <!-- Pommel -->
+          <circle cx="15" cy="28.5" r="1.8" fill="#c8d0ea"/>
+          <!-- Horizontal crosshair through ring -->
+          <line x1="7" y1="16.5" x2="23" y2="16.5" stroke="#c8d0ea" stroke-width="0.9" stroke-linecap="round" opacity="0.55"/>
+          <!-- Left wing arcs -->
+          <path d="M7 16.5 C4.5 12.5 3 9 5 6" stroke="#c8d0ea" stroke-width="1.35" stroke-linecap="round"/>
+          <path d="M7.5 14.5 C5.5 11 5 8 6.5 5.5" stroke="#c8d0ea" stroke-width="1" stroke-linecap="round" opacity="0.75"/>
+          <!-- Right wing arcs (mirror) -->
+          <path d="M23 16.5 C25.5 12.5 27 9 25 6" stroke="#c8d0ea" stroke-width="1.35" stroke-linecap="round"/>
+          <path d="M22.5 14.5 C24.5 11 25 8 23.5 5.5" stroke="#c8d0ea" stroke-width="1" stroke-linecap="round" opacity="0.75"/>
         </svg>
       </div>
       <span class="brand-name">DELTA</span>
