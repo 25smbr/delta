@@ -8,7 +8,9 @@ import {
     doc,
     onSnapshot,
     getDocs,
-    writeBatch
+    writeBatch,
+    query,
+    where
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 // ─── FIREBASE ───────────────────────────────────────────────────────────────
 const firebaseConfig = {
@@ -885,6 +887,277 @@ document.querySelectorAll(".section-collapse-btn").forEach((btn) => {
         }
     });
 });
+// ════════════════════════════════════════════════════════════════════
+// VEZHA — LIVE STREAMING SYSTEM
+// ════════════════════════════════════════════════════════════════════
+const vezha_sessions = collection(db, "vezha_sessions");
+const vezha_signals  = collection(db, "vezha_signals");
+
+// Unique ID for this browser session
+const myPeerId = "peer_" + Math.random().toString(36).substr(2, 9);
+let vezhaActive    = false;
+let localStream    = null;
+let mySessionRef   = null;
+let vezhaUnsubs    = [];      // Firestore listener unsubscribe fns
+let processedSigs  = new Set(); // signal doc IDs already handled
+const peers        = {};      // peerId -> { pc: RTCPeerConnection }
+let vezhaEnterTime = 0;
+
+const ICE_CONFIG = {
+    iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" }
+    ]
+};
+
+// ─── VIEW SWITCHING ───────────────────────────────────────────────────────────
+const mapViewBtn   = document.getElementById("mapViewBtn");
+const vezhaViewBtn = document.getElementById("vezhaViewBtn");
+const brandModule  = document.getElementById("brandModule");
+
+mapViewBtn.addEventListener("click", () => {
+    if (!vezhaActive) return;
+    exitVezha();
+});
+
+vezhaViewBtn.addEventListener("click", () => {
+    if (vezhaActive) return;
+    enterVezha();
+});
+
+function enterVezha() {
+    vezhaActive    = true;
+    vezhaEnterTime = Date.now();
+
+    document.getElementById("appBody").style.display  = "none";
+    document.getElementById("vezhaView").classList.add("active");
+    brandModule.textContent = "VEZHA";
+
+    mapViewBtn.classList.remove("active");
+    vezhaViewBtn.classList.add("active");
+
+    // Register my presence
+    addDoc(vezha_sessions, { userId: myPeerId, created: Date.now() })
+        .then(ref => { mySessionRef = ref; });
+
+    // Listen for signals directed to me
+    const unsubSig = onSnapshot(
+        query(vezha_signals, where("to", "==", myPeerId)),
+        snapshot => {
+            snapshot.docChanges().forEach(change => {
+                if (change.type === "added" && !processedSigs.has(change.doc.id)) {
+                    const sig = change.doc.data();
+                    if (sig.created >= vezhaEnterTime - 5000) {
+                        processedSigs.add(change.doc.id);
+                        handleSignal(sig, change.doc.id);
+                    }
+                }
+            });
+        }
+    );
+    vezhaUnsubs.push(unsubSig);
+
+    // Listen for peers entering/leaving
+    const unsubSess = onSnapshot(vezha_sessions, snapshot => {
+        snapshot.docChanges().forEach(change => {
+            const uid = change.doc.data().userId;
+            if (uid === myPeerId) return;
+            if (change.type === "added" && localStream) {
+                createOffer(uid);
+            }
+            if (change.type === "removed") {
+                removePeer(uid);
+            }
+        });
+        updateVezhaStatus(snapshot.size);
+    });
+    vezhaUnsubs.push(unsubSess);
+
+    updateTileLayout();
+}
+
+function exitVezha() {
+    stopSharing();
+    vezhaActive = false;
+
+    if (mySessionRef) { deleteDoc(mySessionRef); mySessionRef = null; }
+    vezhaUnsubs.forEach(u => u());
+    vezhaUnsubs = [];
+    processedSigs.clear();
+    Object.keys(peers).forEach(removePeer);
+
+    document.getElementById("vezhaView").classList.remove("active");
+    document.getElementById("appBody").style.display = "flex";
+    brandModule.textContent = "MONITOR";
+
+    vezhaViewBtn.classList.remove("active");
+    mapViewBtn.classList.add("active");
+}
+
+// ─── SCREEN SHARING ───────────────────────────────────────────────────────────
+document.getElementById("shareScreenBtn").addEventListener("click", shareScreen);
+document.getElementById("stopSharingBtn").addEventListener("click", stopSharing);
+
+async function shareScreen() {
+    try {
+        localStream = await navigator.mediaDevices.getDisplayMedia({
+            video: { cursor: "always" },
+            audio: true
+        });
+        localStream.getVideoTracks()[0].addEventListener("ended", stopSharing);
+
+        addVideoTile("self", localStream, "YOU  ·  BROADCASTING");
+        document.getElementById("shareScreenBtn").style.display = "none";
+        document.getElementById("stopSharingBtn").style.display = "flex";
+
+        // Offer stream to all currently active peers
+        const snap = await getDocs(vezha_sessions);
+        snap.forEach(d => {
+            if (d.data().userId !== myPeerId) createOffer(d.data().userId);
+        });
+    } catch (err) {
+        if (err.name !== "NotAllowedError") console.error("Screen share error:", err);
+    }
+}
+
+function stopSharing() {
+    if (!localStream) return;
+    localStream.getTracks().forEach(t => t.stop());
+    localStream = null;
+    removeTile("self");
+    document.getElementById("shareScreenBtn").style.display = "flex";
+    document.getElementById("stopSharingBtn").style.display = "none";
+    // Close outgoing connections so peers see the stream end
+    Object.keys(peers).forEach(uid => {
+        peers[uid].pc.getSenders().forEach(s => s.track && s.track.stop());
+    });
+}
+
+// ─── PEER CONNECTION ──────────────────────────────────────────────────────────
+function getOrCreatePeer(userId) {
+    if (peers[userId]) return peers[userId].pc;
+    const pc = new RTCPeerConnection(ICE_CONFIG);
+    peers[userId] = { pc };
+
+    pc.addEventListener("icecandidate", e => {
+        if (e.candidate) {
+            addDoc(vezha_signals, {
+                from: myPeerId, to: userId,
+                type: "ice", data: e.candidate.toJSON(),
+                created: Date.now()
+            });
+        }
+    });
+
+    pc.addEventListener("track", e => {
+        const stream = e.streams[0];
+        addVideoTile(userId, stream, "OPERATOR · " + userId.slice(-6).toUpperCase());
+    });
+
+    pc.addEventListener("connectionstatechange", () => {
+        if (["disconnected", "failed", "closed"].includes(pc.connectionState)) {
+            removePeer(userId);
+        }
+    });
+
+    return pc;
+}
+
+async function createOffer(userId) {
+    const pc = getOrCreatePeer(userId);
+    if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    addDoc(vezha_signals, {
+        from: myPeerId, to: userId,
+        type: "offer", data: { sdp: offer.sdp, type: offer.type },
+        created: Date.now()
+    });
+}
+
+async function handleSignal(sig, docId) {
+    const { from, type, data } = sig;
+    try {
+        if (type === "offer") {
+            const pc = getOrCreatePeer(from);
+            if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+            await pc.setRemoteDescription(new RTCSessionDescription(data));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            addDoc(vezha_signals, {
+                from: myPeerId, to: from,
+                type: "answer", data: { sdp: answer.sdp, type: answer.type },
+                created: Date.now()
+            });
+        } else if (type === "answer") {
+            const pc = peers[from]?.pc;
+            if (pc && pc.signalingState !== "stable") {
+                await pc.setRemoteDescription(new RTCSessionDescription(data));
+            }
+        } else if (type === "ice") {
+            const pc = peers[from]?.pc;
+            if (pc) await pc.addIceCandidate(new RTCIceCandidate(data));
+        }
+    } catch (err) {
+        console.error("Signal handling error:", err);
+    }
+    // Clean up processed signal from Firestore
+    try { await deleteDoc(doc(db, "vezha_signals", docId)); } catch (_) {}
+}
+
+function removePeer(userId) {
+    if (!peers[userId]) return;
+    peers[userId].pc.close();
+    delete peers[userId];
+    removeTile(userId);
+}
+
+// ─── VIDEO TILES ──────────────────────────────────────────────────────────────
+function addVideoTile(id, stream, label) {
+    removeTile(id);
+    const grid  = document.getElementById("vezhaGrid");
+    const empty = document.getElementById("vezhaEmpty");
+    if (empty) empty.style.display = "none";
+
+    const tile  = document.createElement("div");
+    tile.className = "vezha-tile" + (id === "self" ? " vezha-tile-self" : "");
+    tile.id = "tile-" + id;
+
+    const video = document.createElement("video");
+    video.autoplay    = true;
+    video.muted       = (id === "self");
+    video.playsInline = true;
+    video.srcObject   = stream;
+
+    const lbl = document.createElement("div");
+    lbl.className   = "vezha-tile-label mono";
+    lbl.textContent = label;
+
+    tile.appendChild(video);
+    tile.appendChild(lbl);
+    grid.appendChild(tile);
+    updateTileLayout();
+}
+
+function removeTile(id) {
+    const tile = document.getElementById("tile-" + id);
+    if (tile) { tile.remove(); updateTileLayout(); }
+}
+
+function updateTileLayout() {
+    const grid  = document.getElementById("vezhaGrid");
+    const count = grid.querySelectorAll(".vezha-tile").length;
+    grid.setAttribute("data-count", String(count));
+    const empty = document.getElementById("vezhaEmpty");
+    if (empty) empty.style.display = count === 0 ? "flex" : "none";
+}
+
+function updateVezhaStatus(total) {
+    const online = Math.max(0, total - 1); // exclude self
+    document.getElementById("vezhaStatus").textContent =
+        `OPERATORS: ${online} ONLINE`;
+}
+
 // ─── THEME TOGGLE ────────────────────────────────────────────────────────────
 const themeToggleBtn = document.getElementById("themeToggleBtn");
 let isLightTheme = false;
