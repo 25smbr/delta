@@ -104,80 +104,85 @@ let rulerPoints = [];
 //   (13,13)↔(33,33)  and  (33,13)↔(13,33)
 let _svgId = 0;
 function symbolSVG(type = "infantry_alive") {
-    const parts  = type.split("_");
-    const status = parts[parts.length - 1];
-    const unit   = parts.slice(0, -1).join("_");
-    const barColor  = statusColors[status] ?? null;  // null → unknown, no bar
-    // Interior unit designator color — light on dark bg, overridden in light-mode
-    const s  = "#ffffff";
-    const cid = `sc${++_svgId}`;
+    const parts    = type.split("_");
+    const status   = parts[parts.length - 1];
+    const unit     = parts.slice(0, -1).join("_");
+    const barColor = statusColors[status] ?? null;   // null → unknown, no bar
+    const d        = "#111";   // designator / stroke color
+    const cid      = `sc${++_svgId}`;
 
-    // ── Unit interior designator (drawn ON TOP of the X cross) ───────
+    // ── NATO unit designators ─────────────────────────────────────────
+    // Diamond interior: top(23,3) right(43,23) bottom(23,43) left(3,23)
     let interior = "";
     switch (unit) {
+        // ─ Infantry: two horizontal bars ─────────────────────────────
         case "infantry":
-            // Two horizontal lines — NATO infantry designator
             interior = `
-              <line x1="13" y1="19" x2="33" y2="19" stroke="${s}" stroke-width="2.5" stroke-linecap="round"/>
-              <line x1="13" y1="27" x2="33" y2="27" stroke="${s}" stroke-width="2.5" stroke-linecap="round"/>`;
+              <line x1="11" y1="19" x2="35" y2="19" stroke="${d}" stroke-width="3" stroke-linecap="round"/>
+              <line x1="11" y1="27" x2="35" y2="27" stroke="${d}" stroke-width="3" stroke-linecap="round"/>`;
             break;
+
+        // ─ Armor / Tank: filled ellipse ───────────────────────────────
         case "tank":
-            // Solid oval — NATO armor
-            interior = `<ellipse cx="23" cy="23" rx="9" ry="5.5" fill="${s}" fill-opacity="0.9"/>`;
+            interior = `<ellipse cx="23" cy="23" rx="11" ry="6.5" fill="${d}"/>`;
             break;
+
+        // ─ Artillery: pill (stadium) + centre dot ─────────────────────
+        // ref: user picture 1
         case "artillery":
-            // Open circle — NATO field artillery
-            interior = `<circle cx="23" cy="23" r="7" stroke="${s}" stroke-width="2.5" fill="none"/>`;
+            interior = `
+              <rect x="9" y="17" width="28" height="12" rx="6"
+                    fill="none" stroke="${d}" stroke-width="2.5"/>
+              <circle cx="23" cy="23" r="4.5" fill="${d}"/>`;
             break;
+
+        // ─ Helicopter: bowtie (two inward-pointing filled triangles) ──
+        // ref: user picture 2
         case "helicopter":
-            // Rotor-cross — rotary wing
             interior = `
-              <circle cx="23" cy="23" r="3" stroke="${s}" stroke-width="2" fill="none"/>
-              <line x1="23" y1="14" x2="23" y2="20" stroke="${s}" stroke-width="2.5" stroke-linecap="round"/>
-              <line x1="23" y1="26" x2="23" y2="32" stroke="${s}" stroke-width="2.5" stroke-linecap="round"/>
-              <line x1="14" y1="23" x2="20" y2="23" stroke="${s}" stroke-width="2.5" stroke-linecap="round"/>
-              <line x1="26" y1="23" x2="32" y2="23" stroke="${s}" stroke-width="2.5" stroke-linecap="round"/>`;
+              <path d="M10 14 L23 23 L10 32 Z" fill="${d}"/>
+              <path d="M36 14 L23 23 L36 32 Z" fill="${d}"/>`;
             break;
+
+        // ─ Observation / position: small filled diamond ───────────────
         case "position":
-            // Filled dot — observation post
-            interior = `<circle cx="23" cy="23" r="5" fill="${s}"/>`;
+            interior = `<path d="M23 13 L32 23 L23 33 L14 23 Z" fill="${d}"/>`;
             break;
+
+        // ─ Humvee: 3 fan lines from top apex (picture 3 style) ────────
         case "humvee":
-            // Small rectangle + 2 wheels
             interior = `
-              <rect x="15" y="18" width="16" height="10" rx="2" stroke="${s}" stroke-width="2" fill="none"/>
-              <circle cx="18" cy="30" r="2.5" fill="${s}"/>
-              <circle cx="28" cy="30" r="2.5" fill="${s}"/>`;
+              <line x1="23" y1="4" x2="10" y2="39" stroke="${d}" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="23" y1="4" x2="23" y2="43" stroke="${d}" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="23" y1="4" x2="36" y2="39" stroke="${d}" stroke-width="2.5" stroke-linecap="round"/>`;
             break;
+
+        // ─ Truck: 4 fan lines from top apex (picture 3 style, denser) ─
         case "truck":
-            // Wider rectangle + 3 wheels
             interior = `
-              <rect x="12" y="17" width="22" height="12" rx="2" stroke="${s}" stroke-width="2" fill="none"/>
-              <circle cx="15" cy="31" r="2.5" fill="${s}"/>
-              <circle cx="23" cy="31" r="2.5" fill="${s}"/>
-              <circle cx="31" cy="31" r="2.5" fill="${s}"/>`;
+              <line x1="23" y1="4" x2="6"  y2="32" stroke="${d}" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="23" y1="4" x2="16" y2="42" stroke="${d}" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="23" y1="4" x2="30" y2="42" stroke="${d}" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="23" y1="4" x2="40" y2="32" stroke="${d}" stroke-width="2.5" stroke-linecap="round"/>`;
             break;
     }
 
-    // ── Status bar below the diamond ─────────────────────────────────
-    // bar sits at y=47..54 (gap of 4 px beneath diamond bottom at y=43)
+    // ── Status bar sits below the diamond (y 47–54) ──────────────────
     const bar = barColor
         ? `<rect x="5" y="47" width="36" height="7" fill="${barColor}" rx="1.5"/>`
         : "";
 
-    // ── Clip path limits the unit designator to inside the diamond ───
     return `<svg xmlns="http://www.w3.org/2000/svg" width="46" height="57" viewBox="0 0 46 57">
       <defs>
         <clipPath id="${cid}">
           <path d="M23 3 L43 23 L23 43 L3 23 Z"/>
         </clipPath>
       </defs>
-      <!-- NATO hostile force frame: salmon fill + X cross + diamond outline -->
+      <!-- NATO hostile frame: plain salmon fill + black outline, NO background X -->
       <path d="M23 3 L43 23 L23 43 L3 23 Z" fill="#f87171" fill-opacity="0.9"/>
-      <line x1="13" y1="13" x2="33" y2="33" stroke="#111" stroke-width="2"/>
-      <line x1="33" y1="13" x2="13" y2="33" stroke="#111" stroke-width="2"/>
-      <path d="M23 3 L43 23 L23 43 L3 23 Z" fill="none" stroke="#111" stroke-width="2.5" stroke-linejoin="round"/>
-      <!-- Unit designator clipped to diamond interior -->
+      <path d="M23 3 L43 23 L23 43 L3 23 Z"
+            fill="none" stroke="${d}" stroke-width="2.5" stroke-linejoin="round"/>
+      <!-- Unit type designator (clipped to diamond) -->
       <g clip-path="url(#${cid})">${interior}</g>
       <!-- Status bar -->
       ${bar}
