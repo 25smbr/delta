@@ -11,8 +11,117 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+
+  <!-- ═══════════════ LOGIN SCREEN ═══════════════ -->
+  <div id="loginScreen">
+    <div class="login-bg-grid"></div>
+    <div class="login-card">
+      <div class="login-header">
+        <div class="login-shield">
+          <svg width="38" height="38" viewBox="0 0 22 22" fill="none">
+            <path d="M11 1 L21 6 L21 16 L11 21 L1 16 L1 6 Z" stroke="#4fa3ff" stroke-width="1.5" fill="rgba(79,163,255,0.1)"/>
+            <path d="M11 5 L17 8.5 L17 15 L11 18 L5 15 L5 8.5 Z" fill="rgba(79,163,255,0.2)" stroke="#4fa3ff" stroke-width="1"/>
+          </svg>
+        </div>
+        <div>
+          <div class="login-brand">DELTA <span>/</span> MONITOR</div>
+          <div class="login-sub">TACTICAL SITUATIONAL AWARENESS</div>
+        </div>
+      </div>
+
+      <div class="login-divider"></div>
+
+      <div id="loginError" class="login-error" style="display:none;"></div>
+      <div id="loginSuccess" class="login-success" style="display:none;"></div>
+
+      <!-- LOGIN FORM -->
+      <div id="loginForm">
+        <div class="login-field">
+          <label class="login-label">EMAIL</label>
+          <input type="email" id="loginEmail" class="login-input mono" placeholder="operator@delta.mil" autocomplete="email"/>
+        </div>
+        <div class="login-field">
+          <label class="login-label">PASSWORD</label>
+          <div class="login-pw-wrap">
+            <input type="password" id="loginPassword" class="login-input mono" placeholder="••••••••" autocomplete="current-password"/>
+            <button class="login-pw-toggle" id="loginPwToggle" tabindex="-1" type="button">
+              <svg width="14" height="14" viewBox="0 0 16 16" id="eyeIcon"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" stroke="currentColor" stroke-width="1.3" fill="none"/><circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="login-row-between">
+          <label class="login-check-label">
+            <input type="checkbox" id="rememberMe" class="login-check"/>
+            <span>REMEMBER ME</span>
+          </label>
+          <button class="login-link" id="showRegisterBtn" type="button">REQUEST ACCESS</button>
+        </div>
+        <button class="login-submit" id="loginSubmitBtn" type="button">
+          <span id="loginBtnText">AUTHENTICATE</span>
+          <svg width="14" height="14" viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+
+      <!-- REGISTER FORM -->
+      <div id="registerForm" style="display:none;">
+        <div class="login-field">
+          <label class="login-label">EMAIL</label>
+          <input type="email" id="regEmail" class="login-input mono" placeholder="operator@delta.mil" autocomplete="email"/>
+        </div>
+        <div class="login-field">
+          <label class="login-label">PASSWORD</label>
+          <input type="password" id="regPassword" class="login-input mono" placeholder="Min 6 characters" autocomplete="new-password"/>
+        </div>
+        <div class="login-field">
+          <label class="login-label">CONFIRM PASSWORD</label>
+          <input type="password" id="regConfirm" class="login-input mono" placeholder="Repeat password" autocomplete="new-password"/>
+        </div>
+        <div class="login-row-between">
+          <button class="login-link" id="showLoginBtn" type="button">← BACK TO LOGIN</button>
+        </div>
+        <button class="login-submit" id="registerSubmitBtn" type="button">
+          <span>REQUEST ACCESS</span>
+          <svg width="14" height="14" viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+
+      <div class="login-footer">
+        <div class="login-status-dot"></div>
+        <span id="loginStatusText">AWAITING CREDENTIALS</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ USER PANEL (slide-in) ═══════════════ -->
+  <div id="userPanel" class="user-panel" style="display:none;">
+    <div class="user-panel-header">
+      <div class="user-panel-title">
+        <svg width="12" height="12" viewBox="0 0 16 16"><circle cx="8" cy="5" r="3" stroke="currentColor" stroke-width="1.3" fill="none"/><path d="M2 14c0-4 2.7-5 6-5s6 1 6 5" stroke="currentColor" stroke-width="1.3" fill="none"/></svg>
+        OPERATOR
+      </div>
+      <button class="user-panel-close" id="userPanelClose">✕</button>
+    </div>
+    <div class="user-panel-email mono" id="userPanelEmail">—</div>
+    <div class="user-panel-role" id="userPanelRole">—</div>
+    <div class="user-panel-divider"></div>
+
+    <!-- ADMIN SECTION -->
+    <div id="adminSection" style="display:none;">
+      <div class="user-panel-section-label">ADMIN — USER MANAGEMENT</div>
+      <div id="adminUserList" class="admin-user-list">
+        <div class="admin-loading">Loading users…</div>
+      </div>
+      <div class="user-panel-divider"></div>
+    </div>
+
+    <button class="user-panel-logout" id="logoutBtn">
+      <svg width="12" height="12" viewBox="0 0 16 16"><path d="M6 3H3v10h3M11 5l3 3-3 3M14 8H7" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      SIGN OUT
+    </button>
+  </div>
+
   <!-- ═══════════════ TOP BAR ═══════════════ -->
-  <header id="topBar">
+  <header id="topBar" style="display:none;">
     <div class="topBar-left">
       <div class="brand-shield">
         <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
@@ -49,19 +158,17 @@
           <line x1="2.9" y1="13.1" x2="4.3" y2="11.7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
         </svg>
       </button>
-      <button class="topBtn" title="User">
+      <button class="topBtn" id="userBtn" title="User account">
         <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="5" r="3" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M2 14c0-4 2.7-5 6-5s6 1 6 5" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
       </button>
     </div>
   </header>
 
   <!-- ═══════════════ MAIN AREA ═══════════════ -->
-  <div id="appBody">
+  <div id="appBody" style="display:none;">
 
     <!-- ── LEFT PANEL ── -->
     <aside id="leftPanel">
-
-      <!-- Collapse toggle — always visible, outside the scrollable inner, z-index above map -->
       <button id="collapseLeftBtn" title="Collapse panel">
         <svg width="12" height="12" viewBox="0 0 12 12">
           <polyline points="8,2 4,6 8,10" stroke="currentColor" stroke-width="1.5"
@@ -69,7 +176,6 @@
         </svg>
       </button>
 
-      <!-- Fixed (non-scrolling) panel content wrapper -->
       <div class="panel-inner">
 
         <!-- ── SECTION: UNIT SYMBOLS ── -->
@@ -84,7 +190,6 @@
               </svg>
             </button>
           </div>
-          <!-- The symbols body is the ONLY scrollable part -->
           <div class="section-body scrollable-symbols" id="symbols-body">
             <div class="symbol-group">
               <div class="group-label">INFANTRY</div>
@@ -203,7 +308,7 @@
           </div>
         </section>
 
-      </div><!-- end panel-inner -->
+      </div>
     </aside>
 
     <!-- MAP -->
@@ -255,7 +360,7 @@
   </div>
 
   <!-- ═══════════════ STATUS BAR ═══════════════ -->
-  <footer id="statusBar">
+  <footer id="statusBar" style="display:none;">
     <div class="status-left">
       <span class="status-item" id="markerCount">MARKERS: 0</span>
       <span class="status-sep">|</span>
