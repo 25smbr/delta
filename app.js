@@ -56,20 +56,22 @@ updateClock();
 setInterval(updateClock, 1000);
 // ─── SYMBOL DEFINITIONS ──────────────────────────────────────────────────────
 const symbolGroups = {
-    infantry:  ["infantry_alive",  "infantry_wounded",  "infantry_dead"],
-    tank:      ["tank_alive",      "tank_damaged",      "tank_destroyed"],
-    artillery: ["artillery_alive", "artillery_damaged", "artillery_destroyed"],
-    helicopter:["helicopter_alive","helicopter_damaged","helicopter_destroyed"],
-    position:  ["position_alive",                       "position_destroyed"],
-    humvee:    ["humvee_alive",    "humvee_damaged",    "humvee_destroyed"],
-    truck:     ["truck_alive",     "truck_damaged",     "truck_destroyed"]
+    infantry:  ["infantry_alive",  "infantry_wounded",  "infantry_dead",      "infantry_unknown"],
+    tank:      ["tank_alive",      "tank_damaged",      "tank_destroyed",     "tank_unknown"],
+    artillery: ["artillery_alive", "artillery_damaged", "artillery_destroyed","artillery_unknown"],
+    helicopter:["helicopter_alive","helicopter_damaged","helicopter_destroyed","helicopter_unknown"],
+    position:  ["position_alive",  "position_wounded",  "position_destroyed", "position_unknown"],
+    humvee:    ["humvee_alive",    "humvee_damaged",    "humvee_destroyed",   "humvee_unknown"],
+    truck:     ["truck_alive",     "truck_damaged",     "truck_destroyed",    "truck_unknown"]
 };
+// Status bar color below the NATO diamond. null = no bar (unknown).
 const statusColors = {
-    alive:     "#00cc55",   // green  — active threat
-    wounded:   "#ffcc00",   // yellow — degraded
-    damaged:   "#ff8800",   // orange — severely degraded
-    dead:      "#ff4444",   // red    — eliminated
-    destroyed: "#ff4444"
+    alive:     "#00cc55",   // green
+    wounded:   "#ffcc00",   // yellow
+    damaged:   "#ff8800",   // orange
+    dead:      "#ff4444",   // red
+    destroyed: "#ff4444",   // red
+    unknown:   null         // no bar
 };
 let selectedSymbol = "infantry_alive";
 // ════════════════════════════════════════════════════════════════════
@@ -94,96 +96,91 @@ const PIXELS_PER_METER = 142 / 250;
 let rulerMode   = false;
 let rulerPoints = [];
 // ════════════════════════════════════════════════════════════════════
-// SVG BUILDER  (NATO-style diamond symbols)
+// SVG BUILDER  (NATO APP-6 hostile diamond)
 // ════════════════════════════════════════════════════════════════════
+// Diamond sits in 46×46 space; status bar adds 11 px below → total height 57.
+// The diamond occupies y = 3..43 (centre 23,23).
+// X-cross lines connect midpoints of adjacent sides:
+//   (13,13)↔(33,33)  and  (33,13)↔(13,33)
 let _svgId = 0;
 function symbolSVG(type = "infantry_alive") {
     const parts  = type.split("_");
     const status = parts[parts.length - 1];
     const unit   = parts.slice(0, -1).join("_");
-    const bColor = statusColors[status] || "#4fa3ff";
-    // Interior stroke: light on dark bg; CSS will override to dark in light-mode.
-    const s   = "#d0d8e8";
+    const barColor  = statusColors[status] ?? null;  // null → unknown, no bar
+    // Interior unit designator color — light on dark bg, overridden in light-mode
+    const s  = "#ffffff";
     const cid = `sc${++_svgId}`;
 
-    // ── Unit designator (lower 60 % of diamond) ──────────────────────
+    // ── Unit interior designator (drawn ON TOP of the X cross) ───────
     let interior = "";
     switch (unit) {
         case "infantry":
-            // Two horizontal bars — NATO infantry
+            // Two horizontal lines — NATO infantry designator
             interior = `
-              <line x1="12" y1="22" x2="34" y2="22" stroke="${s}" stroke-width="2.5" stroke-linecap="round"/>
-              <line x1="12" y1="28" x2="34" y2="28" stroke="${s}" stroke-width="2.5" stroke-linecap="round"/>`;
+              <line x1="13" y1="19" x2="33" y2="19" stroke="${s}" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="13" y1="27" x2="33" y2="27" stroke="${s}" stroke-width="2.5" stroke-linecap="round"/>`;
             break;
         case "tank":
-            // Solid ellipse — NATO armor
-            interior = `<ellipse cx="23" cy="26" rx="10" ry="6" fill="${s}" fill-opacity="0.85"/>`;
+            // Solid oval — NATO armor
+            interior = `<ellipse cx="23" cy="23" rx="9" ry="5.5" fill="${s}" fill-opacity="0.9"/>`;
             break;
         case "artillery":
             // Open circle — NATO field artillery
-            interior = `<circle cx="23" cy="26" r="7" stroke="${s}" stroke-width="2.5" fill="none"/>`;
+            interior = `<circle cx="23" cy="23" r="7" stroke="${s}" stroke-width="2.5" fill="none"/>`;
             break;
         case "helicopter":
-            // Rotor cross with hub — rotary wing
+            // Rotor-cross — rotary wing
             interior = `
-              <circle cx="23" cy="25" r="3.5" stroke="${s}" stroke-width="1.8" fill="none"/>
-              <line x1="23" y1="16" x2="23" y2="21" stroke="${s}" stroke-width="2.5" stroke-linecap="round"/>
-              <line x1="23" y1="29" x2="23" y2="34" stroke="${s}" stroke-width="2.5" stroke-linecap="round"/>
-              <line x1="14" y1="25" x2="19" y2="25" stroke="${s}" stroke-width="2.5" stroke-linecap="round"/>
-              <line x1="27" y1="25" x2="32" y2="25" stroke="${s}" stroke-width="2.5" stroke-linecap="round"/>`;
+              <circle cx="23" cy="23" r="3" stroke="${s}" stroke-width="2" fill="none"/>
+              <line x1="23" y1="14" x2="23" y2="20" stroke="${s}" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="23" y1="26" x2="23" y2="32" stroke="${s}" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="14" y1="23" x2="20" y2="23" stroke="${s}" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="26" y1="23" x2="32" y2="23" stroke="${s}" stroke-width="2.5" stroke-linecap="round"/>`;
             break;
         case "position":
-            // Concentric dot — observation post
-            interior = `
-              <circle cx="23" cy="25" r="4" fill="${s}"/>
-              <circle cx="23" cy="25" r="8" stroke="${s}" stroke-width="1.8" fill="none"/>`;
+            // Filled dot — observation post
+            interior = `<circle cx="23" cy="23" r="5" fill="${s}"/>`;
             break;
         case "humvee":
-            // Top-down 4×4: body + 2 axle wheels
+            // Small rectangle + 2 wheels
             interior = `
-              <rect x="14" y="20" width="18" height="10" rx="2" stroke="${s}" stroke-width="2" fill="none"/>
-              <circle cx="16" cy="33" r="2.5" fill="${s}"/>
-              <circle cx="30" cy="33" r="2.5" fill="${s}"/>`;
+              <rect x="15" y="18" width="16" height="10" rx="2" stroke="${s}" stroke-width="2" fill="none"/>
+              <circle cx="18" cy="30" r="2.5" fill="${s}"/>
+              <circle cx="28" cy="30" r="2.5" fill="${s}"/>`;
             break;
         case "truck":
-            // Wider body + 3 wheels
+            // Wider rectangle + 3 wheels
             interior = `
-              <rect x="11" y="19" width="24" height="11" rx="2" stroke="${s}" stroke-width="2" fill="none"/>
-              <circle cx="15" cy="33" r="2.5" fill="${s}"/>
-              <circle cx="23" cy="33" r="2.5" fill="${s}"/>
-              <circle cx="31" cy="33" r="2.5" fill="${s}"/>`;
+              <rect x="12" y="17" width="22" height="12" rx="2" stroke="${s}" stroke-width="2" fill="none"/>
+              <circle cx="15" cy="31" r="2.5" fill="${s}"/>
+              <circle cx="23" cy="31" r="2.5" fill="${s}"/>
+              <circle cx="31" cy="31" r="2.5" fill="${s}"/>`;
             break;
     }
 
-    // ── Status overlay for degraded / eliminated ──────────────────────
-    let overlay = "";
-    if (status === "damaged") {
-        overlay = `<line x1="10" y1="10" x2="36" y2="36" stroke="#ff8800" stroke-width="2.5" stroke-linecap="round"/>`;
-    } else if (status === "dead" || status === "destroyed") {
-        overlay = `
-          <line x1="10" y1="10" x2="36" y2="36" stroke="#ff4444" stroke-width="2.5" stroke-linecap="round"/>
-          <line x1="36" y1="10" x2="10" y2="36" stroke="#ff4444" stroke-width="2.5" stroke-linecap="round"/>`;
-    }
+    // ── Status bar below the diamond ─────────────────────────────────
+    // bar sits at y=47..54 (gap of 4 px beneath diamond bottom at y=43)
+    const bar = barColor
+        ? `<rect x="5" y="47" width="36" height="7" fill="${barColor}" rx="1.5"/>`
+        : "";
 
-    // ── Status triangle at the top apex of the diamond ────────────────
-    // Diamond: top(23,3) right(43,23) bottom(23,43) left(3,23)
-    // At y=14: diamond half-width = 14-3 = 11 → corners at (12,14) and (34,14)
-    const statusTri = `<path d="M23 3 L34 14 L12 14 Z" fill="${bColor}" opacity="0.95"/>`;
-
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="46" height="46" viewBox="0 0 46 46">
+    // ── Clip path limits the unit designator to inside the diamond ───
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="46" height="57" viewBox="0 0 46 57">
       <defs>
         <clipPath id="${cid}">
           <path d="M23 3 L43 23 L23 43 L3 23 Z"/>
         </clipPath>
       </defs>
-      <path d="M23 3 L43 23 L23 43 L3 23 Z"
-            fill="${bColor}" fill-opacity="0.12"
-            stroke="${bColor}" stroke-width="2" stroke-linejoin="round"/>
-      ${statusTri}
-      <g clip-path="url(#${cid})">
-        ${interior}
-        ${overlay}
-      </g>
+      <!-- NATO hostile force frame: salmon fill + X cross + diamond outline -->
+      <path d="M23 3 L43 23 L23 43 L3 23 Z" fill="#f87171" fill-opacity="0.9"/>
+      <line x1="13" y1="13" x2="33" y2="33" stroke="#111" stroke-width="2"/>
+      <line x1="33" y1="13" x2="13" y2="33" stroke="#111" stroke-width="2"/>
+      <path d="M23 3 L43 23 L23 43 L3 23 Z" fill="none" stroke="#111" stroke-width="2.5" stroke-linejoin="round"/>
+      <!-- Unit designator clipped to diamond interior -->
+      <g clip-path="url(#${cid})">${interior}</g>
+      <!-- Status bar -->
+      ${bar}
     </svg>`;
 }
 // ─── POPULATE SYMBOL ROWS ─────────────────────────────────────────────────────
@@ -276,7 +273,7 @@ function createIcon(type, data = {}) {
         html,
         className:  "",
         iconSize:   [140, 140],
-        iconAnchor: [70, 70]
+        iconAnchor: [70, 67]   // 47(left) + 23(diamond centre) = 70 x; 44(top) + 23 = 67 y
     });
 }
 onSnapshot(markersCollection, (snapshot) => {
