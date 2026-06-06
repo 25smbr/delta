@@ -65,10 +65,10 @@ const symbolGroups = {
     truck:     ["truck_alive",     "truck_damaged",     "truck_destroyed"]
 };
 const statusColors = {
-    alive:     "#4fa3ff",
-    wounded:   "#ffcc00",
-    damaged:   "#ff8800",
-    dead:      "#ff4444",
+    alive:     "#00cc55",   // green  — active threat
+    wounded:   "#ffcc00",   // yellow — degraded
+    damaged:   "#ff8800",   // orange — severely degraded
+    dead:      "#ff4444",   // red    — eliminated
     destroyed: "#ff4444"
 };
 let selectedSymbol = "infantry_alive";
@@ -94,103 +94,96 @@ const PIXELS_PER_METER = 142 / 250;
 let rulerMode   = false;
 let rulerPoints = [];
 // ════════════════════════════════════════════════════════════════════
-// SVG BUILDER
+// SVG BUILDER  (NATO-style diamond symbols)
 // ════════════════════════════════════════════════════════════════════
-function symbolSVG(type = "infantry_alive", forMap = false) {
+let _svgId = 0;
+function symbolSVG(type = "infantry_alive") {
     const parts  = type.split("_");
     const status = parts[parts.length - 1];
     const unit   = parts.slice(0, -1).join("_");
-    const size   = forMap ? 46 : 46;
-    const borderColor = statusColors[status] || "#4fa3ff";
-    // Interior symbol stroke: a light neutral that reads on dark bg.
-    // In light mode CSS will override this to #2d3a4a via attribute selector.
-    const strokeColor = "#d0d8e8";
-    let center = "";
+    const bColor = statusColors[status] || "#4fa3ff";
+    // Interior stroke: light on dark bg; CSS will override to dark in light-mode.
+    const s   = "#d0d8e8";
+    const cid = `sc${++_svgId}`;
+
+    // ── Unit designator (lower 60 % of diamond) ──────────────────────
+    let interior = "";
     switch (unit) {
         case "infantry":
-            // Stick figure — top-down person
-            center = `
-              <circle cx="23" cy="13" r="4.5" stroke="${strokeColor}" stroke-width="2.2" fill="none"/>
-              <line x1="23" y1="18" x2="23" y2="30" stroke="${strokeColor}" stroke-width="2.2" stroke-linecap="round"/>
-              <line x1="14" y1="23" x2="32" y2="23" stroke="${strokeColor}" stroke-width="2.2" stroke-linecap="round"/>
-              <line x1="23" y1="30" x2="16" y2="40" stroke="${strokeColor}" stroke-width="2.2" stroke-linecap="round"/>
-              <line x1="23" y1="30" x2="30" y2="40" stroke="${strokeColor}" stroke-width="2.2" stroke-linecap="round"/>`;
+            // Two horizontal bars — NATO infantry
+            interior = `
+              <line x1="12" y1="22" x2="34" y2="22" stroke="${s}" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="12" y1="28" x2="34" y2="28" stroke="${s}" stroke-width="2.5" stroke-linecap="round"/>`;
             break;
         case "tank":
-            // Top-down hull + turret circle + barrel
-            center = `
-              <rect x="10" y="17" width="26" height="16" rx="3" stroke="${strokeColor}" stroke-width="2.2" fill="none"/>
-              <circle cx="23" cy="25" r="5" stroke="${strokeColor}" stroke-width="2" fill="none"/>
-              <line x1="23" y1="20" x2="23" y2="7" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round"/>`;
+            // Solid ellipse — NATO armor
+            interior = `<ellipse cx="23" cy="26" rx="10" ry="6" fill="${s}" fill-opacity="0.85"/>`;
             break;
         case "artillery":
-            // Two wheels + axle + angled barrel
-            center = `
-              <circle cx="14" cy="33" r="5" stroke="${strokeColor}" stroke-width="2" fill="none"/>
-              <circle cx="32" cy="33" r="5" stroke="${strokeColor}" stroke-width="2" fill="none"/>
-              <line x1="9" y1="33" x2="37" y2="33" stroke="${strokeColor}" stroke-width="2.2" stroke-linecap="round"/>
-              <line x1="23" y1="33" x2="31" y2="11" stroke="${strokeColor}" stroke-width="3" stroke-linecap="round"/>`;
+            // Open circle — NATO field artillery
+            interior = `<circle cx="23" cy="26" r="7" stroke="${s}" stroke-width="2.5" fill="none"/>`;
             break;
         case "helicopter":
-            // Rotor cross + centre body
-            center = `
-              <circle cx="23" cy="23" r="4.5" stroke="${strokeColor}" stroke-width="2" fill="none"/>
-              <line x1="23" y1="6" x2="23" y2="18" stroke="${strokeColor}" stroke-width="2.5" stroke-linecap="round"/>
-              <line x1="23" y1="28" x2="23" y2="40" stroke="${strokeColor}" stroke-width="2.5" stroke-linecap="round"/>
-              <line x1="6" y1="23" x2="18" y2="23" stroke="${strokeColor}" stroke-width="2.5" stroke-linecap="round"/>
-              <line x1="28" y1="23" x2="40" y2="23" stroke="${strokeColor}" stroke-width="2.5" stroke-linecap="round"/>`;
+            // Rotor cross with hub — rotary wing
+            interior = `
+              <circle cx="23" cy="25" r="3.5" stroke="${s}" stroke-width="1.8" fill="none"/>
+              <line x1="23" y1="16" x2="23" y2="21" stroke="${s}" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="23" y1="29" x2="23" y2="34" stroke="${s}" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="14" y1="25" x2="19" y2="25" stroke="${s}" stroke-width="2.5" stroke-linecap="round"/>
+              <line x1="27" y1="25" x2="32" y2="25" stroke="${s}" stroke-width="2.5" stroke-linecap="round"/>`;
             break;
         case "position":
-            // Diamond with inner dot — observation post
-            center = `
-              <path d="M23 7 L39 23 L23 39 L7 23 Z" stroke="${strokeColor}" stroke-width="2.2" fill="none" stroke-linejoin="round"/>
-              <circle cx="23" cy="23" r="3" stroke="${strokeColor}" stroke-width="1.8" fill="none"/>`;
+            // Concentric dot — observation post
+            interior = `
+              <circle cx="23" cy="25" r="4" fill="${s}"/>
+              <circle cx="23" cy="25" r="8" stroke="${s}" stroke-width="1.8" fill="none"/>`;
             break;
         case "humvee":
-            // Top-down 4×4: body + 4 wheel blocks
-            center = `
-              <rect x="13" y="14" width="20" height="20" rx="2" stroke="${strokeColor}" stroke-width="2.2" fill="none"/>
-              <line x1="13" y1="21" x2="33" y2="21" stroke="${strokeColor}" stroke-width="1.5"/>
-              <rect x="8"  y="13" width="5" height="7" rx="1.5" stroke="${strokeColor}" stroke-width="1.8" fill="none"/>
-              <rect x="33" y="13" width="5" height="7" rx="1.5" stroke="${strokeColor}" stroke-width="1.8" fill="none"/>
-              <rect x="8"  y="28" width="5" height="7" rx="1.5" stroke="${strokeColor}" stroke-width="1.8" fill="none"/>
-              <rect x="33" y="28" width="5" height="7" rx="1.5" stroke="${strokeColor}" stroke-width="1.8" fill="none"/>`;
+            // Top-down 4×4: body + 2 axle wheels
+            interior = `
+              <rect x="14" y="20" width="18" height="10" rx="2" stroke="${s}" stroke-width="2" fill="none"/>
+              <circle cx="16" cy="33" r="2.5" fill="${s}"/>
+              <circle cx="30" cy="33" r="2.5" fill="${s}"/>`;
             break;
         case "truck":
-            // Cargo bed + smaller cab + 4 wheels
-            center = `
-              <rect x="7"  y="16" width="18" height="16" rx="1.5" stroke="${strokeColor}" stroke-width="2.2" fill="none"/>
-              <rect x="25" y="19" width="12" height="10" rx="2"   stroke="${strokeColor}" stroke-width="2.2" fill="none"/>
-              <rect x="5"  y="14" width="4"  height="6"  rx="1.5" stroke="${strokeColor}" stroke-width="1.5" fill="none"/>
-              <rect x="19" y="14" width="4"  height="6"  rx="1.5" stroke="${strokeColor}" stroke-width="1.5" fill="none"/>
-              <rect x="5"  y="28" width="4"  height="6"  rx="1.5" stroke="${strokeColor}" stroke-width="1.5" fill="none"/>
-              <rect x="19" y="28" width="4"  height="6"  rx="1.5" stroke="${strokeColor}" stroke-width="1.5" fill="none"/>`;
+            // Wider body + 3 wheels
+            interior = `
+              <rect x="11" y="19" width="24" height="11" rx="2" stroke="${s}" stroke-width="2" fill="none"/>
+              <circle cx="15" cy="33" r="2.5" fill="${s}"/>
+              <circle cx="23" cy="33" r="2.5" fill="${s}"/>
+              <circle cx="31" cy="33" r="2.5" fill="${s}"/>`;
             break;
     }
+
+    // ── Status overlay for degraded / eliminated ──────────────────────
     let overlay = "";
-    if (status === "wounded") {
-        overlay = `<text x="23" y="52" text-anchor="middle"
-                     font-size="12" fill="#ffcc00" font-weight="bold">!</text>`;
-    }
     if (status === "damaged") {
+        overlay = `<line x1="10" y1="10" x2="36" y2="36" stroke="#ff8800" stroke-width="2.5" stroke-linecap="round"/>`;
+    } else if (status === "dead" || status === "destroyed") {
         overlay = `
-          <line x1="10" y1="36" x2="36" y2="10"
-                stroke="#ff8800" stroke-width="3" stroke-linecap="round"/>`;
+          <line x1="10" y1="10" x2="36" y2="36" stroke="#ff4444" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="36" y1="10" x2="10" y2="36" stroke="#ff4444" stroke-width="2.5" stroke-linecap="round"/>`;
     }
-    if (status === "dead" || status === "destroyed") {
-        overlay = `
-          <line x1="8" y1="8"  x2="38" y2="38"
-                stroke="#ff4444" stroke-width="3" stroke-linecap="round"/>
-          <line x1="38" y1="8" x2="8"  y2="38"
-                stroke="#ff4444" stroke-width="3" stroke-linecap="round"/>`;
-    }
-    const fillOpacity = status === "alive" ? "0.08" : "0.05";
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 46 46">
-      <rect x="3" y="3" width="40" height="40" rx="2"
-            fill="${borderColor}" fill-opacity="${fillOpacity}"
-            stroke="${borderColor}" stroke-width="2"/>
-      ${center}
-      ${overlay}
+
+    // ── Status triangle at the top apex of the diamond ────────────────
+    // Diamond: top(23,3) right(43,23) bottom(23,43) left(3,23)
+    // At y=14: diamond half-width = 14-3 = 11 → corners at (12,14) and (34,14)
+    const statusTri = `<path d="M23 3 L34 14 L12 14 Z" fill="${bColor}" opacity="0.95"/>`;
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="46" height="46" viewBox="0 0 46 46">
+      <defs>
+        <clipPath id="${cid}">
+          <path d="M23 3 L43 23 L23 43 L3 23 Z"/>
+        </clipPath>
+      </defs>
+      <path d="M23 3 L43 23 L23 43 L3 23 Z"
+            fill="${bColor}" fill-opacity="0.12"
+            stroke="${bColor}" stroke-width="2" stroke-linejoin="round"/>
+      ${statusTri}
+      <g clip-path="url(#${cid})">
+        ${interior}
+        ${overlay}
+      </g>
     </svg>`;
 }
 // ─── POPULATE SYMBOL ROWS ─────────────────────────────────────────────────────
@@ -263,25 +256,40 @@ document.getElementById("clearDrawingsBtn").addEventListener("click", async () =
     }
 });
 // ─── FIRESTORE REALTIME — MARKERS ────────────────────────────────────────────
-const displayedMarkers = {};
-function createIcon(type) {
+const displayedMarkers = {};        // id → { marker, data }
+let pendingEditMarkerId = null;     // auto-open popup for freshly placed marker
+
+function createIcon(type, data = {}) {
+    const svg    = symbolSVG(type);
+    const date   = escHtml(data.date   || "");
+    const amount = escHtml(String(data.amount || ""));
+    const info   = escHtml(data.info   || "");
+    const source = escHtml(data.source || "");
+    const html = `<div class="mkr-wrap">
+      <div class="ml ml-tl">${date}</div>
+      <div class="ml ml-tc">${amount}</div>
+      <div class="ml ml-tr">${info}</div>
+      <div class="mkr-icon">${svg}</div>
+      <div class="ml ml-br">${source}</div>
+    </div>`;
     return L.divIcon({
-        html: symbolSVG(type, true),
-        className: "",
-        iconSize: [46, 46],
-        iconAnchor: [23, 23]
+        html,
+        className:  "",
+        iconSize:   [140, 140],
+        iconAnchor: [70, 70]
     });
 }
 onSnapshot(markersCollection, (snapshot) => {
-    const current = new Set();
-    snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        const id   = docSnap.id;
-        current.add(id);
-        if (!displayedMarkers[id]) {
+    snapshot.docChanges().forEach((change) => {
+        const id   = change.doc.id;
+        const data = change.doc.data();
+        if (change.type === "added") {
             const marker = L.marker([data.y, data.x], {
-                icon: createIcon(data.type || "infantry_alive")
+                icon: createIcon(data.type || "infantry_alive", data)
             }).addTo(map);
+            marker.on("click", () => {
+                openMarkerEditPopup(id, marker, displayedMarkers[id]?.data || data);
+            });
             marker.on("contextmenu", async () => {
                 if (confirm("Delete this marker?")) {
                     await deleteDoc(doc(db, "markers", id));
@@ -289,18 +297,29 @@ onSnapshot(markersCollection, (snapshot) => {
                     if (idx !== -1) undoStack.splice(idx, 1);
                 }
             });
-            displayedMarkers[id] = marker;
-        }
-    });
-    Object.keys(displayedMarkers).forEach((id) => {
-        if (!current.has(id)) {
-            map.removeLayer(displayedMarkers[id]);
-            delete displayedMarkers[id];
+            displayedMarkers[id] = { marker, data };
+            // Auto-open edit popup for the marker just placed by this client
+            if (pendingEditMarkerId === id) {
+                pendingEditMarkerId = null;
+                openMarkerEditPopup(id, marker, data);
+            }
+        } else if (change.type === "modified") {
+            if (displayedMarkers[id]) {
+                displayedMarkers[id].marker.setIcon(
+                    createIcon(data.type || "infantry_alive", data)
+                );
+                displayedMarkers[id].data = data;
+            }
+        } else if (change.type === "removed") {
+            if (displayedMarkers[id]) {
+                map.removeLayer(displayedMarkers[id].marker);
+                delete displayedMarkers[id];
+            }
         }
     });
     document.getElementById("markerCount").textContent =
         `MARKERS: ${Object.keys(displayedMarkers).length}`;
-});
+}, (err) => console.error("Markers sync error:", err));
 // ─── FIRESTORE REALTIME — DRAWINGS ───────────────────────────────────────────
 onSnapshot(drawingsCollection, (snapshot) => {
     snapshot.docChanges().forEach((change) => {
@@ -326,14 +345,64 @@ onSnapshot(drawingsCollection, (snapshot) => {
 // ─── ADD MARKERS ─────────────────────────────────────────────────────────────
 map.on("click", async (e) => {
     if (drawMode || rulerMode) return;
+    // UTC+2 timestamp (matches the HUD clock)
+    const now  = new Date(Date.now() + 2 * 3600 * 1000);
+    const p    = n => String(n).padStart(2, "0");
+    const dateStr = `${p(now.getUTCDate())}/${p(now.getUTCMonth()+1)}/${String(now.getUTCFullYear()).slice(-2)} ${p(now.getUTCHours())}:${p(now.getUTCMinutes())}:${p(now.getUTCSeconds())}`;
     const docRef = await addDoc(markersCollection, {
         x:       e.latlng.lng,
         y:       e.latlng.lat,
         type:    selectedSymbol,
-        created: Date.now()
+        created: Date.now(),
+        date:    dateStr,
+        amount:  "",
+        info:    "",
+        source:  ""
     });
+    pendingEditMarkerId = docRef.id;
     undoStack.push({ type: "marker", id: docRef.id });
 });
+
+// ─── MARKER EDIT POPUP ───────────────────────────────────────────────────────
+function openMarkerEditPopup(markerId, markerLeaflet, data) {
+    const amounts = ["","1","2","3","5","10","15","20","30","50"];
+    const opts = amounts.map(a =>
+        `<option value="${a}"${String(data.amount||"")=== a?" selected":""}>${a||"—"}</option>`
+    ).join("");
+    const popupContent = `
+      <div class="mep-popup">
+        <div class="mep-row">
+          <span class="mep-label">DATE</span>
+          <span class="mep-date">${escHtml(data.date||"")}</span>
+        </div>
+        <div class="mep-row">
+          <label class="mep-label" for="mep-amt">AMT</label>
+          <select class="mep-sel" id="mep-amt">${opts}</select>
+        </div>
+        <div class="mep-row">
+          <label class="mep-label" for="mep-inf">INFO</label>
+          <input class="mep-inp" id="mep-inf" type="text" maxlength="40"
+                 placeholder="short description" value="${escHtml(data.info||"")}"/>
+        </div>
+        <div class="mep-row">
+          <label class="mep-label" for="mep-src">SRC</label>
+          <input class="mep-inp" id="mep-src" type="text" maxlength="40"
+                 placeholder="drone recon…" value="${escHtml(data.source||"")}"/>
+        </div>
+        <button class="mep-save" id="mep-save">SAVE</button>
+      </div>`;
+    markerLeaflet.bindPopup(popupContent, { className: "mep-outer", maxWidth: 230, minWidth: 200 });
+    markerLeaflet.once("popupopen", () => {
+        document.getElementById("mep-save")?.addEventListener("click", async () => {
+            const amt = document.getElementById("mep-amt")?.value || "";
+            const inf = document.getElementById("mep-inf")?.value || "";
+            const src = document.getElementById("mep-src")?.value || "";
+            await updateDoc(doc(db, "markers", markerId), { amount: amt, info: inf, source: src });
+            markerLeaflet.closePopup();
+        });
+    });
+    markerLeaflet.openPopup();
+}
 // ─── RIGHT-CLICK COORDINATE POPUP ────────────────────────────────────────────
 const coordPopup = document.getElementById("coordPopup");
 const popupBoth  = document.getElementById("popupBoth");
@@ -1169,6 +1238,15 @@ function updateTileLayout() {
     const empty = document.getElementById("vezhaEmpty");
     if (empty) empty.style.display = count === 0 ? "flex" : "none";
 }
+
+// ─── CHAT COLLAPSE ───────────────────────────────────────────────────────────
+document.getElementById("chatCollapseBtn")?.addEventListener("click", () => {
+    const sidebar = document.querySelector(".vezha-chat-sidebar");
+    const btn     = document.getElementById("chatCollapseBtn");
+    if (!sidebar) return;
+    const collapsed = sidebar.classList.toggle("collapsed");
+    btn.textContent = collapsed ? "›" : "‹";
+});
 
 // ─── CHAT ─────────────────────────────────────────────────────────────────────
 document.getElementById("vezhaChatSend").addEventListener("click", sendChat);
