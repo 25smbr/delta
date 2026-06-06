@@ -289,26 +289,29 @@
 
     <!-- ── Chat sidebar ── -->
     <aside class="vezha-chat-sidebar">
-      <button id="chatCollapseBtn" class="chat-collapse-btn" title="Collapse chat">‹</button>
-      <div class="vezha-chat-header">
-        <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-          <path d="M1 1h11v8H7.5L5 12V9H1V1z" stroke="#4fa3ff" stroke-width="1.3" stroke-linejoin="round"/>
-        </svg>
-        <span>COMMS</span>
-      </div>
-      <div class="vezha-chat-messages" id="vezhaChatMessages"></div>
-      <div class="vezha-chat-input-row">
-        <input
-          type="text"
-          id="vezhaChatInput"
-          class="vezha-chat-input mono"
-          placeholder="TYPE MESSAGE..."
-          maxlength="400"
-          autocomplete="off"
-        />
-        <button id="vezhaChatSend" class="vezha-chat-send" title="Send">
-          <svg width="14" height="14" viewBox="0 0 14 14"><path d="M1 7L13 1 7 13 6 8 1 7z" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round"/></svg>
-        </button>
+      <!-- Collapse tab lives OUTSIDE .chat-inner so it's never clipped -->
+      <button id="chatCollapseBtn" class="chat-collapse-btn" title="Toggle chat">‹</button>
+      <div class="chat-inner">
+        <div class="vezha-chat-header">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+            <path d="M1 1h11v8H7.5L5 12V9H1V1z" stroke="#4fa3ff" stroke-width="1.3" stroke-linejoin="round"/>
+          </svg>
+          <span>COMMS</span>
+        </div>
+        <div class="vezha-chat-messages" id="vezhaChatMessages"></div>
+        <div class="vezha-chat-input-row">
+          <input
+            type="text"
+            id="vezhaChatInput"
+            class="vezha-chat-input mono"
+            placeholder="TYPE MESSAGE..."
+            maxlength="400"
+            autocomplete="off"
+          />
+          <button id="vezhaChatSend" class="vezha-chat-send" title="Send">
+            <svg width="14" height="14" viewBox="0 0 14 14"><path d="M1 7L13 1 7 13 6 8 1 7z" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
       </div>
     </aside>
 
