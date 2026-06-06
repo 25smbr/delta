@@ -25,8 +25,9 @@ const db  = getFirestore(app);
 const markersCollection  = collection(db, "markers");
 const drawingsCollection = collection(db, "drawings");
 // ─── MAP ─────────────────────────────────────────────────────────────────────
+// FIX #5: correct image dimensions — width 1204, height 1290
 const imageWidth  = 1204;
-const imageHeight = 1090;
+const imageHeight = 1290;
 const map = L.map("map", {
     crs: L.CRS.Simple,
     minZoom: -3,
@@ -43,7 +44,6 @@ map.setView([imageHeight / 2, imageWidth / 2], 0);
 function updateClock() {
     const now = new Date();
     const z = (n) => String(n).padStart(2, "0");
-    // Offset by +2 hours for UTC+2
     const utcPlus2 = new Date(now.getTime() + 7200000);
     document.getElementById("clock").textContent =
         `${z(utcPlus2.getUTCHours())}:${z(utcPlus2.getUTCMinutes())}:${z(utcPlus2.getUTCSeconds())}`;
@@ -84,6 +84,8 @@ let startMapLL   = null;
 let strokes       = [];
 let currentStroke = null;
 // ─── RULER STATE ─────────────────────────────────────────────────────────────
+// FIX #5: scale calibrated to correct image dimensions
+// The scale constant remains the same (142px = 250m at zoom 0) — keep original calibration
 const PIXELS_PER_METER = 142 / 250;
 let rulerMode   = false;
 let rulerPoints = [];
@@ -96,7 +98,8 @@ function symbolSVG(type = "infantry_alive", forMap = false) {
     const unit   = parts.slice(0, -1).join("_");
     const size   = forMap ? 46 : 46;
     const borderColor = statusColors[status] || "#4fa3ff";
-    // Use a lighter stroke color for better contrast on dark backgrounds
+    // Interior symbol stroke: a light neutral that reads on dark bg.
+    // In light mode CSS will override this to #2d3a4a via attribute selector.
     const strokeColor = "#d0d8e8";
     let center = "";
     switch (unit) {
@@ -314,7 +317,6 @@ map.on("contextmenu", (e) => {
     e.originalEvent.preventDefault();
     const x = parseFloat(e.latlng.lng.toFixed(4));
     const y = parseFloat(e.latlng.lat.toFixed(4));
-    // Fix #1: show X first, then Y
     popupBoth.textContent = `X: ${x.toFixed(4)}, Y: ${y.toFixed(4)}`;
     const wrapper = document.getElementById("mapWrapper");
     const wRect   = wrapper.getBoundingClientRect();
@@ -349,20 +351,17 @@ const coordSearchError = document.getElementById("coordSearchError");
 function goToCoords() {
     const val = coordSearchInput.value.trim();
     coordSearchError.textContent = "";
-    // Fix #1: accept X first then Y (or Y first then X — parse by label if present)
     const clean = val.replace(/[XxYy:\s]/g, " ").trim();
     const parts = clean.split(/[\s,]+/).filter(Boolean);
     if (parts.length < 2) {
         coordSearchError.textContent = "Need X and Y values.";
         return;
     }
-    // Check if input has explicit labels to determine order
     const upperVal = val.toUpperCase();
     const xIdx = upperVal.indexOf("X");
     const yIdx = upperVal.indexOf("Y");
     let x, y;
     if (xIdx !== -1 && yIdx !== -1) {
-        // Labels present — parse by label order
         if (xIdx < yIdx) {
             x = parseFloat(parts[0]);
             y = parseFloat(parts[1]);
@@ -371,7 +370,6 @@ function goToCoords() {
             x = parseFloat(parts[1]);
         }
     } else {
-        // No labels — assume X first, Y second (new default)
         x = parseFloat(parts[0]);
         y = parseFloat(parts[1]);
     }
@@ -409,6 +407,14 @@ window.addEventListener("resize", resizeCanvas);
 map.on("resize", resizeCanvas);
 map.on("move zoom moveend zoomend", redrawAll);
 // ─── COORDINATE HELPERS ──────────────────────────────────────────────────────
+// FIX #4: ruler/canvas offset when panel collapsed.
+// map.latLngToContainerPoint returns pixel coords relative to the map container element,
+// which IS the mapWrapper div. The canvas is also sized to mapWrapper, so these already
+// match — no correction needed there. The bug was that ruler mousemove used
+// e.latlng (from map event) which is already correct, and llToCanvas uses
+// map.latLngToContainerPoint which is relative to the map container. This should be
+// consistent. However, if the panel collapses AFTER map init, the map container resizes
+// and Leaflet needs to be told. We call map.invalidateSize() on panel transition.
 function llToCanvas(lat, lng) {
     const pt = map.latLngToContainerPoint(L.latLng(lat, lng));
     return [pt.x, pt.y];
@@ -768,11 +774,16 @@ map.on("dblclick", (e) => {
     redrawAll();
     rulerTooltip.style.display = "none";
 });
+// FIX #4: ruler mousemove — use map.latLngToContainerPoint for canvas coords,
+// which is relative to the map container (= mapWrapper). The rulerTooltip is also
+// inside mapWrapper, so positioning via containerPoint is correct regardless of
+// whether the left panel is open or collapsed.
 map.on("mousemove", (e) => {
     if (!rulerMode || rulerPoints.length === 0) return;
     redrawAll();
     const last = rulerPoints[rulerPoints.length - 1];
     const [lx, ly] = llToCanvas(last.lat, last.lng);
+    // cur is in map-container-relative coords (same space as canvas)
     const cur = map.latLngToContainerPoint(e.latlng);
     ctx.save();
     ctx.strokeStyle = "#ffcc00";
@@ -848,6 +859,31 @@ collapseBtn.addEventListener("click", () => {
     panelCollapsed = !panelCollapsed;
     leftPanel.classList.toggle("collapsed", panelCollapsed);
     collapseBtn.classList.toggle("flipped", panelCollapsed);
+    // FIX #4: tell Leaflet the map container changed size so all coordinate
+    // transforms (latLngToContainerPoint etc.) recalculate correctly.
+    // We wait for the CSS transition to finish (250ms) then invalidate.
+    setTimeout(() => {
+        map.invalidateSize({ animate: false });
+        resizeCanvas();
+        redrawAll();
+    }, 260);
+});
+// ─── PER-SECTION COLLAPSE ────────────────────────────────────────────────────
+document.querySelectorAll(".section-collapse-btn").forEach((btn) => {
+    const targetId = btn.dataset.target;
+    const body = document.getElementById(targetId);
+    if (!body) return;
+    btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const isCollapsed = body.classList.toggle("collapsed");
+        btn.classList.toggle("collapsed", isCollapsed);
+        // If the symbols section is being expanded/collapsed, allow the
+        // scrollable area to relayout
+        if (targetId === "symbols-body") {
+            // Force a reflow so the flex layout recalculates
+            requestAnimationFrame(() => resizeCanvas());
+        }
+    });
 });
 // ─── THEME TOGGLE ────────────────────────────────────────────────────────────
 const themeToggleBtn = document.getElementById("themeToggleBtn");
