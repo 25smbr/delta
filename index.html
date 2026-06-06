@@ -72,6 +72,23 @@
       <!-- Fixed (non-scrolling) panel content wrapper -->
       <div class="panel-inner">
 
+        <!-- ── SECTION: FILTER ── -->
+        <section class="panel-section" id="section-filter">
+          <div class="section-header" data-section="filter">
+            <svg width="12" height="12" viewBox="0 0 12 12"><path d="M1 3h10M3 6h6M5 9h2" stroke="#4fa3ff" stroke-width="1.4" stroke-linecap="round"/></svg>
+            <span>FILTER</span>
+            <button class="section-collapse-btn" data-target="filter-body" title="Toggle section">
+              <svg width="10" height="10" viewBox="0 0 10 10">
+                <polyline points="2,3 5,7 8,3" stroke="currentColor" stroke-width="1.5"
+                  fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
+          <div class="section-body" id="filter-body">
+            <div class="filter-chips" id="filterChips"></div>
+          </div>
+        </section>
+
         <!-- ── SECTION: UNIT SYMBOLS ── -->
         <section class="panel-section" id="section-symbols">
           <div class="section-header" data-section="symbols">
@@ -113,6 +130,10 @@
             <div class="symbol-group">
               <div class="group-label">TRUCK</div>
               <div class="symbol-row" id="row-truck"></div>
+            </div>
+            <div class="symbol-group">
+              <div class="group-label">UAV</div>
+              <div class="symbol-row" id="row-uav"></div>
             </div>
             <button id="clearMarkersBtn" class="danger-btn" style="margin-top:8px;">
               <svg width="12" height="12" viewBox="0 0 12 12"><path d="M1 3h10M4 3V1h4v2M5 5v5M7 5v5M2 3l1 8h6l1-8" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
@@ -292,6 +313,19 @@
       <!-- Collapse tab lives OUTSIDE .chat-inner so it's never clipped -->
       <button id="chatCollapseBtn" class="chat-collapse-btn" title="Toggle chat">‹</button>
       <div class="chat-inner">
+        <!-- Identity bar — callsign + role, persisted in localStorage -->
+        <div class="chat-identity-bar">
+          <input id="callsignInput" class="chat-identity-input mono"
+                 placeholder="CALLSIGN" maxlength="12" autocomplete="off" spellcheck="false"/>
+          <select id="roleSelect" class="chat-role-select mono">
+            <option value="operator">OPERATOR</option>
+            <option value="commander">COMMANDER</option>
+            <option value="drone">DRONE PILOT</option>
+            <option value="sniper">SNIPER</option>
+            <option value="medic">MEDIC</option>
+            <option value="intel">INTEL</option>
+          </select>
+        </div>
         <div class="vezha-chat-header">
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
             <path d="M1 1h11v8H7.5L5 12V9H1V1z" stroke="#4fa3ff" stroke-width="1.3" stroke-linejoin="round"/>
