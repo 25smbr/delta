@@ -62,7 +62,8 @@ const symbolGroups = {
     helicopter:["helicopter_alive","helicopter_damaged","helicopter_destroyed","helicopter_unknown"],
     position:  ["position_alive",  "position_wounded",  "position_destroyed", "position_unknown"],
     humvee:    ["humvee_alive",    "humvee_damaged",    "humvee_destroyed",   "humvee_unknown"],
-    truck:     ["truck_alive",     "truck_damaged",     "truck_destroyed",    "truck_unknown"]
+    truck:     ["truck_alive",     "truck_damaged",     "truck_destroyed",    "truck_unknown"],
+    uav:       ["uav_alive",       "uav_damaged",       "uav_destroyed",      "uav_unknown"]
 };
 // Status bar color below the NATO diamond. null = no bar (unknown).
 const statusColors = {
@@ -165,6 +166,11 @@ function symbolSVG(type = "infantry_alive") {
               <line x1="23" y1="4" x2="30" y2="42" stroke="${d}" stroke-width="2.5" stroke-linecap="round"/>
               <line x1="23" y1="4" x2="40" y2="32" stroke="${d}" stroke-width="2.5" stroke-linecap="round"/>`;
             break;
+
+        // ─ UAV: swept-wing V chevron (top-down view) ─────────────────
+        case "uav":
+            interior = `<path d="M4 10 L23 34 L42 10 L38 10 L23 26 L8 10 Z" fill="${d}"/>`;
+            break;
     }
 
     // ── Status bar sits below the diamond (y 47–54) ──────────────────
@@ -257,6 +263,41 @@ document.getElementById("clearDrawingsBtn").addEventListener("click", async () =
         console.error("Failed to clear drawings from Firestore:", err);
     }
 });
+// ─── FILTER ───────────────────────────────────────────────────────────────────
+const hiddenUnits = new Set();   // unit type strings that are currently hidden
+
+function applyFilter() {
+    Object.entries(displayedMarkers).forEach(([, {marker, data}]) => {
+        const unit = (data.type || "infantry_alive").split("_").slice(0, -1).join("_");
+        const el   = marker.getElement();
+        if (el) el.style.display = hiddenUnits.has(unit) ? "none" : "";
+    });
+}
+
+// Populate filter chips (called once after page load)
+function initFilterUI() {
+    const container = document.getElementById("filterChips");
+    if (!container) return;
+    Object.keys(symbolGroups).forEach(unit => {
+        const chip = document.createElement("button");
+        chip.className      = "filter-chip active";
+        chip.dataset.unit   = unit;
+        chip.textContent    = unit === "uav" ? "UAV" : unit.toUpperCase();
+        chip.addEventListener("click", () => {
+            if (hiddenUnits.has(unit)) {
+                hiddenUnits.delete(unit);
+                chip.classList.add("active");
+            } else {
+                hiddenUnits.add(unit);
+                chip.classList.remove("active");
+            }
+            applyFilter();
+        });
+        container.appendChild(chip);
+    });
+}
+initFilterUI();
+
 // ─── FIRESTORE REALTIME — MARKERS ────────────────────────────────────────────
 const displayedMarkers = {};        // id → { marker, data }
 let pendingEditMarkerId = null;     // auto-open popup for freshly placed marker
@@ -321,6 +362,7 @@ onSnapshot(markersCollection, (snapshot) => {
     });
     document.getElementById("markerCount").textContent =
         `MARKERS: ${Object.keys(displayedMarkers).length}`;
+    applyFilter();
 }, (err) => console.error("Markers sync error:", err));
 // ─── FIRESTORE REALTIME — DRAWINGS ───────────────────────────────────────────
 onSnapshot(drawingsCollection, (snapshot) => {
@@ -366,44 +408,49 @@ map.on("click", async (e) => {
 });
 
 // ─── MARKER EDIT POPUP ───────────────────────────────────────────────────────
+// Uses a standalone L.popup (not bound to marker) so it can be reopened anytime.
 function openMarkerEditPopup(markerId, markerLeaflet, data) {
-    const amounts = ["","1","2","3","5","10","15","20","30","50"];
-    const opts = amounts.map(a =>
-        `<option value="${a}"${String(data.amount||"")=== a?" selected":""}>${a||"—"}</option>`
-    ).join("");
     const popupContent = `
       <div class="mep-popup">
         <div class="mep-row">
           <span class="mep-label">DATE</span>
-          <span class="mep-date">${escHtml(data.date||"")}</span>
+          <span class="mep-date">${escHtml(data.date || "")}</span>
         </div>
         <div class="mep-row">
           <label class="mep-label" for="mep-amt">AMT</label>
-          <select class="mep-sel" id="mep-amt">${opts}</select>
+          <input class="mep-inp" id="mep-amt" type="text" maxlength="20"
+                 value="${escHtml(String(data.amount || ""))}"/>
         </div>
         <div class="mep-row">
           <label class="mep-label" for="mep-inf">INFO</label>
-          <input class="mep-inp" id="mep-inf" type="text" maxlength="40"
-                 placeholder="short description" value="${escHtml(data.info||"")}"/>
+          <input class="mep-inp" id="mep-inf" type="text" maxlength="60"
+                 value="${escHtml(data.info || "")}"/>
         </div>
         <div class="mep-row">
           <label class="mep-label" for="mep-src">SRC</label>
-          <input class="mep-inp" id="mep-src" type="text" maxlength="40"
-                 placeholder="drone recon…" value="${escHtml(data.source||"")}"/>
+          <input class="mep-inp" id="mep-src" type="text" maxlength="60"
+                 value="${escHtml(data.source || "")}"/>
         </div>
         <button class="mep-save" id="mep-save">SAVE</button>
       </div>`;
-    markerLeaflet.bindPopup(popupContent, { className: "mep-outer", maxWidth: 230, minWidth: 200 });
-    markerLeaflet.once("popupopen", () => {
+
+    // Close any previously opened popup, then open a fresh standalone one
+    map.closePopup();
+    const popup = L.popup({ className: "mep-outer", maxWidth: 230, minWidth: 200, autoPan: true })
+        .setLatLng(markerLeaflet.getLatLng())
+        .setContent(popupContent)
+        .openOn(map);
+
+    // Wait one animation frame for Leaflet to insert the DOM, then wire the button
+    requestAnimationFrame(() => {
         document.getElementById("mep-save")?.addEventListener("click", async () => {
             const amt = document.getElementById("mep-amt")?.value || "";
             const inf = document.getElementById("mep-inf")?.value || "";
             const src = document.getElementById("mep-src")?.value || "";
             await updateDoc(doc(db, "markers", markerId), { amount: amt, info: inf, source: src });
-            markerLeaflet.closePopup();
+            map.closePopup();
         });
     });
-    markerLeaflet.openPopup();
 }
 // ─── RIGHT-CLICK COORDINATE POPUP ────────────────────────────────────────────
 const coordPopup = document.getElementById("coordPopup");
@@ -1256,27 +1303,70 @@ document.getElementById("vezhaChatInput").addEventListener("keydown", e => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); }
 });
 
+// ─── CALLSIGN / ROLE (persisted in localStorage) ─────────────────────────────
+const ROLE_COLORS = {
+    operator:   "#4fa3ff",
+    commander:  "#ff6b6b",
+    drone:      "#a78bfa",
+    sniper:     "#34d399",
+    medic:      "#fbbf24",
+    intel:      "#22d3ee"
+};
+
+function getCallsign() {
+    return (document.getElementById("callsignInput")?.value.trim() ||
+            localStorage.getItem("vezhaCallsign") || "").toUpperCase() || myShortId;
+}
+function getRole() {
+    return document.getElementById("roleSelect")?.value ||
+           localStorage.getItem("vezhaRole") || "operator";
+}
+
+// Restore identity from localStorage (module runs after DOM is parsed)
+{
+    const cs = localStorage.getItem("vezhaCallsign");
+    const rl = localStorage.getItem("vezhaRole");
+    if (cs) { const el = document.getElementById("callsignInput"); if (el) el.value = cs; }
+    if (rl) { const el = document.getElementById("roleSelect");    if (el) el.value = rl; }
+}
+document.getElementById("callsignInput")?.addEventListener("input", e => {
+    localStorage.setItem("vezhaCallsign", e.target.value.trim());
+});
+document.getElementById("roleSelect")?.addEventListener("change", e => {
+    localStorage.setItem("vezhaRole", e.target.value);
+});
+
 async function sendChat() {
-    const input = document.getElementById("vezhaChatInput");
-    const text  = input.value.trim();
+    const input    = document.getElementById("vezhaChatInput");
+    const text     = input.value.trim();
     if (!text || !vezhaActive) return;
     input.value = "";
+    const callsign = getCallsign();
+    const role     = getRole();
     try {
-        await addDoc(vezha_chat, { userId: myPeerId, shortId: myShortId, text, created: Date.now() });
+        await addDoc(vezha_chat, {
+            userId: myPeerId, shortId: myShortId,
+            callsign, role, text, created: Date.now()
+        });
     } catch (err) { console.error("Chat error:", err); }
 }
 
 function renderChatMessage(data) {
-    const isMine = data.userId === myPeerId;
-    const msgs   = document.getElementById("vezhaChatMessages");
-    const el     = document.createElement("div");
-    el.className = "chat-msg" + (isMine ? " chat-msg-mine" : "");
+    const isMine   = data.userId === myPeerId;
+    const msgs     = document.getElementById("vezhaChatMessages");
+    const el       = document.createElement("div");
+    el.className   = "chat-msg" + (isMine ? " chat-msg-mine" : "");
     const d   = new Date(data.created);
     const hh  = String(d.getHours()).padStart(2, "0");
     const mm  = String(d.getMinutes()).padStart(2, "0");
+    const name = escHtml(data.callsign || data.shortId || data.userId.slice(-6).toUpperCase());
+    const role = data.role || "operator";
+    const roleColor = ROLE_COLORS[role] || ROLE_COLORS.operator;
+    const roleLabel = role.toUpperCase();
     el.innerHTML = `
       <div class="chat-msg-meta">
-        <span class="chat-msg-author">${isMine ? "YOU" : (data.shortId || data.userId.slice(-6).toUpperCase())}</span>
+        <span class="chat-msg-author" style="color:${roleColor}">${name}</span>
+        <span class="chat-msg-role" style="color:${roleColor}">[${roleLabel}]</span>
         <span class="chat-msg-time mono">${hh}:${mm}</span>
       </div>
       <div class="chat-msg-text">${escHtml(data.text)}</div>`;
