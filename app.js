@@ -228,6 +228,8 @@ let selectedSymbol = "infantry_alive";
 // ALL STATE VARIABLES
 // ════════════════════════════════════════════════════════════════════
 const undoStack = [];
+const redoStack = [];
+let isLightTheme = false;
 // ─── DRAWING STATE ───────────────────────────────────────────────────────────
 let drawMode    = false;
 let activeTool  = "pen";
@@ -511,20 +513,36 @@ document.querySelectorAll(".side-btn").forEach(btn => {
 document.getElementById("zoomInBtn").addEventListener("click",  () => map.zoomIn());
 document.getElementById("zoomOutBtn").addEventListener("click", () => map.zoomOut());
 document.getElementById("fitBtn").addEventListener("click",     () => map.fitBounds(bounds));
-document.getElementById("undoBtn").addEventListener("click",    undoLast);
+document.getElementById("undoBtn").addEventListener("click", undoLast);
 async function undoLast() {
     if (undoStack.length === 0) return;
     const last = undoStack.pop();
     if (last.type === "marker") {
+        const snap = await getDoc(doc(db, "markers", last.id));
+        if (snap.exists()) redoStack.push({ type: "marker", data: snap.data() });
         await deleteDoc(doc(db, "markers", last.id));
     } else if (last.type === "drawing") {
+        const stroke = strokes.find(s => s.firestoreId === last.id);
+        if (stroke) redoStack.push({ type: "drawing", stroke: { ...stroke } });
         strokes = strokes.filter(s => s.firestoreId !== last.id);
         redrawAll();
+        try { await deleteDoc(doc(db, "drawings", last.id)); }
+        catch (err) { console.error("Undo drawing delete failed:", err); }
+    }
+}
+async function redoLast() {
+    if (redoStack.length === 0) return;
+    const last = redoStack.pop();
+    if (last.type === "marker") {
+        const newRef = doc(markersCollection);
+        await setDoc(newRef, last.data);
+        undoStack.push({ type: "marker", id: newRef.id });
+    } else if (last.type === "drawing") {
         try {
-            await deleteDoc(doc(db, "drawings", last.id));
-        } catch (err) {
-            console.error("Failed to delete drawing from Firestore:", err);
-        }
+            const { firestoreId, ...strokeData } = last.stroke;
+            const docRef = await addDoc(drawingsCollection, strokeData);
+            undoStack.push({ type: "drawing", id: docRef.id });
+        } catch (err) { console.error("Redo drawing failed:", err); }
     }
 }
 // ─── CLEAR MARKERS ────────────────────────────────────────────────────────────
@@ -626,7 +644,10 @@ onSnapshot(markersCollection, (snapshot) => {
             const marker = L.marker([data.y, data.x], {
                 icon: createIcon(data.type || "infantry_alive", data)
             }).addTo(map);
-            marker.on("click", () => {
+            marker.on("click", (e) => {
+                // Only open popup when clicking directly on the NATO symbol icon,
+                // not on the label text or empty space in the 140×140 hit area.
+                if (!e.originalEvent.target.closest(".mkr-icon")) return;
                 openMarkerEditPopup(id, marker, displayedMarkers[id]?.data || data);
             });
             marker.on("contextmenu", async () => {
@@ -1439,6 +1460,7 @@ collapseBtn.addEventListener("click", () => {
         panelCollapsed = !panelCollapsed;
         leftPanel.classList.toggle("collapsed", panelCollapsed);
         collapseBtn.classList.toggle("flipped", panelCollapsed);
+        saveUserState();
     }
     // FIX #4: tell Leaflet the map container changed size so all coordinate
     // transforms (latLngToContainerPoint etc.) recalculate correctly.
@@ -1668,6 +1690,240 @@ function updateDeafenBtn() {
 document.getElementById("micBtn")?.addEventListener("click", toggleMic);
 document.getElementById("deafenBtn")?.addEventListener("click", toggleDeafen);
 
+// ─── USER ID GENERATION ────────────────────────────────────────────────────────
+function generateUserId() {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let id = "";
+    for (let i = 0; i < 6; i++) id += chars[Math.floor(Math.random() * chars.length)];
+    return id;
+}
+
+// ─── USER STATE PERSISTENCE (per account, stored in localStorage) ──────────────
+function saveUserState() {
+    const user = getCurrentUser();
+    if (!user) return;
+    const state = {
+        theme:               document.body.classList.contains("light-theme") ? "light" : "dark",
+        leftPanelCollapsed:  document.getElementById("leftPanel")?.classList.contains("collapsed") || false,
+        monitorChatCollapsed:document.getElementById("monitorChat")?.classList.contains("collapsed") || false,
+    };
+    localStorage.setItem(`deltaState_${user.username}`, JSON.stringify(state));
+}
+
+function restoreUserState(username) {
+    try {
+        const raw = localStorage.getItem(`deltaState_${username}`);
+        if (!raw) return;
+        const state = JSON.parse(raw);
+        // Theme
+        if (state.theme === "light" && !isLightTheme) {
+            isLightTheme = true;
+            document.body.classList.add("light-theme");
+            document.getElementById("themeToggleBtn")?.classList.add("active");
+            const logoImg = document.querySelector(".brand-shield img");
+            if (logoImg) logoImg.src = "logo_light.png";
+            const themeIcon = document.getElementById("themeIcon");
+            if (themeIcon) themeIcon.innerHTML = `<path d="M13 9a5 5 0 1 1-5.93-4.93A7 7 0 0 0 13 9z" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+        }
+        // Left panel
+        if (state.leftPanelCollapsed) {
+            const lp = document.getElementById("leftPanel");
+            const cb = document.getElementById("collapseLeftBtn");
+            if (lp) { lp.classList.add("collapsed"); panelCollapsed = true; }
+            if (cb) cb.classList.add("flipped");
+            setTimeout(() => { map.invalidateSize({ animate: false }); resizeCanvas(); redrawAll(); }, 50);
+        }
+        // Monitor chat
+        if (state.monitorChatCollapsed) {
+            const mc = document.getElementById("monitorChat");
+            const ch = document.getElementById("monitorChatChevron");
+            if (mc) mc.classList.add("collapsed");
+            if (ch) ch.innerHTML = `<polyline points="2,3 5,7 8,3" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+        }
+    } catch (_) {}
+}
+
+// ─── WATERMARK ─────────────────────────────────────────────────────────────────
+function drawWatermarkCanvas(userId) {
+    const canvas = document.getElementById("watermarkCanvas");
+    if (!canvas) return;
+    const W = canvas.offsetWidth  || canvas.parentElement?.clientWidth  || 800;
+    const H = canvas.offsetHeight || canvas.parentElement?.clientHeight || 600;
+    canvas.width  = W;
+    canvas.height = H;
+    if (!userId) return;     // logged out — leave blank
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, W, H);
+    // Draw rotated tiled text
+    ctx.save();
+    ctx.globalAlpha = 0.045;
+    ctx.fillStyle = document.body.classList.contains("light-theme") ? "#000000" : "#88aaff";
+    ctx.font = "bold 15px 'Share Tech Mono', monospace";
+    ctx.textBaseline = "middle";
+    // Translate to centre, rotate -30°, tile the ID text
+    ctx.translate(W / 2, H / 2);
+    ctx.rotate(-30 * Math.PI / 180);
+    const colStep = 110, rowStep = 38;
+    const cols = Math.ceil(Math.max(W, H) * 1.5 / colStep) + 2;
+    const rows = Math.ceil(Math.max(W, H) * 1.5 / rowStep) + 2;
+    for (let r = -rows; r <= rows; r++) {
+        for (let c = -cols; c <= cols; c++) {
+            ctx.fillText(userId, c * colStep + (r % 2 === 0 ? 0 : colStep / 2), r * rowStep);
+        }
+    }
+    ctx.restore();
+}
+
+function drawTileWatermark(canvas, userId) {
+    if (!canvas || !userId) return;
+    const W = canvas.width  = canvas.offsetWidth  || 640;
+    const H = canvas.height = canvas.offsetHeight || 360;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, W, H);
+    ctx.save();
+    ctx.globalAlpha = 0.06;
+    ctx.fillStyle = "#88aaff";
+    ctx.font = "bold 13px 'Share Tech Mono', monospace";
+    ctx.textBaseline = "middle";
+    ctx.translate(W / 2, H / 2);
+    ctx.rotate(-30 * Math.PI / 180);
+    const colStep = 100, rowStep = 34;
+    const cols = Math.ceil(Math.max(W, H) * 1.5 / colStep) + 2;
+    const rows = Math.ceil(Math.max(W, H) * 1.5 / rowStep) + 2;
+    for (let r = -rows; r <= rows; r++) {
+        for (let c = -cols; c <= cols; c++) {
+            ctx.fillText(userId, c * colStep + (r % 2 === 0 ? 0 : colStep / 2), r * rowStep);
+        }
+    }
+    ctx.restore();
+}
+
+// Redraw watermark when map is resized / zoomed
+map.on("resize", () => { drawWatermarkCanvas(getCurrentUser()?.userId || null); });
+
+// ─── PRESENCE ──────────────────────────────────────────────────────────────────
+const presenceCollection = collection(db, "presence");
+let presenceInterval = null;
+
+async function updatePresence() {
+    const user = getCurrentUser();
+    if (!user) return;
+    try {
+        await setDoc(doc(db, "presence", user.username), {
+            username: user.username,
+            role:     user.role,
+            userId:   user.userId || "",
+            lastSeen: Date.now()
+        });
+    } catch (_) {}
+}
+
+async function clearPresence() {
+    const user = getCurrentUser();
+    if (!user) return;
+    try { await deleteDoc(doc(db, "presence", user.username)); } catch (_) {}
+}
+
+// ─── AUTH SCREEN HELPERS ────────────────────────────────────────────────────────
+function showAuthScreen() {
+    document.getElementById("authScreen")?.classList.remove("hidden");
+    showAuthPanel("login");
+}
+function hideAuthScreen() {
+    document.getElementById("authScreen")?.classList.add("hidden");
+}
+function showAuthPanel(panel) {
+    document.getElementById("authLoginPanel").style.display   = panel === "login"   ? "flex" : "none";
+    document.getElementById("authRegPanel").style.display     = panel === "register" ? "flex" : "none";
+    document.getElementById("authPendingPanel").style.display = panel === "pending"  ? "flex" : "none";
+    document.getElementById("authTabLogin").classList.toggle("active",    panel === "login");
+    document.getElementById("authTabRegister").classList.toggle("active", panel === "register");
+}
+
+// ─── ADMIN PANEL LOGIC ─────────────────────────────────────────────────────────
+let adminUnsubs = [];
+
+function stopAdminListeners() {
+    adminUnsubs.forEach(u => u());
+    adminUnsubs = [];
+}
+
+function startAdminListeners() {
+    stopAdminListeners();
+    const accountsCol = collection(db, "accounts");
+    const presenceCol = collection(db, "presence");
+
+    // Track online users
+    let onlineUsers = new Set();
+
+    const unsubPresence = onSnapshot(presenceCol, snap => {
+        const now = Date.now();
+        onlineUsers = new Set(
+            snap.docs
+                .filter(d => (now - (d.data().lastSeen || 0)) < 90000)
+                .map(d => d.id)
+        );
+        renderAccountsList();
+    });
+
+    // All accounts
+    let allAccounts = [];
+    const unsubAccounts = onSnapshot(accountsCol, snap => {
+        allAccounts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        renderPendingList();
+        renderAccountsList();
+    });
+
+    function renderPendingList() {
+        const el = document.getElementById("adminPendingList");
+        if (!el) return;
+        const pending = allAccounts.filter(a => a.status === "pending");
+        if (pending.length === 0) {
+            el.innerHTML = `<span class="admin-empty">No pending requests</span>`;
+            return;
+        }
+        el.innerHTML = "";
+        pending.forEach(acct => {
+            const row = document.createElement("div");
+            row.className = "admin-row";
+            row.innerHTML = `
+              <span class="admin-row-name">${escHtml(acct.username)}</span>
+              <span class="admin-row-role">${escHtml((acct.role||"operator").toUpperCase())}</span>
+              <button class="admin-btn admin-btn-approve" data-id="${escHtml(acct.username)}">✓ APPROVE</button>
+              <button class="admin-btn admin-btn-deny"    data-id="${escHtml(acct.username)}">✕ DENY</button>`;
+            row.querySelector(".admin-btn-approve").addEventListener("click", async () => {
+                await updateDoc(doc(db, "accounts", acct.username), { status: "approved" });
+            });
+            row.querySelector(".admin-btn-deny").addEventListener("click", async () => {
+                if (confirm(`Deny and delete account "${acct.username}"?`)) {
+                    await deleteDoc(doc(db, "accounts", acct.username));
+                }
+            });
+            el.appendChild(row);
+        });
+    }
+
+    function renderAccountsList() {
+        const el = document.getElementById("adminAccountsList");
+        if (!el) return;
+        const approved = allAccounts.filter(a => a.status !== "pending");
+        el.innerHTML = "";
+        approved.sort((a, b) => a.username.localeCompare(b.username)).forEach(acct => {
+            const online  = onlineUsers.has(acct.username);
+            const roleLabel = (acct.role === "owner" ? "ADMIN" : (acct.role||"OPERATOR")).toUpperCase();
+            const row = document.createElement("div");
+            row.className = "admin-row";
+            row.innerHTML = `
+              <span class="presence-dot ${online ? "online" : "offline"}"></span>
+              <span class="admin-row-name">${escHtml(acct.username)}</span>
+              <span class="admin-row-role">${roleLabel}</span>`;
+            el.appendChild(row);
+        });
+    }
+
+    adminUnsubs.push(unsubPresence, unsubAccounts);
+}
+
 // ─── ACCOUNT MODAL — AUTH (Firestore-backed, cross-device) ───────────────────
 // Accounts live in Firestore "accounts/{USERNAME}" so any device can log in.
 // Current session is cached in localStorage for instant page-load restore.
@@ -1680,14 +1936,32 @@ function hashPass(pw) { return btoa(encodeURIComponent(pw)); }
 function applyCurrentUser(user) {
     if (user) {
         localStorage.setItem("deltaCurrentUser", JSON.stringify(user));
-        localStorage.setItem("vezhaCallsign", user.username);
+        const callsign = user.callsign || user.username;
+        localStorage.setItem("vezhaCallsign", callsign);
         localStorage.setItem("vezhaRole", user.role);
         const callEl = document.getElementById("callsignInput");
-        if (callEl) callEl.value = user.username;
+        if (callEl) callEl.value = callsign;
         const roleEl = document.getElementById("roleSelect");
         if (roleEl) roleEl.value = user.role;
+        // Restore UI state saved for this account
+        restoreUserState(user.username);
+        // Draw the ID watermark on the map
+        drawWatermarkCanvas(user.userId || null);
+        // Start presence heartbeat
+        updatePresence();
+        if (presenceInterval) clearInterval(presenceInterval);
+        presenceInterval = setInterval(updatePresence, 30000);
+        // Start admin listeners if admin
+        if (user.role === "owner") startAdminListeners();
+        hideAuthScreen();
     } else {
+        // Logout: clear presence, stop heartbeat, stop admin listeners
+        clearPresence();
+        if (presenceInterval) { clearInterval(presenceInterval); presenceInterval = null; }
+        stopAdminListeners();
         localStorage.removeItem("deltaCurrentUser");
+        drawWatermarkCanvas(null);
+        showAuthScreen();
     }
     updateModalState();
 }
@@ -1705,10 +1979,19 @@ function updateModalState() {
         if (tabs) tabs.style.display = "none";
         const nameEl = document.getElementById("loggedInName");
         if (nameEl) nameEl.textContent = user.username;
+        const roleLabel = user.role === "owner" ? "ADMIN" : (user.role || "OPERATOR").toUpperCase();
         const roleEl = document.getElementById("loggedInRole");
-        if (roleEl) roleEl.textContent = user.role.toUpperCase();
+        if (roleEl) roleEl.textContent = roleLabel;
         const prev = document.getElementById("accountRolePreview");
         if (prev) prev.style.background = ROLE_COLORS[user.role] || ROLE_COLORS.operator;
+        const idEl = document.getElementById("loggedInId");
+        if (idEl) idEl.textContent = user.userId || "——";
+        // Pre-fill settings callsign field
+        const csInp = document.getElementById("settingsCallsign");
+        if (csInp) csInp.value = user.callsign || user.username;
+        // Show/hide admin panel
+        const adminWrap = document.getElementById("adminPanelWrap");
+        if (adminWrap) adminWrap.style.display = user.role === "owner" ? "" : "none";
     } else {
         loginPanel?.style && (loginPanel.style.display = "flex");
         registerPanel?.style && (registerPanel.style.display = "none");
@@ -1743,58 +2026,97 @@ function setAuthBusy(btnId, busy) {
     btn.style.opacity = busy ? "0.6" : "";
 }
 
-// LOGIN — Firestore lookup
-document.getElementById("loginBtn")?.addEventListener("click", async () => {
-    const username = document.getElementById("loginUsername").value.trim().toUpperCase();
-    const pw       = document.getElementById("loginPassword").value;
-    const errEl    = document.getElementById("loginError");
+// Shared login logic (used by modal loginBtn AND auth screen authLoginBtn)
+async function doLogin(username, pw, errEl, busyBtnId) {
     errEl.textContent = "";
     if (!username || !pw) { errEl.textContent = t("errFillAll"); return; }
-    setAuthBusy("loginBtn", true);
+    setAuthBusy(busyBtnId, true);
     try {
         const snap = await getDoc(doc(db, "accounts", username));
         if (!snap.exists() || snap.data().passHash !== hashPass(pw)) {
             errEl.textContent = t("errBadCreds");
-            setAuthBusy("loginBtn", false);
+            setAuthBusy(busyBtnId, false);
             return;
         }
         const acct = snap.data();
-        document.getElementById("loginPassword").value = "";
-        // Override role to owner if this is the owner account
-        const resolvedRole = (acct.username === OWNER_CALLSIGN) ? "owner" : acct.role;
-        applyCurrentUser({ username: acct.username, role: resolvedRole });
+        // PLAYFRA bypass: always allowed regardless of status field
+        if (username !== OWNER_CALLSIGN && acct.status === "pending") {
+            errEl.textContent = "Your account is awaiting admin approval.";
+            setAuthBusy(busyBtnId, false);
+            return;
+        }
+        const resolvedRole   = (username === OWNER_CALLSIGN) ? "owner" : acct.role;
+        // Ensure the account has a userId; generate and save if missing
+        let userId = acct.userId;
+        if (!userId) {
+            userId = generateUserId();
+            await updateDoc(doc(db, "accounts", username), { userId });
+        }
+        applyCurrentUser({
+            username, role: resolvedRole,
+            callsign: acct.callsign || username,
+            userId
+        });
     } catch (e) {
         console.error("Login error:", e);
         errEl.textContent = t("errNetwork");
     }
-    setAuthBusy("loginBtn", false);
+    setAuthBusy(busyBtnId, false);
+}
+
+// Shared register logic (used by modal registerBtn AND auth screen authRegBtn)
+async function doRegister(username, pw, confirm, role, errEl, busyBtnId, onPending) {
+    errEl.textContent = "";
+    if (!username || !pw || !confirm) { errEl.textContent = t("errFillAll"); return; }
+    if (pw.length < 8)  { errEl.textContent = t("errPassLen"); return; }
+    if (pw !== confirm) { errEl.textContent = t("errPassMatch"); return; }
+    setAuthBusy(busyBtnId, true);
+    try {
+        const ref  = doc(db, "accounts", username);
+        const snap = await getDoc(ref);
+        if (snap.exists()) { errEl.textContent = t("errUserExists"); setAuthBusy(busyBtnId, false); return; }
+        const userId = generateUserId();
+        const isOwner = (username === OWNER_CALLSIGN);
+        await setDoc(ref, {
+            username, passHash: hashPass(pw),
+            role:     isOwner ? "owner" : role,
+            status:   isOwner ? "approved" : "pending",
+            userId,   callsign: username
+        });
+        if (isOwner) {
+            applyCurrentUser({ username, role: "owner", callsign: username, userId });
+        } else {
+            onPending();
+        }
+    } catch (e) {
+        console.error("Register error:", e);
+        errEl.textContent = t("errNetwork");
+    }
+    setAuthBusy(busyBtnId, false);
+}
+
+// LOGIN modal button (secondary — modal is mainly for settings/admin when logged in)
+document.getElementById("loginBtn")?.addEventListener("click", async () => {
+    const username = document.getElementById("loginUsername").value.trim().toUpperCase();
+    const pw       = document.getElementById("loginPassword").value;
+    const errEl    = document.getElementById("loginError");
+    document.getElementById("loginPassword").value = "";
+    await doLogin(username, pw, errEl, "loginBtn");
 });
 
-// REGISTER — Firestore write, cross-device
+// REGISTER modal button
 document.getElementById("registerBtn")?.addEventListener("click", async () => {
     const username = document.getElementById("regUsername").value.trim().toUpperCase();
     const pw       = document.getElementById("regPassword").value;
     const confirm  = document.getElementById("regConfirm").value;
     const role     = document.getElementById("regRole").value;
     const errEl    = document.getElementById("regError");
-    errEl.textContent = "";
-    if (!username || !pw || !confirm) { errEl.textContent = t("errFillAll"); return; }
-    if (pw.length < 8) { errEl.textContent = t("errPassLen"); return; }
-    if (pw !== confirm) { errEl.textContent = t("errPassMatch"); return; }
-    setAuthBusy("registerBtn", true);
-    try {
-        const ref  = doc(db, "accounts", username);
-        const snap = await getDoc(ref);
-        if (snap.exists()) { errEl.textContent = t("errUserExists"); setAuthBusy("registerBtn", false); return; }
-        await setDoc(ref, { username, passHash: hashPass(pw), role });
-        document.getElementById("regPassword").value = "";
-        document.getElementById("regConfirm").value = "";
-        applyCurrentUser({ username, role });
-    } catch (e) {
-        console.error("Register error:", e);
-        errEl.textContent = t("errNetwork");
-    }
-    setAuthBusy("registerBtn", false);
+    document.getElementById("regPassword").value = "";
+    document.getElementById("regConfirm").value  = "";
+    await doRegister(username, pw, confirm, role, errEl, "registerBtn", () => {
+        errEl.style.color = "#34d399";
+        errEl.textContent = "Request submitted — awaiting admin approval.";
+    });
 });
 
 // LOGOUT
@@ -1819,12 +2141,120 @@ document.getElementById("accountModal")?.addEventListener("click", e => {
 {
     const user = getCurrentUser();
     if (user) {
+        const callsign = user.callsign || user.username;
         const callEl = document.getElementById("callsignInput");
-        if (callEl) callEl.value = user.username;
+        if (callEl) callEl.value = callsign;
         const roleEl = document.getElementById("roleSelect");
         if (roleEl) roleEl.value = user.role;
+        hideAuthScreen();
+        drawWatermarkCanvas(user.userId || null);
+        updatePresence();
+        presenceInterval = setInterval(updatePresence, 30000);
+        if (user.role === "owner") startAdminListeners();
+        restoreUserState(user.username);
+    } else {
+        showAuthScreen();
     }
 }
+
+// ─── AUTH SCREEN BUTTONS ──────────────────────────────────────────────────────
+document.getElementById("authTabLogin")?.addEventListener("click", () => showAuthPanel("login"));
+document.getElementById("authTabRegister")?.addEventListener("click", () => showAuthPanel("register"));
+document.getElementById("authPendingBack")?.addEventListener("click", () => showAuthPanel("login"));
+
+document.getElementById("authLoginBtn")?.addEventListener("click", async () => {
+    const username = document.getElementById("authLoginUser").value.trim().toUpperCase();
+    const pw       = document.getElementById("authLoginPass").value;
+    const errEl    = document.getElementById("authLoginError");
+    document.getElementById("authLoginPass").value = "";
+    await doLogin(username, pw, errEl, "authLoginBtn");
+});
+document.getElementById("authLoginUser")?.addEventListener("keydown", e => {
+    if (e.key === "Enter") document.getElementById("authLoginBtn")?.click();
+});
+document.getElementById("authLoginPass")?.addEventListener("keydown", e => {
+    if (e.key === "Enter") document.getElementById("authLoginBtn")?.click();
+});
+
+document.getElementById("authRegBtn")?.addEventListener("click", async () => {
+    const username = document.getElementById("authRegUser").value.trim().toUpperCase();
+    const pw       = document.getElementById("authRegPass").value;
+    const confirm  = document.getElementById("authRegConfirm").value;
+    const role     = document.getElementById("authRegRole").value;
+    const errEl    = document.getElementById("authRegError");
+    document.getElementById("authRegPass").value    = "";
+    document.getElementById("authRegConfirm").value = "";
+    await doRegister(username, pw, confirm, role, errEl, "authRegBtn", () => {
+        showAuthPanel("pending");
+    });
+});
+
+// ─── SETTINGS PANEL ────────────────────────────────────────────────────────────
+document.getElementById("settingsToggle")?.addEventListener("click", () => {
+    const panel = document.getElementById("settingsPanel");
+    const open  = panel.style.display === "none" || panel.style.display === "";
+    panel.style.display = open ? "flex" : "none";
+    document.querySelector("#settingsToggle .modal-collapsible-chevron").textContent = open ? "▴" : "▾";
+});
+document.getElementById("settingsSaveBtn")?.addEventListener("click", async () => {
+    const errEl    = document.getElementById("settingsError");
+    const user     = getCurrentUser();
+    if (!user) return;
+    errEl.textContent = "";
+    errEl.style.color = "";
+    const newCallsign = document.getElementById("settingsCallsign").value.trim().toUpperCase();
+    const newPass     = document.getElementById("settingsPass").value;
+    const newPassConf = document.getElementById("settingsPassConfirm").value;
+    const updates = {};
+    if (newCallsign && newCallsign !== (user.callsign || user.username)) {
+        updates.callsign = newCallsign;
+    }
+    if (newPass) {
+        if (newPass.length < 8) { errEl.textContent = t("errPassLen"); return; }
+        if (newPass !== newPassConf) { errEl.textContent = t("errPassMatch"); return; }
+        updates.passHash = hashPass(newPass);
+    }
+    if (Object.keys(updates).length === 0) { errEl.textContent = "Nothing to change."; return; }
+    try {
+        await updateDoc(doc(db, "accounts", user.username), updates);
+        const newUser = { ...user, ...updates };
+        delete newUser.passHash;   // don't store hash in localStorage
+        if (updates.callsign) {
+            newUser.callsign = updates.callsign;
+            localStorage.setItem("vezhaCallsign", updates.callsign);
+            const callEl = document.getElementById("callsignInput");
+            if (callEl) callEl.value = updates.callsign;
+        }
+        localStorage.setItem("deltaCurrentUser", JSON.stringify(newUser));
+        document.getElementById("settingsPass").value     = "";
+        document.getElementById("settingsPassConfirm").value = "";
+        errEl.style.color = "#34d399";
+        errEl.textContent = "Saved ✓";
+        setTimeout(() => { errEl.textContent = ""; errEl.style.color = ""; }, 2000);
+    } catch (e) {
+        console.error("Settings save error:", e);
+        errEl.textContent = t("errNetwork");
+    }
+});
+
+// ─── ADMIN PANEL TOGGLE ────────────────────────────────────────────────────────
+document.getElementById("adminToggle")?.addEventListener("click", () => {
+    const panel = document.getElementById("adminPanel");
+    const open  = panel.style.display === "none" || panel.style.display === "";
+    panel.style.display = open ? "flex" : "none";
+    document.querySelector("#adminToggle .modal-collapsible-chevron").textContent = open ? "▴" : "▾";
+});
+
+// ─── KEYBOARD SHORTCUTS ────────────────────────────────────────────────────────
+document.addEventListener("keydown", async (e) => {
+    // Ignore when focus is in a text input/textarea/select
+    const tag = document.activeElement?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (e.ctrlKey || e.metaKey) {
+        if (e.key === "z" && !e.shiftKey) { e.preventDefault(); await undoLast(); }
+        if ((e.key === "y") || (e.key === "z" && e.shiftKey)) { e.preventDefault(); await redoLast(); }
+    }
+});
 
 let localStream    = null;
 let mySessionRef   = null;
@@ -1845,6 +2275,7 @@ const ICE_CONFIG = {
 // Best-effort cleanup on tab close
 window.addEventListener("beforeunload", () => {
     if (mySessionRef) deleteDoc(mySessionRef);
+    clearPresence();
 });
 
 // ─── VIEW SWITCHING ───────────────────────────────────────────────────────────
@@ -2065,8 +2496,20 @@ function addVideoTile(id, stream, label) {
     video.srcObject = stream;
     const lbl = document.createElement("div");
     lbl.className = "vezha-tile-label mono"; lbl.textContent = label;
-    tile.appendChild(video); tile.appendChild(lbl);
+    // Watermark overlay
+    const wmCanvas = document.createElement("canvas");
+    wmCanvas.className = "tile-watermark";
+    tile.appendChild(video); tile.appendChild(lbl); tile.appendChild(wmCanvas);
     grid.appendChild(tile);
+    // Draw after the tile is in DOM and has dimensions
+    const userId = getCurrentUser()?.userId || null;
+    if (userId) {
+        requestAnimationFrame(() => {
+            wmCanvas.width  = tile.clientWidth  || 640;
+            wmCanvas.height = tile.clientHeight || 360;
+            drawTileWatermark(wmCanvas, userId);
+        });
+    }
     updateTileLayout();
 }
 
@@ -2167,6 +2610,7 @@ applyLang();
     // Toggle collapse
     monitorToggle?.addEventListener("click", () => {
         monitorChat.classList.toggle("collapsed");
+        saveUserState();
         const up = !monitorChat.classList.contains("collapsed");
         monitorChevron.innerHTML = up
             ? `<polyline points="2,7 5,3 8,7" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
@@ -2304,12 +2748,14 @@ function escHtml(s) {
 
 // ─── THEME TOGGLE ────────────────────────────────────────────────────────────
 const themeToggleBtn = document.getElementById("themeToggleBtn");
-let isLightTheme = false;
 themeToggleBtn.addEventListener("click", () => {
     isLightTheme = !isLightTheme;
     document.body.classList.toggle("light-theme", isLightTheme);
     themeToggleBtn.title = isLightTheme ? "Switch to dark theme" : "Switch to light theme";
     themeToggleBtn.classList.toggle("active", isLightTheme);
+    saveUserState();
+    // Re-draw watermark with updated colour scheme
+    drawWatermarkCanvas(getCurrentUser()?.userId || null);
     const logoImg = document.querySelector(".brand-shield img");
     if (logoImg) logoImg.src = isLightTheme ? "logo_light.png" : "logo.png";
     const themeIcon = document.getElementById("themeIcon");
