@@ -1744,61 +1744,57 @@ function restoreUserState(username) {
 }
 
 // ─── WATERMARK ─────────────────────────────────────────────────────────────────
-function drawWatermarkCanvas(userId) {
-    const canvas = document.getElementById("watermarkCanvas");
-    if (!canvas) return;
-    const W = canvas.offsetWidth  || canvas.parentElement?.clientWidth  || 800;
-    const H = canvas.offsetHeight || canvas.parentElement?.clientHeight || 600;
-    canvas.width  = W;
-    canvas.height = H;
-    if (!userId) return;     // logged out — leave blank
-    const ctx = canvas.getContext("2d");
+// Core watermark painter — called once dimensions are known.
+function _paintWatermark(ctx, W, H, userId) {
     ctx.clearRect(0, 0, W, H);
-    // Draw rotated tiled text
     ctx.save();
-    ctx.globalAlpha = 0.045;
-    ctx.fillStyle = document.body.classList.contains("light-theme") ? "#000000" : "#88aaff";
-    ctx.font = "bold 15px 'Share Tech Mono', monospace";
+    ctx.globalAlpha = 0.09;   // 9% — visible but unobtrusive
+    ctx.fillStyle   = document.body.classList.contains("light-theme") ? "#1a2050" : "#9ab4ff";
+    ctx.font        = "bold 14px 'Share Tech Mono', monospace";
     ctx.textBaseline = "middle";
-    // Translate to centre, rotate -30°, tile the ID text
     ctx.translate(W / 2, H / 2);
     ctx.rotate(-30 * Math.PI / 180);
-    const colStep = 110, rowStep = 38;
-    const cols = Math.ceil(Math.max(W, H) * 1.5 / colStep) + 2;
-    const rows = Math.ceil(Math.max(W, H) * 1.5 / rowStep) + 2;
+    const colStep = 110, rowStep = 36;
+    const span = Math.max(W, H) * 1.6;
+    const cols = Math.ceil(span / colStep) + 2;
+    const rows = Math.ceil(span / rowStep) + 2;
     for (let r = -rows; r <= rows; r++) {
         for (let c = -cols; c <= cols; c++) {
             ctx.fillText(userId, c * colStep + (r % 2 === 0 ? 0 : colStep / 2), r * rowStep);
         }
     }
     ctx.restore();
+}
+
+function drawWatermarkCanvas(userId) {
+    const canvas = document.getElementById("watermarkCanvas");
+    if (!canvas) return;
+    const draw = () => {
+        // getBoundingClientRect forces a layout flush — always returns real pixels
+        const rect = canvas.getBoundingClientRect();
+        const W = rect.width  || canvas.parentElement?.getBoundingClientRect().width  || 800;
+        const H = rect.height || canvas.parentElement?.getBoundingClientRect().height || 600;
+        canvas.width  = W;
+        canvas.height = H;
+        if (!userId) return;
+        _paintWatermark(canvas.getContext("2d"), W, H, userId);
+    };
+    // Defer one frame so the flex layout has resolved before we measure
+    requestAnimationFrame(draw);
 }
 
 function drawTileWatermark(canvas, userId) {
     if (!canvas || !userId) return;
-    const W = canvas.width  = canvas.offsetWidth  || 640;
-    const H = canvas.height = canvas.offsetHeight || 360;
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, W, H);
-    ctx.save();
-    ctx.globalAlpha = 0.06;
-    ctx.fillStyle = "#88aaff";
-    ctx.font = "bold 13px 'Share Tech Mono', monospace";
-    ctx.textBaseline = "middle";
-    ctx.translate(W / 2, H / 2);
-    ctx.rotate(-30 * Math.PI / 180);
-    const colStep = 100, rowStep = 34;
-    const cols = Math.ceil(Math.max(W, H) * 1.5 / colStep) + 2;
-    const rows = Math.ceil(Math.max(W, H) * 1.5 / rowStep) + 2;
-    for (let r = -rows; r <= rows; r++) {
-        for (let c = -cols; c <= cols; c++) {
-            ctx.fillText(userId, c * colStep + (r % 2 === 0 ? 0 : colStep / 2), r * rowStep);
-        }
-    }
-    ctx.restore();
+    const draw = () => {
+        const rect = canvas.getBoundingClientRect();
+        const W = canvas.width  = rect.width  || canvas.parentElement?.clientWidth  || 640;
+        const H = canvas.height = rect.height || canvas.parentElement?.clientHeight || 360;
+        _paintWatermark(canvas.getContext("2d"), W, H, userId);
+    };
+    requestAnimationFrame(draw);
 }
 
-// Redraw watermark when map is resized / zoomed
+// Redraw watermark on map resize
 map.on("resize", () => { drawWatermarkCanvas(getCurrentUser()?.userId || null); });
 
 // ─── PRESENCE ──────────────────────────────────────────────────────────────────
@@ -1826,11 +1822,13 @@ async function clearPresence() {
 
 // ─── AUTH SCREEN HELPERS ────────────────────────────────────────────────────────
 function showAuthScreen() {
-    document.getElementById("authScreen")?.classList.remove("hidden");
+    const el = document.getElementById("authScreen");
+    if (el) el.style.display = "flex";
     showAuthPanel("login");
 }
 function hideAuthScreen() {
-    document.getElementById("authScreen")?.classList.add("hidden");
+    const el = document.getElementById("authScreen");
+    if (el) el.style.display = "none";
 }
 function showAuthPanel(panel) {
     document.getElementById("authLoginPanel").style.display   = panel === "login"   ? "flex" : "none";
@@ -2146,12 +2144,31 @@ document.getElementById("accountModal")?.addEventListener("click", e => {
         if (callEl) callEl.value = callsign;
         const roleEl = document.getElementById("roleSelect");
         if (roleEl) roleEl.value = user.role;
-        hideAuthScreen();
-        drawWatermarkCanvas(user.userId || null);
+        // Auth screen stays hidden (started hidden in HTML)
         updatePresence();
         presenceInterval = setInterval(updatePresence, 30000);
         if (user.role === "owner") startAdminListeners();
         restoreUserState(user.username);
+        updateModalState();
+        // Get or generate userId — may be absent in sessions predating the feature
+        if (user.userId) {
+            drawWatermarkCanvas(user.userId);
+        } else {
+            // Fetch from Firestore, generate if still missing, then draw
+            getDoc(doc(db, "accounts", user.username)).then(async snap => {
+                let uid = snap.exists() ? snap.data().userId : null;
+                if (!uid) {
+                    uid = generateUserId();
+                    try { await updateDoc(doc(db, "accounts", user.username), { userId: uid }); } catch (_) {}
+                }
+                const updatedUser = { ...user, userId: uid };
+                localStorage.setItem("deltaCurrentUser", JSON.stringify(updatedUser));
+                drawWatermarkCanvas(uid);
+                // Update the ID display in modal
+                const idEl = document.getElementById("loggedInId");
+                if (idEl) idEl.textContent = uid;
+            }).catch(() => {});
+        }
     } else {
         showAuthScreen();
     }
