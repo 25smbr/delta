@@ -131,15 +131,21 @@
           <!-- The symbols body is the ONLY scrollable part -->
           <div class="section-body scrollable-symbols" id="symbols-body">
             <div class="symbol-group">
-              <div class="group-label" data-i18n="infantry">INFANTRY</div>
+              <div class="group-label" data-i18n="infantry">INFANTRY
+                <button class="group-info-btn" data-tip="Manpower or foot soldiers that aren't UAV operators. If unsure if that's the case, use this mark.">?</button>
+              </div>
               <div class="symbol-row" id="row-infantry"></div>
             </div>
             <div class="symbol-group">
-              <div class="group-label" data-i18n="tank">ARMOR</div>
+              <div class="group-label" data-i18n="tank">ARMOR
+                <button class="group-info-btn" data-tip="Any armored or tracked vehicle.">?</button>
+              </div>
               <div class="symbol-row" id="row-tank"></div>
             </div>
             <div class="symbol-group">
-              <div class="group-label" data-i18n="artillery">ARTILLERY</div>
+              <div class="group-label" data-i18n="artillery">ARTILLERY
+                <button class="group-info-btn" data-tip="Any type of indirect fire or artillery gun.">?</button>
+              </div>
               <div class="symbol-row" id="row-artillery"></div>
             </div>
             <div class="symbol-group">
@@ -147,7 +153,9 @@
               <div class="symbol-row" id="row-helicopter"></div>
             </div>
             <div class="symbol-group">
-              <div class="group-label" data-i18n="position">POSITION</div>
+              <div class="group-label" data-i18n="position">POSITION
+                <button class="group-info-btn" data-tip="Any type of static position, trench, ammo cache, or emplacement.">?</button>
+              </div>
               <div class="symbol-row" id="row-position"></div>
             </div>
             <div class="symbol-group">
@@ -161,6 +169,12 @@
             <div class="symbol-group">
               <div class="group-label" data-i18n="uav">UAV</div>
               <div class="symbol-row" id="row-uav"></div>
+            </div>
+            <div class="symbol-group">
+              <div class="group-label">INFO MARKER
+                <button class="group-info-btn" data-tip="General information marker. Use the INFO field to add a note visible on the map.">?</button>
+              </div>
+              <div class="symbol-row" id="row-info"></div>
             </div>
             <button id="clearMarkersBtn" class="danger-btn" style="margin-top:8px;">
               <svg width="12" height="12" viewBox="0 0 12 12"><path d="M1 3h10M4 3V1h4v2M5 5v5M7 5v5M2 3l1 8h6l1-8" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
@@ -393,6 +407,7 @@
           <input id="callsignInput" class="chat-identity-input mono"
                  placeholder="CALLSIGN" data-i18n-ph="callsign" maxlength="12" autocomplete="off" spellcheck="false"/>
           <select id="roleSelect" class="chat-role-select mono">
+            <option value="owner"     style="color:#f59e0b">★ OWNER</option>
             <option value="operator"  data-i18n-opt="roleOperator">OPERATOR</option>
             <option value="commander" data-i18n-opt="roleCommander">COMMANDER</option>
             <option value="drone"     data-i18n-opt="roleDrone">DRONE PILOT</option>
@@ -406,6 +421,14 @@
             <path d="M1 1h11v8H7.5L5 12V9H1V1z" stroke="#4fa3ff" stroke-width="1.3" stroke-linejoin="round"/>
           </svg>
           <span data-i18n="comms">COMMS</span>
+          <button id="chatSearchToggle" title="Search messages" style="margin-left:auto;background:transparent;border:none;color:var(--text-dim);cursor:pointer;padding:2px;">
+            <svg width="12" height="12" viewBox="0 0 12 12"><circle cx="5" cy="5" r="4" stroke="currentColor" stroke-width="1.3" fill="none"/><line x1="8" y1="8" x2="11" y2="11" stroke="currentColor" stroke-width="1.3"/></svg>
+          </button>
+        </div>
+        <div id="chatSearchBar" style="display:none;padding:4px 8px;border-bottom:1px solid var(--border);">
+          <input id="chatSearchInput" class="mono" type="text" placeholder="SEARCH…" maxlength="80"
+                 style="width:100%;background:var(--bg-section);border:1px solid var(--border);border-radius:3px;
+                        color:var(--text-primary);font-size:10px;padding:4px 8px;outline:none;"/>
         </div>
         <div class="vezha-chat-messages" id="vezhaChatMessages"></div>
         <div class="vezha-chat-input-row">
@@ -642,6 +665,7 @@
   </div>
 </div>
 
+<div id="groupInfoTooltip"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module" src="app.js"></script>
 </body>
