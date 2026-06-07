@@ -2654,8 +2654,24 @@ function addVideoTile(id, stream, label) {
     tile.className = "vezha-tile" + (id === "self" ? " vezha-tile-self" : "");
     tile.id = "tile-" + id;
     const video = document.createElement("video");
-    video.autoplay = true; video.muted = (id === "self"); video.playsInline = true;
+    video.autoplay   = true;
+    video.playsInline = true;
+    // All tiles start muted — browsers block autoplay of unmuted video.
+    // Remote tiles can be unmuted by clicking them after playback starts.
+    video.muted = true;
     video.srcObject = stream;
+    // Explicitly call play() and retry on failure (handles late-arriving tracks)
+    const tryPlay = () => video.play().catch(() => setTimeout(tryPlay, 500));
+    video.addEventListener("loadedmetadata", tryPlay, { once: true });
+    // Allow click-to-unmute on remote tiles
+    if (id !== "self") {
+        video.title = "Click to unmute";
+        video.style.cursor = "pointer";
+        video.addEventListener("click", () => {
+            video.muted = !video.muted;
+            video.title = video.muted ? "Click to unmute" : "Click to mute";
+        });
+    }
     const lbl = document.createElement("div");
     lbl.className = "vezha-tile-label mono"; lbl.textContent = label;
     // Watermark overlay
