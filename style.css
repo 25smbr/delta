@@ -993,6 +993,41 @@ body.light-theme .mep-save:hover { background: rgba(37,99,235,0.15); }
 }
 .modal-save-btn:hover { background: rgba(58,82,169,0.35); }
 
+/* Modal tabs */
+.modal-tabs {
+  display: flex; border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.modal-tab {
+  flex: 1; background: none; border: none; border-bottom: 2px solid transparent;
+  color: var(--text-dim); font-family: var(--font-mono);
+  font-size: 10px; font-weight: 700; letter-spacing: 2px;
+  padding: 10px 0; cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -1px;
+}
+.modal-tab:hover { color: var(--accent); }
+.modal-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* Logged-in info */
+.modal-username {
+  font-size: 12px; font-weight: 700; letter-spacing: 1.5px;
+  color: var(--accent);
+}
+.modal-logout-btn {
+  background: var(--danger-dim) !important;
+  border-color: var(--danger) !important;
+  color: var(--danger) !important;
+}
+.modal-logout-btn:hover { background: rgba(255,59,59,0.22) !important; }
+
+/* Error text */
+.modal-error {
+  font-family: var(--font-mono); font-size: 9px;
+  color: var(--danger); letter-spacing: 0.5px;
+  min-height: 14px; line-height: 1.4;
+}
+
 /* light theme modal */
 body.light-theme .modal-card { background: var(--bg-panel); border-color: var(--border); }
 body.light-theme .modal-header { background: var(--bg-section); }
