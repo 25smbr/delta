@@ -2009,6 +2009,7 @@ function applyCurrentUser(user) {
         if (callEl) callEl.value = callsign;
         const roleEl = document.getElementById("roleSelect");
         if (roleEl) roleEl.value = user.role;
+        enforceOwnerRole();  // lock/unlock owner role dropdown
         // Restore UI state saved for this account
         restoreUserState(user.username);
         // Draw the ID watermark on the map
@@ -2231,12 +2232,18 @@ document.getElementById("accountModal")?.addEventListener("click", e => {
             }
             // Account valid — restore session
             const acctData = snap.data();
+            // OWNER_CALLSIGN always gets role "owner" regardless of what Firestore
+            // stores (the account may have been registered before the owner-role fix).
+            const resolvedRole = (user.username === OWNER_CALLSIGN)
+                ? "owner"
+                : (acctData.role || user.role);
+            const resolvedCallsign = acctData.callsign || user.callsign || user.username;
             // Sync any server-side changes (role, callsign, userId)
             const syncedUser = {
                 ...user,
-                role:     acctData.role     || user.role,
-                callsign: acctData.callsign || user.callsign || user.username,
-                userId:   acctData.userId   || user.userId   || null,
+                role:     resolvedRole,
+                callsign: resolvedCallsign,
+                userId:   acctData.userId || user.userId || null,
             };
             // Generate userId if still missing
             if (!syncedUser.userId) {
@@ -2245,14 +2252,21 @@ document.getElementById("accountModal")?.addEventListener("click", e => {
             }
             localStorage.setItem("deltaCurrentUser", JSON.stringify(syncedUser));
 
+            // Update DOM inputs — must happen before enforceOwnerRole()
             const callEl = document.getElementById("callsignInput");
-            if (callEl) callEl.value = syncedUser.callsign || syncedUser.username;
+            if (callEl) callEl.value = resolvedCallsign;
             const roleEl = document.getElementById("roleSelect");
-            if (roleEl) roleEl.value = syncedUser.role;
+            if (roleEl) roleEl.value = resolvedRole;
+
+            // Keep vezha identity keys in sync so getCallsign()/getRole() are
+            // never stale after a page refresh (fixes "B2X4IS / OP" in Vezha)
+            localStorage.setItem("vezhaCallsign", resolvedCallsign);
+            localStorage.setItem("vezhaRole",     resolvedRole);
+            enforceOwnerRole();
 
             updatePresence();
             presenceInterval = setInterval(updatePresence, 30000);
-            if (syncedUser.role === "owner") startAdminListeners();
+            if (resolvedRole === "owner") startAdminListeners();
             restoreUserState(syncedUser.username);
             updateModalState();
             drawWatermarkCanvas(syncedUser.userId);
@@ -2261,13 +2275,18 @@ document.getElementById("accountModal")?.addEventListener("click", e => {
             if (idEl) idEl.textContent = syncedUser.userId || "——";
         }).catch(() => {
             // Firestore unreachable — restore from cache optimistically
+            const cachedRole     = (user.username === OWNER_CALLSIGN) ? "owner" : user.role;
+            const cachedCallsign = user.callsign || user.username;
             const callEl = document.getElementById("callsignInput");
-            if (callEl) callEl.value = user.callsign || user.username;
+            if (callEl) callEl.value = cachedCallsign;
             const roleEl = document.getElementById("roleSelect");
-            if (roleEl) roleEl.value = user.role;
+            if (roleEl) roleEl.value = cachedRole;
+            localStorage.setItem("vezhaCallsign", cachedCallsign);
+            localStorage.setItem("vezhaRole",     cachedRole);
+            enforceOwnerRole();
             updatePresence();
             presenceInterval = setInterval(updatePresence, 30000);
-            if (user.role === "owner") startAdminListeners();
+            if (cachedRole === "owner") startAdminListeners();
             restoreUserState(user.username);
             updateModalState();
             drawWatermarkCanvas(user.userId || null);
@@ -2384,6 +2403,7 @@ let vezhaUnsubs    = [];
 let chatUnsub      = null;
 let processedSigs  = new Set();
 const peers        = {};
+const peerMeta     = {};   // peerId → { callsign, role } from vezha_sessions
 let vezhaEnterTime = 0;
 let heartbeatTimer = null;
 
@@ -2432,9 +2452,13 @@ async function enterVezha() {
         if (dirty) await b.commit();
     } catch (e) { /* non-fatal */ }
 
-    // ── Register presence ──
+    // ── Register presence (include callsign + role so peers can label tiles) ──
     mySessionRef = await addDoc(vezha_sessions, {
-        userId: myPeerId, lastSeen: Date.now(), created: Date.now()
+        userId:   myPeerId,
+        callsign: getCallsign(),
+        role:     getRole(),
+        lastSeen: Date.now(),
+        created:  Date.now()
     });
 
     // ── Heartbeat every 15 s ──
@@ -2464,10 +2488,14 @@ async function enterVezha() {
     // ── Listen for peer sessions ──
     const unsubSess = onSnapshot(vezha_sessions, snapshot => {
         snapshot.docChanges().forEach(change => {
-            const uid = change.doc.data().userId;
+            const data = change.doc.data();
+            const uid  = data.userId;
             if (uid === myPeerId) return;
+            if (change.type === "added" || change.type === "modified") {
+                peerMeta[uid] = { callsign: data.callsign || uid.slice(-6).toUpperCase(), role: data.role || "operator" };
+            }
             if (change.type === "added"   && localStream) createOffer(uid);
-            if (change.type === "removed") removePeer(uid);
+            if (change.type === "removed") { delete peerMeta[uid]; removePeer(uid); }
         });
         // Count only peers with a recent heartbeat
         const now = Date.now();
@@ -2510,6 +2538,7 @@ function exitVezha() {
     if (chatUnsub) { chatUnsub(); chatUnsub = null; }
     processedSigs.clear();
     Object.keys(peers).forEach(removePeer);
+    Object.keys(peerMeta).forEach(k => delete peerMeta[k]);
 
     document.getElementById("vezhaView").classList.remove("active");
     document.getElementById("appBody").style.display = "flex";
@@ -2567,7 +2596,11 @@ function getOrCreatePeer(userId) {
         }
     });
     pc.addEventListener("track", e => {
-        addVideoTile(userId, e.streams[0], "OP · " + userId.slice(-6).toUpperCase());
+        const meta     = peerMeta[userId] || {};
+        const cs       = meta.callsign || userId.slice(-6).toUpperCase();
+        const roleKey  = meta.role || "operator";
+        const roleDisp = roleKey === "owner" ? "ADMIN" : roleKey.toUpperCase();
+        addVideoTile(userId, e.streams[0], `${roleDisp} · ${cs}`);
     });
     pc.addEventListener("connectionstatechange", () => {
         if (["disconnected", "failed", "closed"].includes(pc.connectionState)) removePeer(userId);
