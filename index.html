@@ -15,31 +15,7 @@
   <header id="topBar">
     <div class="topBar-left">
       <div class="brand-shield">
-        <!-- Crest: shield + crosshair + sword + wings -->
-        <svg width="26" height="30" viewBox="0 0 30 34" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <!-- Shield body -->
-          <path d="M1 4 Q1 1.5 3.5 1.5 L26.5 1.5 Q29 1.5 29 4 L29 19 Q29 30 15 33 Q1 30 1 19 Z"
-                fill="#3A52A9" stroke="#2D2E33" stroke-width="2"/>
-          <!-- Inner shield highlight -->
-          <path d="M4 5.5 Q4 4 5.5 4 L24.5 4 Q26 4 26 5.5 L26 18.5 Q26 27.5 15 30.5 Q4 27.5 4 18.5 Z"
-                fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="0.8"/>
-          <!-- Target / crosshair ring -->
-          <circle cx="15" cy="16.5" r="8" stroke="#c8d0ea" stroke-width="1.4"/>
-          <!-- Sword blade (vertical, blade up) -->
-          <line x1="15" y1="5.5" x2="15" y2="28" stroke="#c8d0ea" stroke-width="2" stroke-linecap="round"/>
-          <!-- Cross-guard -->
-          <line x1="10.5" y1="15.5" x2="19.5" y2="15.5" stroke="#c8d0ea" stroke-width="2" stroke-linecap="round"/>
-          <!-- Pommel -->
-          <circle cx="15" cy="28.5" r="1.8" fill="#c8d0ea"/>
-          <!-- Horizontal crosshair through ring -->
-          <line x1="7" y1="16.5" x2="23" y2="16.5" stroke="#c8d0ea" stroke-width="0.9" stroke-linecap="round" opacity="0.55"/>
-          <!-- Left wing arcs -->
-          <path d="M7 16.5 C4.5 12.5 3 9 5 6" stroke="#c8d0ea" stroke-width="1.35" stroke-linecap="round"/>
-          <path d="M7.5 14.5 C5.5 11 5 8 6.5 5.5" stroke="#c8d0ea" stroke-width="1" stroke-linecap="round" opacity="0.75"/>
-          <!-- Right wing arcs (mirror) -->
-          <path d="M23 16.5 C25.5 12.5 27 9 25 6" stroke="#c8d0ea" stroke-width="1.35" stroke-linecap="round"/>
-          <path d="M22.5 14.5 C24.5 11 25 8 23.5 5.5" stroke="#c8d0ea" stroke-width="1" stroke-linecap="round" opacity="0.75"/>
-        </svg>
+        <img src="logo.png" height="30" style="width:auto;display:block;" alt="DELTA crest">
       </div>
       <span class="brand-name">DELTA</span>
       <span class="brand-sep">/</span>
@@ -57,6 +33,12 @@
     </div>
     <div class="topBar-right">
       <div class="status-pill live"><span class="pulse-dot"></span>LIVE</div>
+      <!-- Language switcher -->
+      <div class="lang-switcher">
+        <button class="lang-btn" data-lang="en">EN</button>
+        <button class="lang-btn" data-lang="ru">RU</button>
+        <button class="lang-btn" data-lang="ua">UA</button>
+      </div>
       <button class="topBtn" id="themeToggleBtn" title="Switch to light theme">
         <svg width="16" height="16" viewBox="0 0 16 16" id="themeIcon">
           <circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.3" fill="none"/>
@@ -70,7 +52,7 @@
           <line x1="2.9" y1="13.1" x2="4.3" y2="11.7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
         </svg>
       </button>
-      <button class="topBtn" title="User">
+      <button class="topBtn" id="accountBtn" title="Account">
         <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="5" r="3" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M2 14c0-4 2.7-5 6-5s6 1 6 5" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
       </button>
     </div>
@@ -97,7 +79,7 @@
         <section class="panel-section" id="section-filter">
           <div class="section-header" data-section="filter">
             <svg width="12" height="12" viewBox="0 0 12 12"><path d="M1 3h10M3 6h6M5 9h2" stroke="#4fa3ff" stroke-width="1.4" stroke-linecap="round"/></svg>
-            <span>FILTER</span>
+            <span data-i18n="filter">FILTER</span>
             <button class="section-collapse-btn" data-target="filter-body" title="Toggle section">
               <svg width="10" height="10" viewBox="0 0 10 10">
                 <polyline points="2,3 5,7 8,3" stroke="currentColor" stroke-width="1.5"
@@ -114,7 +96,7 @@
         <section class="panel-section" id="section-symbols">
           <div class="section-header" data-section="symbols">
             <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 2h8v8H2z" stroke="#4fa3ff" stroke-width="1.2" fill="none"/></svg>
-            <span>UNIT SYMBOLS</span>
+            <span data-i18n="unitSymbols">UNIT SYMBOLS</span>
             <button class="section-collapse-btn" data-target="symbols-body" title="Toggle section">
               <svg width="10" height="10" viewBox="0 0 10 10">
                 <polyline points="2,3 5,7 8,3" stroke="currentColor" stroke-width="1.5"
@@ -158,7 +140,7 @@
             </div>
             <button id="clearMarkersBtn" class="danger-btn" style="margin-top:8px;">
               <svg width="12" height="12" viewBox="0 0 12 12"><path d="M1 3h10M4 3V1h4v2M5 5v5M7 5v5M2 3l1 8h6l1-8" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
-              CLEAR ALL MARKERS
+              <span data-i18n="clearAll">CLEAR ALL MARKERS</span>
             </button>
           </div>
         </section>
@@ -240,7 +222,7 @@
             </div>
             <button id="clearDrawingsBtn" class="danger-btn">
               <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 2h8v8H2z" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M4 4l4 4M8 4l-4 4" stroke="currentColor" stroke-width="1.2"/></svg>
-              CLEAR DRAWINGS
+              <span data-i18n="clearDrawings">CLEAR DRAWINGS</span>
             </button>
           </div>
         </section>
@@ -311,18 +293,39 @@
             <path d="M19 18a7 7 0 0 1 10 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
             <path d="M15.5 14.5a12 12 0 0 1 17 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/>
           </svg>
-          <span>NO ACTIVE STREAMS</span>
-          <span class="vezha-hint">Click SHARE SCREEN to broadcast your display to all connected operators</span>
+          <span data-i18n="noStreams">NO ACTIVE STREAMS</span>
+          <span class="vezha-hint" data-i18n="streamHint">Click SHARE SCREEN to broadcast your display to all connected operators</span>
         </div>
       </div>
       <div class="vezha-controls">
         <button id="shareScreenBtn" class="vezha-ctrl-btn">
           <svg width="14" height="14" viewBox="0 0 14 14"><rect x="1" y="2" width="12" height="8" rx="1" stroke="currentColor" stroke-width="1.4" fill="none"/><path d="M4 10v1.5M10 10v1.5M2.5 12.5h9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M5 6l2-2 2 2M7 4v4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          SHARE SCREEN
+          <span data-i18n="shareScreen">SHARE SCREEN</span>
         </button>
         <button id="stopSharingBtn" class="vezha-ctrl-btn vezha-danger-btn" style="display:none">
           <svg width="14" height="14" viewBox="0 0 14 14"><rect x="2" y="2" width="10" height="10" rx="1" fill="currentColor" opacity=".8"/></svg>
-          STOP SHARING
+          <span data-i18n="stopSharing">STOP SHARING</span>
+        </button>
+        <div class="vezha-ctrl-sep"></div>
+        <!-- Microphone mute -->
+        <button id="micBtn" class="vezha-ctrl-btn vezha-danger-btn" title="Unmute microphone">
+          <!-- Muted mic icon (slash) -->
+          <svg id="micIcon" width="14" height="14" viewBox="0 0 14 14">
+            <rect x="4.5" y="1" width="5" height="7" rx="2.5" stroke="currentColor" stroke-width="1.3" fill="none"/>
+            <path d="M2 6.5a5 5 0 0 0 10 0" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+            <line x1="7" y1="11.5" x2="7" y2="13" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+            <line x1="1.5" y1="1.5" x2="12.5" y2="12.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          </svg>
+          <span id="micLabel" data-i18n="unmute">UNMUTE</span>
+        </button>
+        <!-- Deafen -->
+        <button id="deafenBtn" class="vezha-ctrl-btn" title="Deafen (mute all audio)">
+          <svg id="deafenIcon" width="14" height="14" viewBox="0 0 14 14">
+            <path d="M7 1a4 4 0 0 1 4 4v3a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z" stroke="currentColor" stroke-width="1.3" fill="none"/>
+            <path d="M1 5.5h2M11 5.5h2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+            <path d="M2.5 9.5C3.5 12 5.5 13 7 13s3.5-1 4.5-3.5" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+          </svg>
+          <span id="deafenLabel" data-i18n="deafen">DEAFEN</span>
         </button>
         <div class="vezha-ctrl-sep"></div>
         <span id="vezhaStatus" class="vezha-status mono">OPERATORS: 0 ONLINE</span>
@@ -337,7 +340,7 @@
         <!-- Identity bar — callsign + role, persisted in localStorage -->
         <div class="chat-identity-bar">
           <input id="callsignInput" class="chat-identity-input mono"
-                 placeholder="CALLSIGN" maxlength="12" autocomplete="off" spellcheck="false"/>
+                 placeholder="CALLSIGN" data-i18n-ph="callsign" maxlength="12" autocomplete="off" spellcheck="false"/>
           <select id="roleSelect" class="chat-role-select mono">
             <option value="operator">OPERATOR</option>
             <option value="commander">COMMANDER</option>
@@ -351,7 +354,7 @@
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
             <path d="M1 1h11v8H7.5L5 12V9H1V1z" stroke="#4fa3ff" stroke-width="1.3" stroke-linejoin="round"/>
           </svg>
-          <span>COMMS</span>
+          <span data-i18n="comms">COMMS</span>
         </div>
         <div class="vezha-chat-messages" id="vezhaChatMessages"></div>
         <div class="vezha-chat-input-row">
@@ -359,7 +362,7 @@
             type="text"
             id="vezhaChatInput"
             class="vezha-chat-input mono"
-            placeholder="TYPE MESSAGE..."
+            placeholder="TYPE MESSAGE..." data-i18n-ph="typeMessage"
             maxlength="400"
             autocomplete="off"
           />
@@ -385,6 +388,42 @@
       <span class="status-item" id="rulerReadout"></span>
     </div>
   </footer>
+
+  <!-- ═══════════════ ACCOUNT MODAL ═══════════════ -->
+  <div id="accountModal" class="modal-overlay" style="display:none">
+    <div class="modal-card">
+      <div class="modal-header">
+        <span class="modal-title" data-i18n="account">ACCOUNT</span>
+        <button id="accountModalClose" class="modal-close-btn">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-field">
+          <label class="modal-label" data-i18n="nickname">CALLSIGN / NICKNAME</label>
+          <input id="accountCallsign" class="modal-input mono" type="text" maxlength="16" autocomplete="off" spellcheck="false"/>
+        </div>
+        <div class="modal-field">
+          <label class="modal-label" data-i18n="role">ROLE</label>
+          <select id="accountRole" class="modal-select mono">
+            <option value="operator">OPERATOR</option>
+            <option value="commander">COMMANDER</option>
+            <option value="drone">DRONE PILOT</option>
+            <option value="sniper">SNIPER</option>
+            <option value="medic">MEDIC</option>
+            <option value="intel">INTEL</option>
+          </select>
+        </div>
+        <div class="modal-field">
+          <label class="modal-label" data-i18n="password">PASSWORD</label>
+          <input id="accountPassword" class="modal-input mono" type="password" maxlength="32" autocomplete="new-password"/>
+        </div>
+        <div class="modal-field modal-field-row">
+          <span class="modal-label">ROLE COLOR</span>
+          <div class="modal-role-preview" id="accountRolePreview"></div>
+        </div>
+      </div>
+      <button id="accountSave" class="modal-save-btn"><span data-i18n="save">SAVE</span></button>
+    </div>
+  </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module" src="app.js"></script>
