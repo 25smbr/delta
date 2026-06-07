@@ -107,35 +107,35 @@
           <!-- The symbols body is the ONLY scrollable part -->
           <div class="section-body scrollable-symbols" id="symbols-body">
             <div class="symbol-group">
-              <div class="group-label">INFANTRY</div>
+              <div class="group-label" data-i18n="infantry">INFANTRY</div>
               <div class="symbol-row" id="row-infantry"></div>
             </div>
             <div class="symbol-group">
-              <div class="group-label">ARMOR</div>
+              <div class="group-label" data-i18n="tank">ARMOR</div>
               <div class="symbol-row" id="row-tank"></div>
             </div>
             <div class="symbol-group">
-              <div class="group-label">ARTILLERY</div>
+              <div class="group-label" data-i18n="artillery">ARTILLERY</div>
               <div class="symbol-row" id="row-artillery"></div>
             </div>
             <div class="symbol-group">
-              <div class="group-label">HELICOPTER</div>
+              <div class="group-label" data-i18n="helicopter">HELICOPTER</div>
               <div class="symbol-row" id="row-helicopter"></div>
             </div>
             <div class="symbol-group">
-              <div class="group-label">POSITION</div>
+              <div class="group-label" data-i18n="position">POSITION</div>
               <div class="symbol-row" id="row-position"></div>
             </div>
             <div class="symbol-group">
-              <div class="group-label">HUMVEE</div>
+              <div class="group-label" data-i18n="humvee">HUMVEE</div>
               <div class="symbol-row" id="row-humvee"></div>
             </div>
             <div class="symbol-group">
-              <div class="group-label">TRUCK</div>
+              <div class="group-label" data-i18n="truck">TRUCK</div>
               <div class="symbol-row" id="row-truck"></div>
             </div>
             <div class="symbol-group">
-              <div class="group-label">UAV</div>
+              <div class="group-label" data-i18n="uav">UAV</div>
               <div class="symbol-row" id="row-uav"></div>
             </div>
             <button id="clearMarkersBtn" class="danger-btn" style="margin-top:8px;">
@@ -151,7 +151,7 @@
         <section class="panel-section" id="section-coords">
           <div class="section-header" data-section="coords">
             <svg width="12" height="12" viewBox="0 0 12 12"><circle cx="5" cy="5" r="4" stroke="#4fa3ff" stroke-width="1.2" fill="none"/><line x1="8" y1="8" x2="11" y2="11" stroke="#4fa3ff" stroke-width="1.2"/></svg>
-            <span>GO TO COORDINATES</span>
+            <span data-i18n="coordinates">GO TO COORDINATES</span>
             <button class="section-collapse-btn" data-target="coords-body" title="Toggle section">
               <svg width="10" height="10" viewBox="0 0 10 10">
                 <polyline points="2,3 5,7 8,3" stroke="currentColor" stroke-width="1.5"
@@ -174,7 +174,7 @@
         <section class="panel-section" id="section-draw">
           <div class="section-header" data-section="draw">
             <svg width="12" height="12" viewBox="0 0 12 12"><path d="M8 1l3 3-7 7H1V8L8 1z" stroke="#4fa3ff" stroke-width="1.2" fill="none"/></svg>
-            <span>DRAW TOOLS</span>
+            <span data-i18n="drawings">DRAW TOOLS</span>
             <button id="toggleDrawMode" class="mode-toggle" title="Toggle drawing mode">OFF</button>
             <button class="section-collapse-btn" data-target="draw-body" title="Toggle section">
               <svg width="10" height="10" viewBox="0 0 10 10">
@@ -205,12 +205,12 @@
               </button>
             </div>
             <div class="slider-row">
-              <span class="slider-label">WIDTH</span>
+              <span class="slider-label" data-i18n="width">WIDTH</span>
               <input type="range" id="penWidth" min="1" max="20" value="3" class="tac-slider">
               <span class="slider-val mono" id="penWidthVal">3</span>
             </div>
             <div class="color-row">
-              <span class="slider-label">COLOR</span>
+              <span class="slider-label" data-i18n="color">COLOR</span>
               <div class="color-swatches">
                 <button class="swatch active" data-color="#ff4444" style="background:#ff4444" title="Red"></button>
                 <button class="swatch" data-color="#44aaff" style="background:#44aaff" title="Blue"></button>
@@ -240,7 +240,7 @@
           COORDINATES
         </div>
         <div class="coord-popup-row">
-          <span class="coord-popup-label">COORDS</span>
+          <span class="coord-popup-label" data-i18n="coordsLabel">COORDS</span>
           <span class="coord-popup-val mono" id="popupBoth">—</span>
           <button class="coord-copy-btn" id="copyBoth" title="Copy coordinates">
             <svg width="10" height="10" viewBox="0 0 10 10"><rect x="3" y="3" width="6" height="6" stroke="currentColor" stroke-width="1" fill="none"/><path d="M1 7V1h6" stroke="currentColor" stroke-width="1" fill="none"/></svg>
@@ -342,12 +342,12 @@
           <input id="callsignInput" class="chat-identity-input mono"
                  placeholder="CALLSIGN" data-i18n-ph="callsign" maxlength="12" autocomplete="off" spellcheck="false"/>
           <select id="roleSelect" class="chat-role-select mono">
-            <option value="operator">OPERATOR</option>
-            <option value="commander">COMMANDER</option>
-            <option value="drone">DRONE PILOT</option>
-            <option value="sniper">SNIPER</option>
-            <option value="medic">MEDIC</option>
-            <option value="intel">INTEL</option>
+            <option value="operator"  data-i18n-opt="roleOperator">OPERATOR</option>
+            <option value="commander" data-i18n-opt="roleCommander">COMMANDER</option>
+            <option value="drone"     data-i18n-opt="roleDrone">DRONE PILOT</option>
+            <option value="sniper"    data-i18n-opt="roleSniper">SNIPER</option>
+            <option value="medic"     data-i18n-opt="roleMedic">MEDIC</option>
+            <option value="intel"     data-i18n-opt="roleIntel">INTEL</option>
           </select>
         </div>
         <div class="vezha-chat-header">
@@ -393,35 +393,84 @@
   <div id="accountModal" class="modal-overlay" style="display:none">
     <div class="modal-card">
       <div class="modal-header">
-        <span class="modal-title" data-i18n="account">ACCOUNT</span>
+        <span class="modal-title" data-i18n="accountTitle">ACCOUNT</span>
         <button id="accountModalClose" class="modal-close-btn">✕</button>
       </div>
-      <div class="modal-body">
+
+      <!-- Tabs (hidden when logged in) -->
+      <div class="modal-tabs">
+        <button class="modal-tab active" id="tabLogin" data-i18n="login">LOGIN</button>
+        <button class="modal-tab" id="tabRegister" data-i18n="register">REGISTER</button>
+      </div>
+
+      <!-- LOGIN PANEL -->
+      <div id="loginPanel" class="modal-body">
         <div class="modal-field">
-          <label class="modal-label" data-i18n="nickname">CALLSIGN / NICKNAME</label>
-          <input id="accountCallsign" class="modal-input mono" type="text" maxlength="16" autocomplete="off" spellcheck="false"/>
+          <label class="modal-label" data-i18n="username">USERNAME</label>
+          <input id="loginUsername" class="modal-input mono" type="text" maxlength="16"
+                 autocomplete="username" spellcheck="false"/>
+        </div>
+        <div class="modal-field">
+          <label class="modal-label" data-i18n="password">PASSWORD</label>
+          <input id="loginPassword" class="modal-input mono" type="password" maxlength="32"
+                 autocomplete="current-password"/>
+        </div>
+        <div class="modal-error" id="loginError"></div>
+        <button id="loginBtn" class="modal-save-btn">
+          <span data-i18n="loginBtn">LOG IN</span>
+        </button>
+      </div>
+
+      <!-- REGISTER PANEL -->
+      <div id="registerPanel" class="modal-body" style="display:none">
+        <div class="modal-field">
+          <label class="modal-label" data-i18n="username">USERNAME</label>
+          <input id="regUsername" class="modal-input mono" type="text" maxlength="16"
+                 autocomplete="username" spellcheck="false"/>
         </div>
         <div class="modal-field">
           <label class="modal-label" data-i18n="role">ROLE</label>
-          <select id="accountRole" class="modal-select mono">
-            <option value="operator">OPERATOR</option>
-            <option value="commander">COMMANDER</option>
-            <option value="drone">DRONE PILOT</option>
-            <option value="sniper">SNIPER</option>
-            <option value="medic">MEDIC</option>
-            <option value="intel">INTEL</option>
+          <select id="regRole" class="modal-select mono">
+            <option value="operator"  data-i18n-opt="roleOperator">OPERATOR</option>
+            <option value="commander" data-i18n-opt="roleCommander">COMMANDER</option>
+            <option value="drone"     data-i18n-opt="roleDrone">DRONE PILOT</option>
+            <option value="sniper"    data-i18n-opt="roleSniper">SNIPER</option>
+            <option value="medic"     data-i18n-opt="roleMedic">MEDIC</option>
+            <option value="intel"     data-i18n-opt="roleIntel">INTEL</option>
           </select>
         </div>
         <div class="modal-field">
           <label class="modal-label" data-i18n="password">PASSWORD</label>
-          <input id="accountPassword" class="modal-input mono" type="password" maxlength="32" autocomplete="new-password"/>
+          <input id="regPassword" class="modal-input mono" type="password" maxlength="32"
+                 autocomplete="new-password"/>
+        </div>
+        <div class="modal-field">
+          <label class="modal-label" data-i18n="confirmPassword">CONFIRM PASSWORD</label>
+          <input id="regConfirm" class="modal-input mono" type="password" maxlength="32"
+                 autocomplete="new-password"/>
+        </div>
+        <div class="modal-error" id="regError"></div>
+        <button id="registerBtn" class="modal-save-btn">
+          <span data-i18n="registerBtn">CREATE ACCOUNT</span>
+        </button>
+      </div>
+
+      <!-- LOGGED-IN PANEL -->
+      <div id="loggedInPanel" class="modal-body" style="display:none">
+        <div class="modal-field modal-field-row">
+          <span class="modal-label" data-i18n="loggedInAs">LOGGED IN AS</span>
+          <span id="loggedInName" class="mono modal-username"></span>
         </div>
         <div class="modal-field modal-field-row">
-          <span class="modal-label">ROLE COLOR</span>
+          <span class="modal-label" data-i18n="role">ROLE</span>
           <div class="modal-role-preview" id="accountRolePreview"></div>
+          <span id="loggedInRole" class="mono" style="font-size:10px;letter-spacing:1px;color:var(--text-primary)"></span>
         </div>
+        <button id="logoutBtn" class="modal-save-btn modal-logout-btn">
+          <span data-i18n="logout">LOG OUT</span>
+        </button>
       </div>
-      <button id="accountSave" class="modal-save-btn"><span data-i18n="save">SAVE</span></button>
+
     </div>
   </div>
 
