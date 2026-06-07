@@ -551,11 +551,13 @@ function createIcon(type, data = {}) {
     const amount = escHtml(String(data.amount || ""));
     const info   = escHtml(data.info   || "");
     const source = escHtml(data.source || "");
+    const author = escHtml(data.author || "");
     const html = `<div class="mkr-wrap">
       <div class="ml ml-tl">${date}</div>
       <div class="ml ml-tc">${amount}</div>
       <div class="ml ml-tr">${info}</div>
       <div class="mkr-icon">${svg}</div>
+      <div class="ml ml-bl">${author}</div>
       <div class="ml ml-br">${source}</div>
     </div>`;
     return L.divIcon({
@@ -649,7 +651,8 @@ map.on("click", async (e) => {
         date:    dateStr,
         amount:  "",
         info:    "",
-        source:  ""
+        source:  "",
+        author:  getCallsign()
     });
     undoStack.push({ type: "marker", id: newRef.id });
 });
@@ -662,6 +665,10 @@ function openMarkerEditPopup(markerId, markerLeaflet, data) {
         <div class="mep-row">
           <span class="mep-label">DATE</span>
           <span class="mep-date">${escHtml(data.date || "")}</span>
+        </div>
+        <div class="mep-row">
+          <span class="mep-label">BY</span>
+          <span class="mep-date">${escHtml(data.author || "—")}</span>
         </div>
         <div class="mep-row">
           <label class="mep-label" for="mep-amt">AMT</label>
@@ -860,6 +867,7 @@ function redrawAll() {
     strokes.forEach(s => drawStroke(s));
     if (currentStroke) drawStroke(currentStroke);
     if (rulerMode && rulerPoints.length > 0) drawRulerOverlay();
+    if (window.__artyRedrawHook) window.__artyRedrawHook();
 }
 function drawStroke(s) {
     ctx.save();
@@ -913,6 +921,16 @@ function drawStroke(s) {
         });
         ctx.stroke();
         ctx.restore();
+    } else if (s.tool === "label") {
+        const [cx, cy] = llToCanvas(s.ll1.lat, s.ll1.lng);
+        const fs = Math.max(10, Math.min(s.width * 4, 32));
+        ctx.font = `700 ${fs}px 'Share Tech Mono', monospace`;
+        ctx.fillStyle = s.color;
+        // subtle shadow for readability on any background
+        ctx.shadowColor = "rgba(0,0,0,0.8)";
+        ctx.shadowBlur  = 4;
+        ctx.fillText(s.labelText || "", cx, cy);
+        ctx.shadowBlur = 0;
     }
     ctx.restore();
 }
@@ -1064,6 +1082,55 @@ canvas.addEventListener("mouseleave", async () => {
         }
     }
 });
+// ─── LABEL TOOL — click to place floating input, Enter to commit ─────────────
+{
+    const labelWrap  = document.getElementById("labelInputWrap");
+    const labelField = document.getElementById("labelInputField");
+    let   labelLL    = null;   // map latlng where the label will be anchored
+
+    canvas.addEventListener("click", (e) => {
+        if (!drawMode || activeTool !== "label") return;
+        const { offsetX: x, offsetY: y } = e;
+        labelLL = canvasToLL(x, y);
+        // Position the floating input near the click point
+        labelWrap.style.left = (x + 4) + "px";
+        labelWrap.style.top  = (y - 20) + "px";
+        labelField.value = "";
+        labelWrap.style.display = "block";
+        labelField.focus();
+    });
+
+    async function commitLabel() {
+        const text = labelField.value.trim();
+        labelWrap.style.display = "none";
+        if (!text || !labelLL) return;
+        const stroke = {
+            tool:      "label",
+            labelText: text,
+            color:     penColor,
+            width:     penWidth,
+            ll1:       { lat: labelLL.lat, lng: labelLL.lng },
+            created:   Date.now()
+        };
+        try {
+            const docRef = await addDoc(drawingsCollection, stroke);
+            undoStack.push({ type: "drawing", id: docRef.id });
+        } catch (err) {
+            console.error("Label save failed:", err);
+            strokes.push({ ...stroke, firestoreId: "_local_" + Date.now() });
+            redrawAll();
+        }
+    }
+
+    labelField.addEventListener("keydown", (e) => {
+        if (e.key === "Enter")  { e.preventDefault(); commitLabel(); }
+        if (e.key === "Escape") { labelWrap.style.display = "none"; }
+    });
+    labelField.addEventListener("blur", () => {
+        // Small delay so click-to-commit doesn't race
+        setTimeout(() => { if (labelWrap.style.display !== "none") commitLabel(); }, 150);
+    });
+}
 // ─── TOUCH SUPPORT ───────────────────────────────────────────────────────────
 function getTouchPos(e) {
     const rect = canvas.getBoundingClientRect();
@@ -1119,6 +1186,109 @@ function toggleRuler() {
     }
 }
 rulerBtn.addEventListener("click", toggleRuler);
+
+// ─── COORDINATE GRID OVERLAY ──────────────────────────────────────────────────
+let gridActive = false;
+let gridLayer  = null;
+const gridBtn  = document.getElementById("gridBtn");
+
+function drawGridLayer() {
+    if (gridLayer) { gridLayer.remove(); gridLayer = null; }
+    if (!gridActive) return;
+
+    const mapEl  = document.getElementById("map");
+    const W = mapEl.clientWidth, H = mapEl.clientHeight;
+    const bounds = map.getBounds();
+    const span   = bounds.getEast() - bounds.getWest();
+
+    // Pick a round grid step that gives ~5-8 columns on screen
+    const rawStep = span / 6;
+    const mag     = Math.pow(10, Math.floor(Math.log10(rawStep)));
+    const step    = [1, 2, 5, 10].map(f => f * mag).find(s => span / s <= 8) || mag * 10;
+
+    const gridCanvas = document.createElement("canvas");
+    gridCanvas.width  = W; gridCanvas.height = H;
+    Object.assign(gridCanvas.style, {
+        position: "absolute", top: 0, left: 0, pointerEvents: "none", zIndex: 500
+    });
+    mapEl.style.position = "relative";
+    mapEl.appendChild(gridCanvas);
+    gridLayer = gridCanvas;
+
+    const gc = gridCanvas.getContext("2d");
+    gc.strokeStyle = "rgba(90,150,220,0.35)";
+    gc.lineWidth   = 0.8;
+    gc.fillStyle   = "rgba(90,150,220,0.85)";
+    gc.font        = "bold 9px 'Share Tech Mono', monospace";
+
+    const west  = Math.ceil(bounds.getWest()  / step) * step;
+    const south = Math.ceil(bounds.getSouth() / step) * step;
+
+    // Vertical lines (longitude)
+    for (let lng = west; lng <= bounds.getEast(); lng += step) {
+        const px = map.latLngToContainerPoint([0, lng]).x;
+        gc.beginPath(); gc.moveTo(px, 0); gc.lineTo(px, H); gc.stroke();
+        gc.fillText(lng.toFixed(0), px + 3, 12);
+    }
+    // Horizontal lines (latitude)
+    for (let lat = south; lat <= bounds.getNorth(); lat += step) {
+        const py = map.latLngToContainerPoint([lat, 0]).y;
+        gc.beginPath(); gc.moveTo(0, py); gc.lineTo(W, py); gc.stroke();
+        gc.fillText(lat.toFixed(0), 3, py - 3);
+    }
+}
+
+function toggleGrid() {
+    gridActive = !gridActive;
+    gridBtn.classList.toggle("active", gridActive);
+    drawGridLayer();
+}
+gridBtn?.addEventListener("click", toggleGrid);
+map.on("move zoom moveend zoomend resize", () => { if (gridActive) drawGridLayer(); });
+
+// ─── MAP EXPORT (PNG) ─────────────────────────────────────────────────────────
+document.getElementById("exportBtn")?.addEventListener("click", async () => {
+    const mapEl   = document.getElementById("map");
+    const leafletCanvas = mapEl.querySelector("canvas.leaflet-zoom-animated") ||
+                          mapEl.querySelector(".leaflet-tile-pane canvas");
+    // Capture the map tile layer via leaflet's internal canvas if available,
+    // otherwise fall back to html2canvas-style DOM capture.
+    // We use a two-step approach: draw tiles then overlay our drawing canvas.
+    const W = mapEl.clientWidth, H = mapEl.clientHeight;
+    const out = document.createElement("canvas");
+    out.width  = W; out.height = H;
+    const oc = out.getContext("2d");
+
+    // Draw the Leaflet tile pane (all tile <img> elements)
+    const tilePanes = mapEl.querySelectorAll(".leaflet-tile-pane img.leaflet-tile");
+    for (const img of tilePanes) {
+        const r = img.getBoundingClientRect();
+        const mr = mapEl.getBoundingClientRect();
+        try {
+            oc.drawImage(img, r.left - mr.left, r.top - mr.top, r.width, r.height);
+        } catch (e) { /* CORS-tainted tile — skip */ }
+    }
+
+    // Overlay our drawing canvas
+    const drawCanvas = document.getElementById("drawCanvas");
+    oc.drawImage(drawCanvas, 0, 0);
+
+    // Timestamp watermark
+    const now = new Date();
+    const ts  = `DELTA MONITOR  ${now.toISOString().slice(0,16).replace("T"," ")} UTC`;
+    oc.font        = "bold 11px 'Share Tech Mono', monospace";
+    oc.fillStyle   = "rgba(90,150,220,0.9)";
+    oc.shadowColor = "rgba(0,0,0,0.8)";
+    oc.shadowBlur  = 3;
+    oc.fillText(ts, 10, H - 10);
+    oc.shadowBlur  = 0;
+
+    // Download
+    const link = document.createElement("a");
+    link.download = `delta_monitor_${now.toISOString().slice(0,19).replace(/:/g,"-")}.png`;
+    link.href = out.toDataURL("image/png");
+    link.click();
+});
 function mapDistancePixels(ll1, ll2) {
     const p1 = map.latLngToContainerPoint(ll1);
     const p2 = map.latLngToContainerPoint(ll2);
@@ -1266,6 +1436,36 @@ collapseBtn.addEventListener("click", () => {
         redrawAll();
     }, 260);
 });
+// ─── MOBILE SWIPE TO OPEN LEFT PANEL ─────────────────────────────────────────
+{
+    let swipeStartX = 0, swipeStartY = 0;
+    const SWIPE_THRESHOLD = 50;   // px to the right = open
+    const CLOSE_THRESHOLD = 40;   // px to the left  = close
+
+    document.addEventListener("touchstart", e => {
+        if (!isMobileLayout()) return;
+        swipeStartX = e.touches[0].clientX;
+        swipeStartY = e.touches[0].clientY;
+    }, { passive: true });
+
+    document.addEventListener("touchend", e => {
+        if (!isMobileLayout()) return;
+        const dx = e.changedTouches[0].clientX - swipeStartX;
+        const dy = e.changedTouches[0].clientY - swipeStartY;
+        if (Math.abs(dy) > Math.abs(dx)) return;  // vertical swipe — ignore
+        const isOpen = leftPanel.classList.contains("mobile-open");
+        // Swipe right from left edge → open
+        if (dx > SWIPE_THRESHOLD && swipeStartX < 60 && !isOpen) {
+            leftPanel.classList.add("mobile-open");
+            setTimeout(() => { map.invalidateSize({ animate: false }); }, 260);
+        }
+        // Swipe left anywhere when panel is open → close
+        if (dx < -CLOSE_THRESHOLD && isOpen) {
+            leftPanel.classList.remove("mobile-open");
+            setTimeout(() => { map.invalidateSize({ animate: false }); }, 260);
+        }
+    }, { passive: true });
+}
 // ─── PER-SECTION COLLAPSE ────────────────────────────────────────────────────
 document.querySelectorAll(".section-collapse-btn").forEach((btn) => {
     const targetId = btn.dataset.target;
@@ -1600,6 +1800,7 @@ async function enterVezha() {
     if (typeof artilleryActive !== "undefined" && artilleryActive) exitArtillery();
     vezhaActive    = true;
     vezhaEnterTime = Date.now();
+    document.body.classList.add("in-vezha"); document.body.classList.remove("in-arty");
 
     document.getElementById("appBody").style.display = "none";
     document.getElementById("vezhaView").classList.add("active");
@@ -1689,6 +1890,7 @@ function exitVezha() {
     stopSharing();
     stopMic();
     vezhaActive = false;
+    document.body.classList.remove("in-vezha");
 
     clearInterval(heartbeatTimer); heartbeatTimer = null;
     if (mySessionRef) { deleteDoc(mySessionRef); mySessionRef = null; }
@@ -1866,6 +2068,70 @@ function getRole() {
 // Apply language on load
 applyLang();
 
+// ─── MONITOR CHAT ─────────────────────────────────────────────────────────────
+{
+    const monitorChat   = document.getElementById("monitorChat");
+    const monitorMsgs   = document.getElementById("monitorChatMessages");
+    const monitorInput  = document.getElementById("monitorChatInput");
+    const monitorSend   = document.getElementById("monitorChatSend");
+    const monitorToggle = document.getElementById("monitorChatToggle");
+    const monitorChevron= document.getElementById("monitorChatChevron");
+
+    // Toggle collapse
+    monitorToggle?.addEventListener("click", () => {
+        monitorChat.classList.toggle("collapsed");
+        const up = !monitorChat.classList.contains("collapsed");
+        monitorChevron.innerHTML = up
+            ? `<polyline points="2,7 5,3 8,7" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
+            : `<polyline points="2,3 5,7 8,3" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+    });
+
+    // Render a message into the monitor chat panel (reuses renderChatMessage styles)
+    function renderMonitorMsg(data) {
+        if (!monitorMsgs) return;
+        const isMine = data.userId === myPeerId;
+        const el = document.createElement("div");
+        el.className = "chat-msg" + (isMine ? " chat-msg-mine" : "");
+        const d  = new Date(data.created);
+        const hh = String(d.getHours()).padStart(2, "0");
+        const mm = String(d.getMinutes()).padStart(2, "0");
+        const name      = escHtml(data.callsign || data.shortId || "?");
+        const roleColor = ROLE_COLORS[data.role] || ROLE_COLORS.operator;
+        el.innerHTML = `
+          <div class="chat-msg-meta">
+            <span class="chat-msg-author" style="color:${roleColor}">${name}</span>
+            <span class="chat-msg-time mono">${hh}:${mm}</span>
+          </div>
+          <div class="chat-msg-text">${escHtml(data.text)}</div>`;
+        monitorMsgs.appendChild(el);
+        monitorMsgs.scrollTop = monitorMsgs.scrollHeight;
+    }
+
+    // Send from monitor chat (same Firestore collection as Vezha chat)
+    async function sendMonitorChat() {
+        const text = monitorInput?.value.trim();
+        if (!text) return;
+        monitorInput.value = "";
+        try {
+            await addDoc(vezha_chat, {
+                userId: myPeerId, shortId: myShortId,
+                callsign: getCallsign(), role: getRole(),
+                text, created: Date.now()
+            });
+        } catch (err) { console.error("Monitor chat error:", err); }
+    }
+
+    monitorSend?.addEventListener("click", sendMonitorChat);
+    monitorInput?.addEventListener("keydown", e => {
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMonitorChat(); }
+    });
+
+    // Mirror the shared vezha_chat stream into the monitor panel
+    // (vezha_chat onSnapshot is set up later — we hook into renderChatMessage)
+    const _origRender = window.__renderChatHook;
+    window.__monitorRenderHook = renderMonitorMsg;
+}
+
 document.getElementById("callsignInput")?.addEventListener("input", e => {
     localStorage.setItem("vezhaCallsign", e.target.value.trim());
 });
@@ -1889,6 +2155,8 @@ async function sendChat() {
 }
 
 function renderChatMessage(data) {
+    // Also mirror into the Monitor chat panel
+    if (window.__monitorRenderHook) window.__monitorRenderHook(data);
     const isMine   = data.userId === myPeerId;
     const msgs     = document.getElementById("vezhaChatMessages");
     const el       = document.createElement("div");
@@ -2244,6 +2512,22 @@ document.getElementById("artyCalcBtn")?.addEventListener("click", () => {
         </span>
       </div>`;
     if (noResult) noResult.style.display = "none";
+
+    // ── Fire mission log ──────────────────────────────────────────────────────
+    const logContainer = document.getElementById("artyMissionLog");
+    if (logContainer) {
+        const logEntry = document.createElement("div");
+        logEntry.className = "arty-log-entry";
+        const ts = new Date();
+        const pad = n => String(n).padStart(2, "0");
+        const timeStr = `${pad(ts.getHours())}:${pad(ts.getMinutes())}:${pad(ts.getSeconds())}`;
+        logEntry.innerHTML = `
+          <div class="arty-log-time">${timeStr}</div>
+          <div class="arty-log-line"><b>${escHtml(gun.name)}</b> · ${escHtml(proj.name)}</div>
+          <div class="arty-log-line">AZ <b>${fmt1(azimuth)}°</b> · DIST <b>${fmt0(distM)} m</b> · Δh <b>${hd >= 0 ? "+" : ""}${hd} m</b></div>
+          <div class="arty-log-line">LOW <b>${fmt1(lowElev)}°</b> (${fmt1(tofLow)}s)${highElev !== null ? ` · HIGH <b>${fmt1(highElev)}°</b> (${fmt1(tofHigh)}s)` : ""}</div>`;
+        logContainer.prepend(logEntry);   // newest on top
+    }
 });
 
 // ─── Artillery Map (Leaflet instance inside ARTY view) ───────────────────────
@@ -2342,6 +2626,113 @@ function initArtyMap() {
         updateArtyLine();
         triggerArtyCalc();
     });
+
+    // ── Mirror monitor markers onto arty map (read-only, auto-updates) ─────────
+    // displayedMarkers is the live map keyed by Firestore id
+    const artyMarkerLayer = {};
+    function syncArtyMarkers() {
+        // Add/update
+        Object.entries(displayedMarkers).forEach(([id, { marker, data }]) => {
+            if (artyMarkerLayer[id]) return;
+            const ll = marker.getLatLng();
+            const m  = L.marker([ll.lat, ll.lng], {
+                icon: createIcon(data.type || "infantry_alive", data),
+                interactive: false
+            }).addTo(artyMapInstance);
+            artyMarkerLayer[id] = m;
+        });
+        // Remove deleted
+        Object.keys(artyMarkerLayer).forEach(id => {
+            if (!displayedMarkers[id]) {
+                artyMarkerLayer[id].remove();
+                delete artyMarkerLayer[id];
+            }
+        });
+    }
+    syncArtyMarkers();
+    // Re-sync whenever monitor markers change (onSnapshot already updates displayedMarkers)
+    const _origSnap = window.__artyMarkerSyncInterval;
+    window.__artyMarkerSyncInterval = setInterval(syncArtyMarkers, 3000);
+
+    // ── Mirror drawings onto arty map via a canvas overlay ───────────────────
+    // We create a Leaflet canvas layer that redraws whenever strokes changes
+    const ArtyDrawLayer = L.Layer.extend({
+        onAdd(map) {
+            this._map = map;
+            this._canvas = L.DomUtil.create("canvas", "arty-draw-canvas");
+            map.getPanes().overlayPane.appendChild(this._canvas);
+            map.on("viewreset moveend zoomend", this._redraw, this);
+            this._redraw();
+        },
+        onRemove(map) {
+            this._canvas.remove();
+            map.off("viewreset moveend zoomend", this._redraw, this);
+        },
+        update() { this._redraw(); },
+        _redraw() {
+            const size = this._map.getSize();
+            this._canvas.width  = size.x;
+            this._canvas.height = size.y;
+            Object.assign(this._canvas.style, {
+                position: "absolute", top: 0, left: 0,
+                width: size.x + "px", height: size.y + "px",
+                pointerEvents: "none"
+            });
+            const gc = this._canvas.getContext("2d");
+            gc.clearRect(0, 0, size.x, size.y);
+            strokes.forEach(s => this._drawStroke(gc, s));
+        },
+        _drawStroke(gc, s) {
+            const llToP = ll => this._map.latLngToContainerPoint(L.latLng(ll.lat, ll.lng));
+            gc.save();
+            gc.strokeStyle = s.color; gc.lineWidth = s.width;
+            gc.lineCap = "round"; gc.lineJoin = "round";
+            if (s.tool === "pen" || s.tool === "eraser") {
+                if (s.tool === "eraser") { gc.globalCompositeOperation = "destination-out"; gc.lineWidth = s.width * 5; }
+                gc.beginPath();
+                (s.points || []).forEach((pt, i) => {
+                    const p = llToP(pt);
+                    i === 0 ? gc.moveTo(p.x, p.y) : gc.lineTo(p.x, p.y);
+                });
+                gc.stroke();
+            } else if (s.tool === "line" || s.tool === "arrow") {
+                const p1 = llToP(s.ll1), p2 = llToP(s.ll2);
+                gc.beginPath(); gc.moveTo(p1.x, p1.y); gc.lineTo(p2.x, p2.y); gc.stroke();
+                if (s.tool === "arrow") {
+                    const ang = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+                    const hl  = Math.max(10, s.width * 4);
+                    gc.fillStyle = s.color; gc.beginPath();
+                    gc.moveTo(p2.x, p2.y);
+                    gc.lineTo(p2.x - hl * Math.cos(ang - Math.PI/6), p2.y - hl * Math.sin(ang - Math.PI/6));
+                    gc.lineTo(p2.x - hl * Math.cos(ang + Math.PI/6), p2.y - hl * Math.sin(ang + Math.PI/6));
+                    gc.closePath(); gc.fill();
+                }
+            } else if (s.tool === "circle") {
+                const p1 = llToP(s.ll1), p2 = llToP(s.ll2);
+                gc.beginPath();
+                gc.ellipse((p1.x+p2.x)/2, (p1.y+p2.y)/2, Math.abs(p2.x-p1.x)/2, Math.abs(p2.y-p1.y)/2, 0, 0, Math.PI*2);
+                gc.stroke();
+            } else if (s.tool === "rect") {
+                const p1 = llToP(s.ll1), p2 = llToP(s.ll2);
+                gc.beginPath(); gc.strokeRect(p1.x, p1.y, p2.x-p1.x, p2.y-p1.y);
+            } else if (s.tool === "label") {
+                const p = llToP(s.ll1);
+                const fs = Math.max(9, Math.min(s.width * 4, 28));
+                gc.font = `700 ${fs}px 'Share Tech Mono', monospace`;
+                gc.fillStyle = s.color;
+                gc.shadowColor = "rgba(0,0,0,0.8)"; gc.shadowBlur = 4;
+                gc.fillText(s.labelText || "", p.x, p.y);
+                gc.shadowBlur = 0;
+            }
+            gc.restore();
+        }
+    });
+    const artyDrawLayer = new ArtyDrawLayer();
+    artyDrawLayer.addTo(artyMapInstance);
+    window.__artyDrawLayer = artyDrawLayer;
+    // Hook into redrawAll so arty map redraws when strokes change
+    const _origRedrawAll = redrawAll;
+    window.__artyRedrawHook = () => { if (artyMapInstance) artyDrawLayer.update(); };
 }
 
 // ─── Artillery view switching ─────────────────────────────────────────────────
@@ -2351,6 +2742,7 @@ const artilleryViewBtn = document.getElementById("artilleryViewBtn");
 function enterArtillery() {
     if (vezhaActive) exitVezha();
     artilleryActive = true;
+    document.body.classList.add("in-arty"); document.body.classList.remove("in-vezha");
     document.getElementById("appBody").style.display = "none";
     document.getElementById("vezhaView").classList.remove("active");
     document.getElementById("artilleryView").classList.add("active");
@@ -2363,6 +2755,7 @@ function enterArtillery() {
 
 function exitArtillery() {
     artilleryActive = false;
+    document.body.classList.remove("in-arty");
     document.getElementById("artilleryView").classList.remove("active");
     document.getElementById("appBody").style.display = "flex";
     brandModule.textContent = "MONITOR";
