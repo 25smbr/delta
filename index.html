@@ -108,8 +108,8 @@
             <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 2h8v8H2z" stroke="#4fa3ff" stroke-width="1.2" fill="none"/></svg>
             <span data-i18n="unitSymbols">UNIT SYMBOLS</span>
             <div class="side-toggle" id="sideToggle">
-              <button class="side-btn active" data-side="enemy" data-i18n="enemy">ENEMY</button>
               <button class="side-btn" data-side="friendly" data-i18n="friendly">FRIENDLY</button>
+              <button class="side-btn active" data-side="enemy" data-i18n="enemy">ENEMY</button>
             </div>
             <button class="section-collapse-btn" data-target="symbols-body" title="Toggle section">
               <svg width="10" height="10" viewBox="0 0 10 10">
@@ -510,12 +510,14 @@
         <div class="modal-field">
           <label class="modal-label" data-i18n="username">USERNAME</label>
           <input id="loginUsername" class="modal-input mono" type="text" maxlength="16"
-                 autocomplete="username" spellcheck="false"/>
+                 autocomplete="off" spellcheck="false"/>
         </div>
         <div class="modal-field">
           <label class="modal-label" data-i18n="password">PASSWORD</label>
+          <!-- hidden trap prevents Chrome's save-password detection -->
+          <input type="password" style="display:none" tabindex="-1" aria-hidden="true" autocomplete="new-password"/>
           <input id="loginPassword" class="modal-input mono" type="password" maxlength="32"
-                 autocomplete="current-password"/>
+                 autocomplete="new-password"/>
         </div>
         <div class="modal-error" id="loginError"></div>
         <button id="loginBtn" class="modal-save-btn">
@@ -528,7 +530,7 @@
         <div class="modal-field">
           <label class="modal-label" data-i18n="username">USERNAME</label>
           <input id="regUsername" class="modal-input mono" type="text" maxlength="16"
-                 autocomplete="username" spellcheck="false"/>
+                 autocomplete="off" spellcheck="false"/>
         </div>
         <div class="modal-field">
           <label class="modal-label" data-i18n="role">ROLE</label>
