@@ -283,7 +283,7 @@ function initFilterUI() {
         const chip = document.createElement("button");
         chip.className      = "filter-chip active";
         chip.dataset.unit   = unit;
-        chip.textContent    = unit === "uav" ? "UAV" : unit.toUpperCase();
+        chip.textContent    = t(unit);
         chip.addEventListener("click", () => {
             if (hiddenUnits.has(unit)) {
                 hiddenUnits.delete(unit);
@@ -362,7 +362,7 @@ onSnapshot(markersCollection, (snapshot) => {
         }
     });
     document.getElementById("markerCount").textContent =
-        `MARKERS: ${Object.keys(displayedMarkers).length}`;
+        t("markers", Object.keys(displayedMarkers).length);
     applyFilter();
 }, (err) => console.error("Markers sync error:", err));
 // ─── FIRESTORE REALTIME — DRAWINGS ───────────────────────────────────────────
@@ -594,7 +594,7 @@ toggleBtn.addEventListener("click", () => {
     canvas.classList.toggle("active", drawMode);
     map.dragging[drawMode ? "disable" : "enable"]();
     map.scrollWheelZoom[drawMode ? "disable" : "enable"]();
-    document.getElementById("drawModeStatus").textContent = `DRAW: ${drawMode ? "ON" : "OFF"}`;
+    document.getElementById("drawModeStatus").textContent = t(drawMode ? "drawOn" : "drawOff");
 });
 // ─── COLOR SWATCHES ───────────────────────────────────────────────────────────
 document.querySelectorAll(".swatch").forEach((sw) => {
@@ -864,10 +864,10 @@ function toggleRuler() {
         canvas.classList.remove("active");
         map.dragging.enable();
         map.scrollWheelZoom.enable();
-        document.getElementById("drawModeStatus").textContent = "DRAW: OFF";
+        document.getElementById("drawModeStatus").textContent = t("drawOff");
     }
     rulerBtn.classList.toggle("active", rulerMode);
-    rulerStatus.textContent = `RULER: ${rulerMode ? "ON" : "OFF"}`;
+    rulerStatus.textContent = t(rulerMode ? "rulerOn" : "rulerOff");
     if (!rulerMode) {
         rulerPoints = [];
         rulerTooltip.style.display = "none";
@@ -1045,40 +1045,112 @@ let vezhaActive    = false;
 // ─── i18n ─────────────────────────────────────────────────────────────────────
 const i18n = {
     en: {
+        // Section headers
         filter: "FILTER", unitSymbols: "UNIT SYMBOLS",
+        drawings: "DRAWINGS", coordinates: "GO TO COORDINATES",
+        // Unit group labels & filter chips
+        infantry: "INFANTRY", tank: "ARMOR", artillery: "ARTILLERY",
+        helicopter: "HELICOPTER", position: "POSITION",
+        humvee: "HUMVEE", truck: "TRUCK", uav: "UAV",
+        // Drawing tools
+        width: "WIDTH", color: "COLOR",
         clearAll: "CLEAR ALL MARKERS", clearDrawings: "CLEAR DRAWINGS",
+        // Status bar
+        markers: n => `MARKERS: ${n}`,
+        drawOff: "DRAW: OFF", drawOn: "DRAW: ON",
+        rulerOff: "RULER: OFF", rulerOn: "RULER: ON",
+        coordsLabel: "COORDS",
+        // VEZHA screen share
         shareScreen: "SHARE SCREEN", stopSharing: "STOP SHARING",
         noStreams: "NO ACTIVE STREAMS",
         streamHint: "Click SHARE SCREEN to broadcast your display to all connected operators",
-        comms: "COMMS", typeMessage: "TYPE MESSAGE...", callsign: "CALLSIGN",
-        unmute: "UNMUTE", mute: "MUTE", deafen: "DEAFEN", undeafen: "UNDEAFEN",
-        account: "ACCOUNT", nickname: "CALLSIGN / NICKNAME", role: "ROLE",
-        password: "PASSWORD", save: "SAVE",
         operators: n => `OPERATORS: ${n} ONLINE`,
+        // Mic / Deafen
+        unmute: "UNMUTE", mute: "MUTE", deafen: "DEAFEN", undeafen: "UNDEAFEN",
+        // Chat
+        comms: "COMMS", typeMessage: "TYPE MESSAGE...", callsign: "CALLSIGN",
+        // Roles
+        roleOperator: "OPERATOR", roleCommander: "COMMANDER",
+        roleDrone: "DRONE PILOT", roleSniper: "SNIPER",
+        roleMedic: "MEDIC", roleIntel: "INTEL",
+        // Account modal
+        accountTitle: "ACCOUNT",
+        login: "LOGIN", register: "REGISTER",
+        username: "USERNAME", password: "PASSWORD", confirmPassword: "CONFIRM PASSWORD",
+        role: "ROLE",
+        loginBtn: "LOG IN", registerBtn: "CREATE ACCOUNT",
+        logout: "LOG OUT",
+        loggedInAs: "LOGGED IN AS",
+        errPassMatch: "Passwords do not match",
+        errUserExists: "Username already taken",
+        errBadCreds: "Invalid username or password",
+        errFillAll: "Please fill in all fields",
     },
     ru: {
-        filter: "ФИЛЬТР", unitSymbols: "СИМВОЛЫ",
+        filter: "ФИЛЬТР", unitSymbols: "СИМВОЛЫ ЕДИНИЦ",
+        drawings: "РИСУНКИ", coordinates: "ПЕРЕЙТИ К КООРДИНАТАМ",
+        infantry: "ПЕХОТА", tank: "БРОНЯ", artillery: "АРТИЛЛЕРИЯ",
+        helicopter: "ВЕРТОЛЁТ", position: "ПОЗИЦИЯ",
+        humvee: "ХАМВИ", truck: "ГРУЗОВИК", uav: "БПЛА",
+        width: "ШИРИНА", color: "ЦВЕТ",
         clearAll: "УДАЛИТЬ ВСЕ МАРКЕРЫ", clearDrawings: "УДАЛИТЬ РИСУНКИ",
+        markers: n => `МАРКЕРЫ: ${n}`,
+        drawOff: "РИСУНОК: ВЫКЛ", drawOn: "РИСУНОК: ВКЛ",
+        rulerOff: "ЛИНЕЙКА: ВЫКЛ", rulerOn: "ЛИНЕЙКА: ВКЛ",
+        coordsLabel: "КООРДИНАТЫ",
         shareScreen: "ТРАНСЛЯЦИЯ", stopSharing: "СТОП",
         noStreams: "НЕТ АКТИВНЫХ ТРАНСЛЯЦИЙ",
         streamHint: "Нажмите ТРАНСЛЯЦИЯ чтобы транслировать экран всем операторам",
-        comms: "СВЯЗЬ", typeMessage: "СООБЩЕНИЕ...", callsign: "ПОЗЫВНОЙ",
-        unmute: "ВКЛ МИК", mute: "ОТКЛ МИК", deafen: "ЗАГЛУШИТЬ", undeafen: "ЗВУК ВКЛ",
-        account: "АККАУНТ", nickname: "ПОЗЫВНОЙ / НИК", role: "РОЛЬ",
-        password: "ПАРОЛЬ", save: "СОХРАНИТЬ",
         operators: n => `ОПЕРАТОРОВ: ${n} В СЕТИ`,
+        unmute: "ВКЛ МИК", mute: "ОТКЛ МИК", deafen: "ЗАГЛУШИТЬ", undeafen: "ЗВУК ВКЛ",
+        comms: "СВЯЗЬ", typeMessage: "СООБЩЕНИЕ...", callsign: "ПОЗЫВНОЙ",
+        roleOperator: "ОПЕРАТОР", roleCommander: "КОМАНДИР",
+        roleDrone: "ПИЛОТ БПЛА", roleSniper: "СНАЙПЕР",
+        roleMedic: "МЕДИК", roleIntel: "РАЗВЕДКА",
+        accountTitle: "АККАУНТ",
+        login: "ВОЙТИ", register: "РЕГИСТРАЦИЯ",
+        username: "ЛОГИН", password: "ПАРОЛЬ", confirmPassword: "ПОВТОР ПАРОЛЯ",
+        role: "РОЛЬ",
+        loginBtn: "ВОЙТИ", registerBtn: "СОЗДАТЬ АККАУНТ",
+        logout: "ВЫЙТИ",
+        loggedInAs: "ВЫ ВОШЛИ КАК",
+        errPassMatch: "Пароли не совпадают",
+        errUserExists: "Это имя уже занято",
+        errBadCreds: "Неверный логин или пароль",
+        errFillAll: "Заполните все поля",
     },
     ua: {
-        filter: "ФІЛЬТР", unitSymbols: "СИМВОЛИ",
+        filter: "ФІЛЬТР", unitSymbols: "СИМВОЛИ ОДИНИЦЬ",
+        drawings: "МАЛЮНКИ", coordinates: "ПЕРЕЙТИ ДО КООРДИНАТ",
+        infantry: "ПІХОТА", tank: "БРОНЯ", artillery: "АРТИЛЕРІЯ",
+        helicopter: "ВЕРТОЛІТ", position: "ПОЗИЦІЯ",
+        humvee: "ХАМВІ", truck: "ВАНТАЖІВКА", uav: "БПЛА",
+        width: "ШИРИНА", color: "КОЛІР",
         clearAll: "ВИДАЛИТИ ВСІ МАРКЕРИ", clearDrawings: "ВИДАЛИТИ МАЛЮНКИ",
+        markers: n => `МАРКЕРИ: ${n}`,
+        drawOff: "МАЛЮНОК: ВИМК", drawOn: "МАЛЮНОК: УВ.",
+        rulerOff: "ЛІНІЙКА: ВИМК", rulerOn: "ЛІНІЙКА: УВ.",
+        coordsLabel: "КООРДИНАТИ",
         shareScreen: "ТРАНСЛЯЦІЯ", stopSharing: "ЗУПИНИТИ",
         noStreams: "НЕМАЄ АКТИВНИХ ТРАНСЛЯЦІЙ",
         streamHint: "Натисніть ТРАНСЛЯЦІЯ щоб транслювати екран усім операторам",
-        comms: "ЗВ'ЯЗОК", typeMessage: "ПОВІДОМЛЕННЯ...", callsign: "ПОЗИВНИЙ",
-        unmute: "УВІМК МІК", mute: "ВИМК МІК", deafen: "ЗАГЛУШИТИ", undeafen: "ЗВУК УВ.",
-        account: "АККАУНТ", nickname: "ПОЗИВНИЙ / НІК", role: "РОЛЬ",
-        password: "ПАРОЛЬ", save: "ЗБЕРЕГТИ",
         operators: n => `ОПЕРАТОРІВ: ${n} ОНЛАЙН`,
+        unmute: "УВІМК МІК", mute: "ВИМК МІК", deafen: "ЗАГЛУШИТИ", undeafen: "ЗВУК УВ.",
+        comms: "ЗВ'ЯЗОК", typeMessage: "ПОВІДОМЛЕННЯ...", callsign: "ПОЗИВНИЙ",
+        roleOperator: "ОПЕРАТОР", roleCommander: "КОМАНДИР",
+        roleDrone: "ПІЛОТ БПЛА", roleSniper: "СНАЙПЕР",
+        roleMedic: "МЕДИК", roleIntel: "РОЗВІДКА",
+        accountTitle: "АККАУНТ",
+        login: "УВІЙТИ", register: "РЕЄСТРАЦІЯ",
+        username: "ЛОГІН", password: "ПАРОЛЬ", confirmPassword: "ПІДТВЕРДИТИ ПАРОЛЬ",
+        role: "РОЛЬ",
+        loginBtn: "УВІЙТИ", registerBtn: "СТВОРИТИ АККАУНТ",
+        logout: "ВИЙТИ",
+        loggedInAs: "ВИ УВІЙШЛИ ЯК",
+        errPassMatch: "Паролі не збігаються",
+        errUserExists: "Це ім'я вже зайнято",
+        errBadCreds: "Невірний логін або пароль",
+        errFillAll: "Заповніть усі поля",
     }
 };
 let currentLang = localStorage.getItem("vezhaLang") || "en";
@@ -1096,9 +1168,24 @@ function applyLang() {
         const v = t(el.dataset.i18nPh);
         if (v) el.placeholder = v;
     });
+    document.querySelectorAll("[data-i18n-opt]").forEach(el => {
+        const v = t(el.dataset.i18nOpt);
+        if (v) el.textContent = v;
+    });
+    document.querySelectorAll("[data-i18n-title]").forEach(el => {
+        const v = t(el.dataset.i18nTitle);
+        if (v) el.title = v;
+    });
     document.querySelectorAll(".lang-btn").forEach(btn => {
         btn.classList.toggle("active", btn.dataset.lang === currentLang);
     });
+    // Refresh filter chip labels
+    document.querySelectorAll(".filter-chip[data-unit]").forEach(chip => {
+        chip.textContent = t(chip.dataset.unit);
+    });
+    // Refresh dynamic status bar
+    const mc = document.getElementById("markerCount");
+    if (mc) mc.textContent = t("markers", Object.keys(displayedMarkers || {}).length);
     updateMicBtn();
     updateDeafenBtn();
 }
@@ -1182,47 +1269,135 @@ function updateDeafenBtn() {
 document.getElementById("micBtn")?.addEventListener("click", toggleMic);
 document.getElementById("deafenBtn")?.addEventListener("click", toggleDeafen);
 
-// ─── ACCOUNT MODAL ────────────────────────────────────────────────────────────
+// ─── ACCOUNT MODAL — AUTH ────────────────────────────────────────────────────
+function getAccounts() {
+    try { return JSON.parse(localStorage.getItem("deltaAccounts") || "[]"); } catch { return []; }
+}
+function saveAccounts(arr) { localStorage.setItem("deltaAccounts", JSON.stringify(arr)); }
+function getCurrentUser() {
+    try { return JSON.parse(localStorage.getItem("deltaCurrentUser") || "null"); } catch { return null; }
+}
+function hashPass(pw) { return btoa(encodeURIComponent(pw)); }
+
+function applyCurrentUser(user) {
+    if (user) {
+        localStorage.setItem("deltaCurrentUser", JSON.stringify(user));
+        localStorage.setItem("vezhaCallsign", user.username);
+        localStorage.setItem("vezhaRole", user.role);
+        const callEl = document.getElementById("callsignInput");
+        if (callEl) callEl.value = user.username;
+        const roleEl = document.getElementById("roleSelect");
+        if (roleEl) roleEl.value = user.role;
+    } else {
+        localStorage.removeItem("deltaCurrentUser");
+    }
+    updateModalState();
+}
+
+function updateModalState() {
+    const user = getCurrentUser();
+    const loginPanel    = document.getElementById("loginPanel");
+    const registerPanel = document.getElementById("registerPanel");
+    const loggedInPanel = document.getElementById("loggedInPanel");
+    const tabs          = document.querySelector(".modal-tabs");
+    if (user) {
+        loginPanel?.style && (loginPanel.style.display = "none");
+        registerPanel?.style && (registerPanel.style.display = "none");
+        loggedInPanel?.style && (loggedInPanel.style.display = "flex");
+        if (tabs) tabs.style.display = "none";
+        const nameEl = document.getElementById("loggedInName");
+        if (nameEl) nameEl.textContent = user.username;
+        const roleEl = document.getElementById("loggedInRole");
+        if (roleEl) roleEl.textContent = user.role.toUpperCase();
+        const prev = document.getElementById("accountRolePreview");
+        if (prev) prev.style.background = ROLE_COLORS[user.role] || ROLE_COLORS.operator;
+    } else {
+        loginPanel?.style && (loginPanel.style.display = "flex");
+        registerPanel?.style && (registerPanel.style.display = "none");
+        loggedInPanel?.style && (loggedInPanel.style.display = "none");
+        if (tabs) tabs.style.display = "flex";
+        // Make sure login tab is active
+        document.getElementById("tabLogin")?.classList.add("active");
+        document.getElementById("tabRegister")?.classList.remove("active");
+    }
+}
+
+// Tab switching
+document.getElementById("tabLogin")?.addEventListener("click", () => {
+    document.getElementById("loginPanel").style.display = "flex";
+    document.getElementById("registerPanel").style.display = "none";
+    document.getElementById("tabLogin").classList.add("active");
+    document.getElementById("tabRegister").classList.remove("active");
+    document.getElementById("loginError").textContent = "";
+});
+document.getElementById("tabRegister")?.addEventListener("click", () => {
+    document.getElementById("loginPanel").style.display = "none";
+    document.getElementById("registerPanel").style.display = "flex";
+    document.getElementById("tabRegister").classList.add("active");
+    document.getElementById("tabLogin").classList.remove("active");
+    document.getElementById("regError").textContent = "";
+});
+
+// LOGIN
+document.getElementById("loginBtn")?.addEventListener("click", () => {
+    const username = document.getElementById("loginUsername").value.trim().toUpperCase();
+    const pw       = document.getElementById("loginPassword").value;
+    const errEl    = document.getElementById("loginError");
+    if (!username || !pw) { errEl.textContent = t("errFillAll"); return; }
+    const acct = getAccounts().find(a => a.username === username && a.passHash === hashPass(pw));
+    if (!acct) { errEl.textContent = t("errBadCreds"); return; }
+    errEl.textContent = "";
+    document.getElementById("loginPassword").value = "";
+    applyCurrentUser({ username: acct.username, role: acct.role });
+});
+
+// REGISTER
+document.getElementById("registerBtn")?.addEventListener("click", () => {
+    const username = document.getElementById("regUsername").value.trim().toUpperCase();
+    const pw       = document.getElementById("regPassword").value;
+    const confirm  = document.getElementById("regConfirm").value;
+    const role     = document.getElementById("regRole").value;
+    const errEl    = document.getElementById("regError");
+    if (!username || !pw || !confirm) { errEl.textContent = t("errFillAll"); return; }
+    if (pw !== confirm) { errEl.textContent = t("errPassMatch"); return; }
+    const accounts = getAccounts();
+    if (accounts.find(a => a.username === username)) { errEl.textContent = t("errUserExists"); return; }
+    accounts.push({ username, passHash: hashPass(pw), role });
+    saveAccounts(accounts);
+    errEl.textContent = "";
+    document.getElementById("regPassword").value = "";
+    document.getElementById("regConfirm").value = "";
+    applyCurrentUser({ username, role });
+});
+
+// LOGOUT
+document.getElementById("logoutBtn")?.addEventListener("click", () => {
+    applyCurrentUser(null);
+});
+
+// Open modal
 document.getElementById("accountBtn")?.addEventListener("click", () => {
-    const modal = document.getElementById("accountModal");
-    const cs = localStorage.getItem("vezhaCallsign") || "";
-    const rl = localStorage.getItem("vezhaRole") || "operator";
-    document.getElementById("accountCallsign").value = cs;
-    const roleEl = document.getElementById("accountRole");
-    if (roleEl) roleEl.value = rl;
-    updateRolePreview(rl);
-    modal.style.display = "flex";
+    updateModalState();
+    document.getElementById("accountModal").style.display = "flex";
 });
 document.getElementById("accountModalClose")?.addEventListener("click", () => {
     document.getElementById("accountModal").style.display = "none";
 });
 document.getElementById("accountModal")?.addEventListener("click", e => {
-    if (e.target === document.getElementById("accountModal")) {
+    if (e.target.id === "accountModal")
         document.getElementById("accountModal").style.display = "none";
-    }
 });
-document.getElementById("accountRole")?.addEventListener("change", e => {
-    updateRolePreview(e.target.value);
-});
-function updateRolePreview(role) {
-    const preview = document.getElementById("accountRolePreview");
-    if (preview) preview.style.background = ROLE_COLORS[role] || ROLE_COLORS.operator;
-}
-document.getElementById("accountSave")?.addEventListener("click", () => {
-    const cs = document.getElementById("accountCallsign")?.value.trim() || "";
-    const rl = document.getElementById("accountRole")?.value || "operator";
-    if (cs) {
-        localStorage.setItem("vezhaCallsign", cs);
+
+// Restore logged-in user on page load
+{
+    const user = getCurrentUser();
+    if (user) {
         const callEl = document.getElementById("callsignInput");
-        if (callEl) callEl.value = cs;
+        if (callEl) callEl.value = user.username;
+        const roleEl = document.getElementById("roleSelect");
+        if (roleEl) roleEl.value = user.role;
     }
-    localStorage.setItem("vezhaRole", rl);
-    const roleEl = document.getElementById("roleSelect");
-    if (roleEl) roleEl.value = rl;
-    const pw = document.getElementById("accountPassword")?.value || "";
-    if (pw) localStorage.setItem("vezhaPassHash", btoa(pw));
-    document.getElementById("accountModal").style.display = "none";
-});
+}
 
 let localStream    = null;
 let mySessionRef   = null;
