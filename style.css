@@ -492,6 +492,27 @@ body.light-theme .scrollable-symbols::-webkit-scrollbar-thumb { background: var(
 .filter-chip:hover { opacity: 1; border-color: var(--border-light); }
 body.light-theme .filter-chip.active { color: var(--accent); }
 
+/* ── Enemy / Friendly side-toggle ───────────────────────────────────────────── */
+.side-toggle {
+  display: flex; gap: 0; margin-left: 8px;
+  border: 1px solid var(--border); border-radius: 4px; overflow: hidden;
+  flex-shrink: 0;
+}
+.side-btn {
+  padding: 2px 7px;
+  font-family: var(--font-ui); font-size: 8px; font-weight: 700; letter-spacing: 1px;
+  background: transparent; border: none; color: var(--text-dim);
+  cursor: pointer; transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.side-btn.active[data-side="enemy"] {
+  background: rgba(248,113,113,0.2); color: #f87171;
+}
+.side-btn.active[data-side="friendly"] {
+  background: rgba(136,196,240,0.25); color: #88c4f0;
+}
+.side-btn:not(.active):hover { background: var(--bg-section); color: var(--text-secondary); }
+
 /*  CHAT IDENTITY BAR  */
 .chat-identity-bar {
   display: flex; align-items: center; gap: 5px;
@@ -1079,9 +1100,9 @@ body.lang-ua .danger-btn { font-size: 9px; letter-spacing: 0.5px; }
 #artilleryView {
   display: none; flex: 1; min-height: 0;
   background: var(--bg-base);
-  overflow-y: auto;
+  overflow: hidden;
   padding: 20px;
-  gap: 20px;
+  gap: 16px;
   flex-direction: column;
   transition: background 0.3s;
 }
@@ -1102,15 +1123,40 @@ body.lang-ua .danger-btn { font-size: 9px; letter-spacing: 0.5px; }
   font-family: var(--font-mono); margin-left: auto;
 }
 
-.arty-body {
-  display: grid;
-  grid-template-columns: 340px 1fr;
-  gap: 20px;
-  flex: 1; min-height: 0;
+.arty-main {
+  display: flex; flex-direction: row;
+  gap: 16px; flex: 1; min-height: 0;
 }
-@media (max-width: 860px) { .arty-body { grid-template-columns: 1fr; } }
+@media (max-width: 860px) { .arty-main { flex-direction: column; } }
 
-/* Input panel */
+/* Sidebar containing config + results */
+.arty-sidebar {
+  width: 290px; flex-shrink: 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex; flex-direction: column; gap: 12px;
+  overflow-y: auto;
+  transition: background 0.3s, border-color 0.3s;
+}
+/* Map wrapper */
+.arty-map-wrap {
+  flex: 1; min-width: 0;
+  position: relative;
+  border-radius: 8px; overflow: hidden;
+  border: 1px solid var(--border);
+}
+#artyMapEl { width: 100%; height: 100%; }
+.arty-map-hint {
+  position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+  background: rgba(0,0,0,0.65); color: var(--text-dim);
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 1.5px;
+  padding: 5px 14px; border-radius: 4px; pointer-events: none;
+  white-space: nowrap; z-index: 500;
+}
+
+/* Legacy .arty-panel still used if present */
 .arty-panel {
   background: var(--bg-panel);
   border: 1px solid var(--border);
@@ -1156,11 +1202,43 @@ body.lang-ua .danger-btn { font-size: 9px; letter-spacing: 0.5px; }
 .arty-calc-btn:hover { background: rgba(58,82,169,0.35); }
 .arty-calc-btn svg { flex-shrink: 0; }
 
-/* Results panel */
+/* Results (sidebar single-column rows) */
+#artyResults {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.arty-result-row {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 10px 12px;
+  background: var(--bg-section); border: 1px solid var(--border);
+  border-radius: 6px;
+  transition: background 0.3s, border-color 0.3s;
+}
+.arty-result-row.accent-result {
+  border-color: var(--accent); background: var(--accent-dim);
+}
+.arty-result-row.muted-row {
+  background: none; border-color: transparent; padding: 4px 0;
+}
+.arty-error-row {
+  padding: 10px 12px;
+  background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.3);
+  border-radius: 6px;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 1px;
+  color: #f87171;
+}
+.arty-no-result {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 8px; padding: 16px 0; color: var(--text-dim);
+}
+.arty-no-result-txt {
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 1.5px;
+  text-align: center; line-height: 1.5;
+}
+
+/* Legacy results grid — keep for backwards compat */
 .arty-results-panel {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: auto auto auto;
   gap: 12px;
   align-content: start;
 }
@@ -1193,13 +1271,12 @@ body.lang-ua .danger-btn { font-size: 9px; letter-spacing: 0.5px; }
   font-family: var(--font-mono); font-size: 9px; color: var(--text-dim);
   margin-top: 2px;
 }
-.arty-no-result {
-  grid-column: 1 / -1; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 12px;
-  padding: 40px; color: var(--text-dim); opacity: 0.5;
-}
+/* (legacy .arty-no-result style removed — superseded by sidebar version above) */
 .arty-error-card {
   grid-column: 1 / -1; background: var(--danger-dim);
   border: 1px solid var(--danger); border-radius: 8px; padding: 14px 16px;
   color: var(--danger); font-family: var(--font-mono); font-size: 11px;
 }
+/* Compact val sizes inside sidebar rows */
+.arty-sidebar .arty-result-val { font-size: 18px; }
+.arty-sidebar .arty-result-val.large { font-size: 26px; }
