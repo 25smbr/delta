@@ -530,9 +530,15 @@ async function undoLast() {
     if (undoStack.length === 0) return;
     const last = undoStack.pop();
     if (last.type === "marker") {
-        const snap = await getDoc(doc(db, "markers", last.id));
-        if (snap.exists()) redoStack.push({ type: "marker", data: snap.data() });
-        await deleteDoc(doc(db, "markers", last.id));
+        // Use cached data if available; fall back to Firestore only if not
+        if (last.data) {
+            redoStack.push({ type: "marker", data: last.data });
+            await deleteDoc(doc(db, "markers", last.id));
+        } else {
+            const snap = await getDoc(doc(db, "markers", last.id));
+            if (snap.exists()) redoStack.push({ type: "marker", data: snap.data() });
+            await deleteDoc(doc(db, "markers", last.id));
+        }
     } else if (last.type === "drawing") {
         const stroke = strokes.find(s => s.firestoreId === last.id);
         if (stroke) redoStack.push({ type: "drawing", stroke: { ...stroke } });
@@ -626,14 +632,15 @@ initFilterUI();
 const displayedMarkers = {};        // id → { marker, data }
 let pendingEditMarkerId = null;     // auto-open popup for freshly placed marker
 
-function createIcon(type, data = {}) {
+function createIcon(type, data = {}, markerId = "") {
     const svg    = (data.side === "friendly") ? symbolSVGFriendly(type) : symbolSVG(type);
     const date   = escHtml(data.date   || "");
     const amount = escHtml(String(data.amount || ""));
     const info   = escHtml(data.info   || "");
     const source = escHtml(data.source || "");
     const author = escHtml(data.author || "");
-    const html = `<div class="mkr-wrap">
+    // data-mid is used by the DOM-delegation handler below for click/contextmenu
+    const html = `<div class="mkr-wrap" data-mid="${escHtml(markerId)}">
       <div class="ml ml-tl">${date}</div>
       <div class="ml ml-tc">${amount}</div>
       <div class="ml ml-tr">${info}</div>
@@ -643,9 +650,9 @@ function createIcon(type, data = {}) {
     </div>`;
     return L.divIcon({
         html,
-        className:  "",
+        className:  "mkr-outer",   // pointer-events:none set in CSS
         iconSize:   [140, 140],
-        iconAnchor: [70, 67]   // 47(left) + 23(diamond centre) = 70 x; 44(top) + 23 = 67 y
+        iconAnchor: [70, 67]
     });
 }
 onSnapshot(markersCollection, (snapshot) => {
@@ -654,28 +661,15 @@ onSnapshot(markersCollection, (snapshot) => {
         const data = change.doc.data();
         if (change.type === "added") {
             const marker = L.marker([data.y, data.x], {
-                icon: createIcon(data.type || "infantry_alive", data)
+                icon:        createIcon(data.type || "infantry_alive", data, id),
+                interactive: false   // clicks pass through to map; handled via DOM delegation
             }).addTo(map);
-            marker.on("click", (e) => {
-                // Only open popup when clicking directly on the NATO symbol icon,
-                // not on the label text or empty space in the 140×140 hit area.
-                if (!e.originalEvent.target.closest(".mkr-icon")) return;
-                openMarkerEditPopup(id, marker, displayedMarkers[id]?.data || data);
-            });
-            marker.on("contextmenu", async () => {
-                if (confirm("Delete this marker?")) {
-                    await deleteDoc(doc(db, "markers", id));
-                    const idx = undoStack.findIndex(e => e.type === "marker" && e.id === id);
-                    if (idx !== -1) undoStack.splice(idx, 1);
-                }
-            });
             displayedMarkers[id] = { marker, data };
-            // Clear the pending flag (popup no longer auto-opens on placement)
             if (pendingEditMarkerId === id) pendingEditMarkerId = null;
         } else if (change.type === "modified") {
             if (displayedMarkers[id]) {
                 displayedMarkers[id].marker.setIcon(
-                    createIcon(data.type || "infantry_alive", data)
+                    createIcon(data.type || "infantry_alive", data, id)
                 );
                 displayedMarkers[id].data = data;
             }
@@ -724,9 +718,8 @@ map.on("click", async (e) => {
     const dateStr = `${p(now.getUTCDate())}/${p(now.getUTCMonth()+1)}/${String(now.getUTCFullYear()).slice(-2)} ${p(now.getUTCHours())}:${p(now.getUTCMinutes())}:${p(now.getUTCSeconds())}`;
     // Pre-generate the ref ID synchronously so pendingEditMarkerId is set
     // BEFORE Firestore fires the onSnapshot for the local-cache write.
-    const newRef = doc(markersCollection);
-    pendingEditMarkerId = newRef.id;
-    await setDoc(newRef, {
+    const newRef  = doc(markersCollection);
+    const mkrData = {
         x:       e.latlng.lng,
         y:       e.latlng.lat,
         type:    selectedSymbol,
@@ -737,8 +730,44 @@ map.on("click", async (e) => {
         info:    "",
         source:  "",
         author:  getCallsign()
-    });
-    undoStack.push({ type: "marker", id: newRef.id });
+    };
+    pendingEditMarkerId = newRef.id;
+    await setDoc(newRef, mkrData);
+    // Store data in the undo entry so undoLast() never needs a Firestore read
+    undoStack.push({ type: "marker", id: newRef.id, data: mkrData });
+});
+
+// ─── MARKER CLICK / CONTEXTMENU — DOM DELEGATION ─────────────────────────────
+// Markers use interactive:false so their 140×140 div is transparent to pointer
+// events except the .mkr-icon element (pointer-events:auto in CSS).
+// We delegate from the map container so clicking outside the icon still places
+// a new marker, and clicking the icon opens the edit popup.
+document.getElementById("map").addEventListener("click", e => {
+    const iconEl = e.target.closest(".mkr-icon");
+    if (!iconEl) return;
+    const wrap = iconEl.closest("[data-mid]");
+    if (!wrap) return;
+    const id = wrap.dataset.mid;
+    if (id && displayedMarkers[id]) {
+        openMarkerEditPopup(id, displayedMarkers[id].marker, displayedMarkers[id].data);
+    }
+    // Stop propagation so map.on("click") doesn't also place a new marker
+    e.stopPropagation();
+});
+document.getElementById("map").addEventListener("contextmenu", async e => {
+    const iconEl = e.target.closest(".mkr-icon");
+    if (!iconEl) return;
+    const wrap = iconEl.closest("[data-mid]");
+    if (!wrap) return;
+    const id = wrap.dataset.mid;
+    if (id && displayedMarkers[id]) {
+        e.preventDefault();
+        if (confirm("Delete this marker?")) {
+            await deleteDoc(doc(db, "markers", id));
+            const idx = undoStack.findIndex(u => u.type === "marker" && u.id === id);
+            if (idx !== -1) undoStack.splice(idx, 1);
+        }
+    }
 });
 
 // ─── MARKER EDIT POPUP ───────────────────────────────────────────────────────
@@ -1315,7 +1344,11 @@ document.getElementById("exportBtn")?.addEventListener("click", () => {
         const drawCanvas = document.getElementById("drawCanvas");
         oc.drawImage(drawCanvas, 0, 0);
 
-        // 3) Timestamp watermark
+        // 3) User-ID tiled watermark
+        const exportUserId = getCurrentUser()?.userId || null;
+        if (exportUserId) _paintWatermark(oc, W, H, exportUserId);
+
+        // 4) Timestamp watermark
         const now = new Date();
         const ts  = `DELTA MONITOR  ${now.toISOString().slice(0,16).replace("T"," ")} UTC`;
         oc.font        = "bold 11px 'Share Tech Mono', monospace";
@@ -1325,7 +1358,7 @@ document.getElementById("exportBtn")?.addEventListener("click", () => {
         oc.fillText(ts, 10, H - 10);
         oc.shadowBlur  = 0;
 
-        // 4) Download
+        // 5) Download
         const link = document.createElement("a");
         link.download = `delta_monitor_${now.toISOString().slice(0,19).replace(/:/g,"-")}.png`;
         link.href = out.toDataURL("image/png");
@@ -1760,14 +1793,15 @@ function restoreUserState(username) {
 function _paintWatermark(ctx, W, H, userId) {
     ctx.clearRect(0, 0, W, H);
     ctx.save();
-    ctx.globalAlpha = 0.09;   // 9% — visible but unobtrusive
+    ctx.globalAlpha = 0.11;   // 11% — clearly visible, not distracting
     ctx.fillStyle   = document.body.classList.contains("light-theme") ? "#1a2050" : "#9ab4ff";
     ctx.font        = "bold 14px 'Share Tech Mono', monospace";
     ctx.textBaseline = "middle";
     ctx.translate(W / 2, H / 2);
     ctx.rotate(-30 * Math.PI / 180);
-    const colStep = 110, rowStep = 36;
-    const span = Math.max(W, H) * 1.6;
+    // ~6 IDs per row: colStep = W/6 clamped to sensible range
+    const colStep = 190, rowStep = 60;
+    const span = Math.max(W, H) * 1.8;
     const cols = Math.ceil(span / colStep) + 2;
     const rows = Math.ceil(span / rowStep) + 2;
     for (let r = -rows; r <= rows; r++) {
@@ -1792,6 +1826,25 @@ function drawWatermarkCanvas(userId) {
         _paintWatermark(canvas.getContext("2d"), W, H, userId);
     };
     // Defer one frame so the flex layout has resolved before we measure
+    requestAnimationFrame(draw);
+    // Also refresh arty watermark if artillery view is visible
+    if (typeof artilleryActive !== "undefined" && artilleryActive) {
+        drawArtyWatermark(userId);
+    }
+}
+
+function drawArtyWatermark(userId) {
+    const canvas = document.getElementById("artyWatermarkCanvas");
+    if (!canvas) return;
+    const draw = () => {
+        const rect = canvas.getBoundingClientRect();
+        const W = rect.width  || canvas.parentElement?.getBoundingClientRect().width  || 800;
+        const H = rect.height || canvas.parentElement?.getBoundingClientRect().height || 600;
+        canvas.width  = W;
+        canvas.height = H;
+        if (!userId) return;
+        _paintWatermark(canvas.getContext("2d"), W, H, userId);
+    };
     requestAnimationFrame(draw);
 }
 
@@ -2276,12 +2329,12 @@ document.getElementById("adminToggle")?.addEventListener("click", () => {
 
 // ─── KEYBOARD SHORTCUTS ────────────────────────────────────────────────────────
 document.addEventListener("keydown", async (e) => {
-    // Ignore when focus is in a text input/textarea/select
     const tag = document.activeElement?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
     if (e.ctrlKey || e.metaKey) {
-        if (e.key === "z" && !e.shiftKey) { e.preventDefault(); await undoLast(); }
-        if ((e.key === "y") || (e.key === "z" && e.shiftKey)) { e.preventDefault(); await redoLast(); }
+        const k = e.key.toLowerCase();   // "z" regardless of Shift case
+        if (k === "z" && !e.shiftKey) { e.preventDefault(); await undoLast(); }
+        if (k === "y" || (k === "z" && e.shiftKey)) { e.preventDefault(); await redoLast(); }
     }
 });
 
@@ -2423,6 +2476,13 @@ function exitVezha() {
     brandModule.textContent = "MONITOR";
     vezhaViewBtn.classList.remove("active");
     mapViewBtn.classList.add("active");
+    // Leaflet loses track of container size while hidden — must re-validate
+    setTimeout(() => {
+        map.invalidateSize({ animate: false });
+        resizeCanvas();
+        redrawAll();
+        drawWatermarkCanvas(getCurrentUser()?.userId || null);
+    }, 50);
 }
 
 // ─── SCREEN SHARING ───────────────────────────────────────────────────────────
@@ -3335,7 +3395,10 @@ function enterArtillery() {
     mapViewBtn.classList.remove("active");
     vezhaViewBtn.classList.remove("active");
     artilleryViewBtn.classList.add("active");
-    setTimeout(() => initArtyMap(), 50);
+    setTimeout(() => {
+        initArtyMap();
+        drawArtyWatermark(getCurrentUser()?.userId || null);
+    }, 50);
 }
 
 function exitArtillery() {
@@ -3346,6 +3409,12 @@ function exitArtillery() {
     brandModule.textContent = "MONITOR";
     artilleryViewBtn.classList.remove("active");
     mapViewBtn.classList.add("active");
+    setTimeout(() => {
+        map.invalidateSize({ animate: false });
+        resizeCanvas();
+        redrawAll();
+        drawWatermarkCanvas(getCurrentUser()?.userId || null);
+    }, 50);
 }
 
 artilleryViewBtn?.addEventListener("click", () => {
