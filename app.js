@@ -2197,10 +2197,17 @@ document.getElementById("artyCalcBtn")?.addEventListener("click", () => {
 });
 
 // ─── Artillery Map (Leaflet instance inside ARTY view) ───────────────────────
+// Pixel→Stud conversion: 1 map-pixel = (1/PIXELS_PER_METER) m × (5/1.8 studs/m)
+const ARTY_PX_TO_STUD = (1 / PIXELS_PER_METER) * (5 / 1.8);   // ≈ 4.89 studs/px
+const ARTY_STUD_TO_PX = 1 / ARTY_PX_TO_STUD;                   // ≈ 0.204 px/stud
+
 let artyMapInstance = null;
 let artyGunMarker   = null;
 let artyTgtMarker   = null;
 let artyLine        = null;
+// Raw Leaflet pixel coords of last gun/target placement (for the line and markers)
+let artyGunPx       = null;   // { lat, lng } in Leaflet map coords (px)
+let artyTgtPx       = null;
 
 function makeArtyIcon(label, color) {
     return L.divIcon({
@@ -2215,14 +2222,11 @@ function makeArtyIcon(label, color) {
 
 function updateArtyLine() {
     if (artyLine) { artyLine.remove(); artyLine = null; }
-    const gx = parseFloat(document.getElementById("artyGunX")?.value);
-    const gy = parseFloat(document.getElementById("artyGunY")?.value);
-    const tx = parseFloat(document.getElementById("artyTgtX")?.value);
-    const ty = parseFloat(document.getElementById("artyTgtY")?.value);
-    if (!isNaN(gx) && !isNaN(gy) && !isNaN(tx) && !isNaN(ty) && artyMapInstance) {
-        artyLine = L.polyline([[gy, gx], [ty, tx]], {
-            color: "#facc15", weight: 2, dashArray: "6 4", opacity: 0.85
-        }).addTo(artyMapInstance);
+    if (artyGunPx && artyTgtPx && artyMapInstance) {
+        artyLine = L.polyline(
+            [[artyGunPx.lat, artyGunPx.lng], [artyTgtPx.lat, artyTgtPx.lng]],
+            { color: "#facc15", weight: 2, dashArray: "6 4", opacity: 0.85 }
+        ).addTo(artyMapInstance);
     }
 }
 
@@ -2240,7 +2244,11 @@ function initArtyMap() {
     const el = document.getElementById("artyMapEl");
     if (!el) return;
     if (artyMapInstance) {
-        setTimeout(() => artyMapInstance.invalidateSize(), 60);
+        // Already created — just resize to the newly visible container
+        setTimeout(() => {
+            artyMapInstance.invalidateSize();
+            artyMapInstance.fitBounds([[0, 0], [imageHeight, imageWidth]]);
+        }, 80);
         return;
     }
     artyMapInstance = L.map("artyMapEl", {
@@ -2250,10 +2258,19 @@ function initArtyMap() {
     const artBounds = [[0, 0], [imageHeight, imageWidth]];
     L.imageOverlay("map.png", artBounds).addTo(artyMapInstance);
     artyMapInstance.fitBounds(artBounds);
+    // Force a second layout pass after the flex container finishes sizing
+    setTimeout(() => {
+        artyMapInstance.invalidateSize();
+        artyMapInstance.fitBounds(artBounds);
+    }, 120);
 
     artyMapInstance.on("click", (e) => {
-        document.getElementById("artyGunX").value = Math.round(e.latlng.lng);
-        document.getElementById("artyGunY").value = Math.round(e.latlng.lat);
+        // Convert Leaflet pixel coords → game studs for the input fields
+        const stud_x = Math.round(e.latlng.lng * ARTY_PX_TO_STUD);
+        const stud_y = Math.round(e.latlng.lat * ARTY_PX_TO_STUD);
+        document.getElementById("artyGunX").value = stud_x;
+        document.getElementById("artyGunY").value = stud_y;
+        artyGunPx = { lat: e.latlng.lat, lng: e.latlng.lng };
         if (artyGunMarker) artyGunMarker.remove();
         artyGunMarker = L.marker([e.latlng.lat, e.latlng.lng], {
             icon: makeArtyIcon("G", "#4ade80")
@@ -2263,8 +2280,11 @@ function initArtyMap() {
     });
 
     artyMapInstance.on("contextmenu", (e) => {
-        document.getElementById("artyTgtX").value = Math.round(e.latlng.lng);
-        document.getElementById("artyTgtY").value = Math.round(e.latlng.lat);
+        const stud_x = Math.round(e.latlng.lng * ARTY_PX_TO_STUD);
+        const stud_y = Math.round(e.latlng.lat * ARTY_PX_TO_STUD);
+        document.getElementById("artyTgtX").value = stud_x;
+        document.getElementById("artyTgtY").value = stud_y;
+        artyTgtPx = { lat: e.latlng.lat, lng: e.latlng.lng };
         if (artyTgtMarker) artyTgtMarker.remove();
         artyTgtMarker = L.marker([e.latlng.lat, e.latlng.lng], {
             icon: makeArtyIcon("T", "#f87171")
@@ -2288,7 +2308,7 @@ function enterArtillery() {
     mapViewBtn.classList.remove("active");
     vezhaViewBtn.classList.remove("active");
     artilleryViewBtn.classList.add("active");
-    requestAnimationFrame(() => initArtyMap());
+    setTimeout(() => initArtyMap(), 50);
 }
 
 function exitArtillery() {
