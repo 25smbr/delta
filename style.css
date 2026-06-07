@@ -1287,3 +1287,88 @@ body.lang-ua .danger-btn { font-size: 9px; letter-spacing: 0.5px; }
 /* Compact val sizes inside sidebar rows */
 .arty-sidebar .arty-result-val { font-size: 18px; }
 .arty-sidebar .arty-result-val.large { font-size: 26px; }
+
+/* ════════════════════════════════════════════════════════
+   MOBILE  (≤ 600 px portrait)
+   ════════════════════════════════════════════════════════ */
+@media (max-width: 600px) {
+
+  /* ── Topbar ── */
+  #topBar { padding: 0 6px; gap: 4px; }
+  /* Hide text brand labels on very small screens, keep icon buttons */
+  .brand-name, .brand-sep, .brand-module, .top-divider { display: none; }
+  /* Shrink icon buttons a touch */
+  .topBtn { width: 28px; height: 28px; }
+  /* Stack lang switcher tighter */
+  .lang-switcher { gap: 1px; }
+  .lang-btn { padding: 2px 4px; font-size: 9px; }
+  /* Status pill: drop text, keep dot */
+  .status-pill span:not(.pulse-dot) { display: none; }
+  .status-pill { padding: 3px 6px; }
+  /* Clock smaller */
+  #clock { font-size: 11px; letter-spacing: 0; }
+
+  /* ── Left panel: auto-collapse on mobile, full-width overlay ── */
+  #leftPanel {
+    position: fixed;
+    top: var(--topbar-h); bottom: var(--statusbar-h);
+    left: 0; z-index: 2000;
+    width: 0;               /* collapsed by default */
+    overflow: hidden;
+    transition: width 0.25s ease;
+  }
+  #leftPanel.mobile-open {
+    width: min(260px, 85vw);
+    box-shadow: 4px 0 24px rgba(0,0,0,0.6);
+  }
+  /* Collapse button: always visible, floats over map */
+  #collapseLeftBtn {
+    right: -34px;
+    background: var(--bg-panel);
+    border-color: var(--border-light);
+  }
+  #leftPanel.mobile-open #collapseLeftBtn { right: 6px; }
+  #leftPanel.mobile-open #collapseLeftBtn svg { transform: none; }
+
+  /* Map fills full width since panel is overlay (not in flow) */
+  #appBody { position: fixed; top: var(--topbar-h); bottom: var(--statusbar-h); left: 0; right: 0; }
+
+  /* ── Right toolbar ── */
+  #rightToolbar { display: none; }   /* hide vertical right rail on mobile */
+
+  /* ── Artillery view ── */
+  #artilleryView { padding: 8px; gap: 8px; }
+  .arty-main { flex-direction: column; }
+  .arty-sidebar {
+    width: 100%; flex-shrink: 0;
+    max-height: 50vh; overflow-y: auto;
+  }
+  .arty-map-wrap { min-height: 280px; }
+
+  /* ── Account modal ── */
+  .account-modal-box {
+    width: 92vw; max-width: 340px;
+    padding: 16px;
+  }
+
+  /* ── Status bar ── */
+  #statusBar { font-size: 9px; padding: 0 6px; gap: 6px; }
+  .sb-item { gap: 3px; }
+
+  /* ── Symbol panel ── */
+  .symbolBtn svg { width: 32px; height: 40px; }
+  .symbolBtn { padding: 3px; }
+
+  /* ── Ruler readout ── */
+  #rulerReadout { font-size: 9px; }
+}
+
+/* Medium mobile / landscape (601–860 px) */
+@media (min-width: 601px) and (max-width: 860px) {
+  .brand-module, .top-divider { display: none; }
+  #leftPanel { width: 190px; }
+  :root { --left-w: 190px; }
+  .arty-main { flex-direction: column; }
+  .arty-sidebar { width: 100%; max-height: 45vh; }
+  .arty-map-wrap { min-height: 260px; }
+}
