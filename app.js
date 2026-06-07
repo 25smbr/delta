@@ -679,10 +679,9 @@ onSnapshot(drawingsCollection, (snapshot) => {
 }, (error) => {
     console.error("Drawings sync error:", error);
 });
-// ─── ADD MARKERS — Shift+LMB only (mobile: long-tap, see below) ──────────────
+// ─── ADD MARKERS — LMB (mobile: long-tap, see below) ─────────────────────────
 map.on("click", async (e) => {
     if (drawMode || rulerMode) return;
-    if (!e.originalEvent.shiftKey) return;   // desktop: require Shift held
     // Reject clicks outside the map image bounds
     if (e.latlng.lng < 0 || e.latlng.lng > imageWidth ||
         e.latlng.lat < 0 || e.latlng.lat > imageHeight) return;
@@ -1257,107 +1256,50 @@ function toggleRuler() {
 }
 rulerBtn.addEventListener("click", toggleRuler);
 
-// ─── COORDINATE GRID OVERLAY ──────────────────────────────────────────────────
-let gridActive = false;
-let gridLayer  = null;
-const gridBtn  = document.getElementById("gridBtn");
-
-function drawGridLayer() {
-    if (gridLayer) { gridLayer.remove(); gridLayer = null; }
-    if (!gridActive) return;
-
-    const mapEl  = document.getElementById("map");
-    const W = mapEl.clientWidth, H = mapEl.clientHeight;
-    const bounds = map.getBounds();
-    const span   = bounds.getEast() - bounds.getWest();
-
-    // Pick a round grid step that gives ~5-8 columns on screen
-    const rawStep = span / 6;
-    const mag     = Math.pow(10, Math.floor(Math.log10(rawStep)));
-    const step    = [1, 2, 5, 10].map(f => f * mag).find(s => span / s <= 8) || mag * 10;
-
-    const gridCanvas = document.createElement("canvas");
-    gridCanvas.width  = W; gridCanvas.height = H;
-    Object.assign(gridCanvas.style, {
-        position: "absolute", top: 0, left: 0, pointerEvents: "none", zIndex: 500
-    });
-    mapEl.style.position = "relative";
-    mapEl.appendChild(gridCanvas);
-    gridLayer = gridCanvas;
-
-    const gc = gridCanvas.getContext("2d");
-    gc.strokeStyle = "rgba(90,150,220,0.35)";
-    gc.lineWidth   = 0.8;
-    gc.fillStyle   = "rgba(90,150,220,0.85)";
-    gc.font        = "bold 9px 'Share Tech Mono', monospace";
-
-    const west  = Math.ceil(bounds.getWest()  / step) * step;
-    const south = Math.ceil(bounds.getSouth() / step) * step;
-
-    // Vertical lines (longitude)
-    for (let lng = west; lng <= bounds.getEast(); lng += step) {
-        const px = map.latLngToContainerPoint([0, lng]).x;
-        gc.beginPath(); gc.moveTo(px, 0); gc.lineTo(px, H); gc.stroke();
-        gc.fillText(lng.toFixed(0), px + 3, 12);
-    }
-    // Horizontal lines (latitude)
-    for (let lat = south; lat <= bounds.getNorth(); lat += step) {
-        const py = map.latLngToContainerPoint([lat, 0]).y;
-        gc.beginPath(); gc.moveTo(0, py); gc.lineTo(W, py); gc.stroke();
-        gc.fillText(lat.toFixed(0), 3, py - 3);
-    }
-}
-
-function toggleGrid() {
-    gridActive = !gridActive;
-    gridBtn.classList.toggle("active", gridActive);
-    drawGridLayer();
-}
-gridBtn?.addEventListener("click", toggleGrid);
-map.on("move zoom moveend zoomend resize", () => { if (gridActive) drawGridLayer(); });
 
 // ─── MAP EXPORT (PNG) ─────────────────────────────────────────────────────────
-document.getElementById("exportBtn")?.addEventListener("click", async () => {
-    const mapEl   = document.getElementById("map");
-    const leafletCanvas = mapEl.querySelector("canvas.leaflet-zoom-animated") ||
-                          mapEl.querySelector(".leaflet-tile-pane canvas");
-    // Capture the map tile layer via leaflet's internal canvas if available,
-    // otherwise fall back to html2canvas-style DOM capture.
-    // We use a two-step approach: draw tiles then overlay our drawing canvas.
+document.getElementById("exportBtn")?.addEventListener("click", () => {
+    const mapEl = document.getElementById("map");
     const W = mapEl.clientWidth, H = mapEl.clientHeight;
-    const out = document.createElement("canvas");
-    out.width  = W; out.height = H;
-    const oc = out.getContext("2d");
 
-    // Draw the Leaflet tile pane (all tile <img> elements)
-    const tilePanes = mapEl.querySelectorAll(".leaflet-tile-pane img.leaflet-tile");
-    for (const img of tilePanes) {
-        const r = img.getBoundingClientRect();
-        const mr = mapEl.getBoundingClientRect();
-        try {
-            oc.drawImage(img, r.left - mr.left, r.top - mr.top, r.width, r.height);
-        } catch (e) { /* CORS-tainted tile — skip */ }
-    }
+    // Load map.png from same origin (no CORS issue) and compose the export.
+    const baseImg = new Image();
+    baseImg.onload = () => {
+        const out = document.createElement("canvas");
+        out.width  = W; out.height = H;
+        const oc = out.getContext("2d");
 
-    // Overlay our drawing canvas
-    const drawCanvas = document.getElementById("drawCanvas");
-    oc.drawImage(drawCanvas, 0, 0);
+        // 1) Draw the base map image scaled to current viewport
+        //    Replicate what Leaflet does: map.png covers the full image bounds.
+        const topLeft     = map.latLngToContainerPoint([imageHeight, 0]);
+        const bottomRight = map.latLngToContainerPoint([0, imageWidth]);
+        const imgX = topLeft.x, imgY = topLeft.y;
+        const imgW = bottomRight.x - topLeft.x;
+        const imgH = bottomRight.y - topLeft.y;
+        oc.drawImage(baseImg, imgX, imgY, imgW, imgH);
 
-    // Timestamp watermark
-    const now = new Date();
-    const ts  = `DELTA MONITOR  ${now.toISOString().slice(0,16).replace("T"," ")} UTC`;
-    oc.font        = "bold 11px 'Share Tech Mono', monospace";
-    oc.fillStyle   = "rgba(90,150,220,0.9)";
-    oc.shadowColor = "rgba(0,0,0,0.8)";
-    oc.shadowBlur  = 3;
-    oc.fillText(ts, 10, H - 10);
-    oc.shadowBlur  = 0;
+        // 2) Overlay drawing canvas (free-draw strokes + ruler lines)
+        const drawCanvas = document.getElementById("drawCanvas");
+        oc.drawImage(drawCanvas, 0, 0);
 
-    // Download
-    const link = document.createElement("a");
-    link.download = `delta_monitor_${now.toISOString().slice(0,19).replace(/:/g,"-")}.png`;
-    link.href = out.toDataURL("image/png");
-    link.click();
+        // 3) Timestamp watermark
+        const now = new Date();
+        const ts  = `DELTA MONITOR  ${now.toISOString().slice(0,16).replace("T"," ")} UTC`;
+        oc.font        = "bold 11px 'Share Tech Mono', monospace";
+        oc.fillStyle   = "rgba(90,150,220,0.9)";
+        oc.shadowColor = "rgba(0,0,0,0.8)";
+        oc.shadowBlur  = 3;
+        oc.fillText(ts, 10, H - 10);
+        oc.shadowBlur  = 0;
+
+        // 4) Download
+        const link = document.createElement("a");
+        link.download = `delta_monitor_${now.toISOString().slice(0,19).replace(/:/g,"-")}.png`;
+        link.href = out.toDataURL("image/png");
+        link.click();
+    };
+    baseImg.onerror = () => console.error("Export: failed to load map.png");
+    baseImg.src = "map.png";
 });
 function mapDistancePixels(ll1, ll2) {
     const p1 = map.latLngToContainerPoint(ll1);
@@ -2241,10 +2183,13 @@ applyLang();
         const hh = String(d.getHours()).padStart(2, "0");
         const mm = String(d.getMinutes()).padStart(2, "0");
         const name      = escHtml(data.callsign || data.shortId || "?");
-        const roleColor = ROLE_COLORS[data.role] || ROLE_COLORS.operator;
+        const role      = data.role || "operator";
+        const roleColor = ROLE_COLORS[role] || ROLE_COLORS.operator;
+        const roleLabel = role === "owner" ? "ADMIN" : role.toUpperCase();
         el.innerHTML = `
           <div class="chat-msg-meta">
             <span class="chat-msg-author" style="color:${roleColor}">${name}</span>
+            <span class="chat-msg-role" style="color:${roleColor}">[${roleLabel}]</span>
             <span class="chat-msg-time mono">${hh}:${mm}</span>
           </div>
           <div class="chat-msg-text">${escHtml(data.text)}</div>`;
@@ -2271,10 +2216,17 @@ applyLang();
         if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMonitorChat(); }
     });
 
-    // Mirror the shared vezha_chat stream into the monitor panel
-    // (vezha_chat onSnapshot is set up later — we hook into renderChatMessage)
-    const _origRender = window.__renderChatHook;
+    // Mirror the shared vezha_chat stream into the monitor panel.
+    // This listener runs immediately on page load regardless of Vezha state.
     window.__monitorRenderHook = renderMonitorMsg;
+    onSnapshot(
+        query(vezha_chat, orderBy("created", "asc"), limit(60)),
+        snapshot => {
+            snapshot.docChanges().forEach(change => {
+                if (change.type === "added") renderMonitorMsg(change.doc.data());
+            });
+        }
+    );
 }
 
 function enforceOwnerRole() {
@@ -2324,8 +2276,6 @@ async function sendChat() {
 }
 
 function renderChatMessage(data) {
-    // Also mirror into the Monitor chat panel
-    if (window.__monitorRenderHook) window.__monitorRenderHook(data);
     const isMine   = data.userId === myPeerId;
     const msgs     = document.getElementById("vezhaChatMessages");
     const el       = document.createElement("div");
@@ -2336,7 +2286,7 @@ function renderChatMessage(data) {
     const name = escHtml(data.callsign || data.shortId || data.userId.slice(-6).toUpperCase());
     const role = data.role || "operator";
     const roleColor = ROLE_COLORS[role] || ROLE_COLORS.operator;
-    const roleLabel = role.toUpperCase();
+    const roleLabel = role === "owner" ? "ADMIN" : role.toUpperCase();
     el.innerHTML = `
       <div class="chat-msg-meta">
         <span class="chat-msg-author" style="color:${roleColor}">${name}</span>
