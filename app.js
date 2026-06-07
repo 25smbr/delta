@@ -63,6 +63,17 @@ const i18n = {
         errUserExists: "Username already taken",
         errBadCreds: "Invalid username or password",
         errFillAll: "Please fill in all fields",
+        artyCalcTitle: "ARTILLERY CALCULATOR",
+        artyConfig: "CONFIGURATION",
+        artyGun: "GUN", artyProjectile: "PROJECTILE",
+        artyGunPos: "GUN POSITION", artyTgtPos: "TARGET POSITION",
+        artyHeightLabel: "HEIGHT DIFF (studs)",
+        artyCalcBtn: "CALCULATE",
+        artyAzimuth: "AZIMUTH", artyDistance: "DISTANCE",
+        artyLowArc: "LOW ARC", artyHighArc: "HIGH ARC", artyTof: "TOF",
+        artyMapHint: "LMB = GUN  ·  RMB = TARGET",
+        artyEnterCoords: "CLICK MAP OR ENTER COORDINATES TO CALCULATE",
+        enemy: "ENEMY", friendly: "FRIENDLY",
     },
     ru: {
         filter: "ФИЛЬТР", unitSymbols: "СИМВОЛЫ ЕДИНИЦ",
@@ -95,6 +106,17 @@ const i18n = {
         errUserExists: "Это имя уже занято",
         errBadCreds: "Неверный логин или пароль",
         errFillAll: "Заполните все поля",
+        artyCalcTitle: "АРТКАЛЬКУЛЯТОР",
+        artyConfig: "КОНФИГУРАЦИЯ",
+        artyGun: "ОРУДИЕ", artyProjectile: "СНАРЯД",
+        artyGunPos: "ПОЗИЦИЯ ОРУДИЯ", artyTgtPos: "ПОЗИЦИЯ ЦЕЛИ",
+        artyHeightLabel: "РАЗН. ВЫСОТ (стадов)",
+        artyCalcBtn: "РАССЧИТАТЬ",
+        artyAzimuth: "АЗИМУТ", artyDistance: "ДАЛЬНОСТЬ",
+        artyLowArc: "НАСТИЛЬНАЯ", artyHighArc: "НАВЕСНАЯ", artyTof: "ВРЕМЯ ПОЛЁТА",
+        artyMapHint: "ЛКМ = ОРУДИЕ  ·  ПКМ = ЦЕЛЬ",
+        artyEnterCoords: "КЛИКНИТЕ НА КАРТУ ИЛИ ВВЕДИТЕ КООРДИНАТЫ",
+        enemy: "ПРОТИВНИК", friendly: "СВОИ",
     },
     ua: {
         filter: "ФІЛЬТР", unitSymbols: "СИМВОЛИ ОДИНИЦЬ",
@@ -127,6 +149,17 @@ const i18n = {
         errUserExists: "Це ім'я вже зайнято",
         errBadCreds: "Невірний логін або пароль",
         errFillAll: "Заповніть усі поля",
+        artyCalcTitle: "АРТКАЛЬКУЛЯТОР",
+        artyConfig: "КОНФІГУРАЦІЯ",
+        artyGun: "ГАРМАТА", artyProjectile: "СНАРЯД",
+        artyGunPos: "ПОЗИЦІЯ ГАРМАТИ", artyTgtPos: "ПОЗИЦІЯ ЦІЛІ",
+        artyHeightLabel: "РІЗН. ВИСОТ (стадів)",
+        artyCalcBtn: "РОЗРАХУВАТИ",
+        artyAzimuth: "АЗИМУТ", artyDistance: "ДАЛЬНІСТЬ",
+        artyLowArc: "НАСТИЛЬНА", artyHighArc: "НАВІСНА", artyTof: "ЧАС ПОЛЬОТУ",
+        artyMapHint: "ЛКМ = ГАРМАТА  ·  ПКМ = ЦІЛЬ",
+        artyEnterCoords: "НАТИСНІТЬ НА КАРТУ АБО ВВЕДІТЬ КООРДИНАТИ",
+        enemy: "ВОРОГ", friendly: "СВОЇ",
     }
 };
 let currentLang = localStorage.getItem("vezhaLang") || "en";
@@ -300,25 +333,120 @@ function symbolSVG(type = "infantry_alive") {
       ${bar}
     </svg>`;
 }
-// ─── POPULATE SYMBOL ROWS ─────────────────────────────────────────────────────
-Object.entries(symbolGroups).forEach(([group, types]) => {
-    const row = document.getElementById(`row-${group}`);
-    if (!row) return;
-    types.forEach((type) => {
-        const btn = document.createElement("button");
-        btn.className  = "symbolBtn";
-        btn.title      = type.replace(/_/g, " ").toUpperCase();
-        btn.innerHTML  = symbolSVG(type);
-        btn.addEventListener("click", () => {
-            selectedSymbol = type;
-            document.querySelectorAll(".symbolBtn").forEach(b => b.classList.remove("active"));
-            btn.classList.add("active");
+// ════════════════════════════════════════════════════════════════════
+// SVG BUILDER — NATO APP-6 FRIENDLY (blue rectangle frame)
+// ════════════════════════════════════════════════════════════════════
+function symbolSVGFriendly(type = "infantry_alive") {
+    const parts    = type.split("_");
+    const status   = parts[parts.length - 1];
+    const unit     = parts.slice(0, -1).join("_");
+    const barColor = statusColors[status] ?? null;
+    const d        = "#111";
+    const fill     = "#88c4f0";   // NATO friendly light-blue
+
+    let interior = "";
+    switch (unit) {
+        // ─ Infantry: X cross ─────────────────────────────────────────
+        case "infantry":
+            interior = `
+              <line x1="9" y1="9" x2="37" y2="37" stroke="${d}" stroke-width="2" stroke-linecap="round"/>
+              <line x1="37" y1="9" x2="9" y2="37" stroke="${d}" stroke-width="2" stroke-linecap="round"/>`;
+            break;
+        // ─ Armor: rounded-rect outline ───────────────────────────────
+        case "tank":
+            interior = `<rect x="10" y="16" width="26" height="14" rx="5" stroke="${d}" stroke-width="2" fill="none"/>`;
+            break;
+        // ─ Artillery: pill + centre dot ──────────────────────────────
+        case "artillery":
+            interior = `
+              <rect x="10" y="16" width="26" height="14" rx="7" stroke="${d}" stroke-width="2" fill="none"/>
+              <circle cx="23" cy="23" r="4" fill="${d}"/>`;
+            break;
+        // ─ Helicopter: bowtie ─────────────────────────────────────────
+        case "helicopter":
+            interior = `
+              <path d="M9 13 L23 23 L9 33 Z" fill="${d}"/>
+              <path d="M37 13 L23 23 L37 33 Z" fill="${d}"/>`;
+            break;
+        // ─ Humvee: tent/triangle with centre divider (NATO wheeled) ──
+        case "humvee":
+            interior = `
+              <polyline points="7,37 23,9 39,37" stroke="${d}" stroke-width="2.5" stroke-linejoin="round" fill="none" stroke-linecap="round"/>
+              <line x1="23" y1="9" x2="23" y2="37" stroke="${d}" stroke-width="2.5" stroke-linecap="round"/>`;
+            break;
+        // ─ Truck: 4 fan lines from apex (denser transport) ────────────
+        case "truck":
+            interior = `
+              <line x1="23" y1="9" x2="8"  y2="37" stroke="${d}" stroke-width="2" stroke-linecap="round"/>
+              <line x1="23" y1="9" x2="16" y2="37" stroke="${d}" stroke-width="2" stroke-linecap="round"/>
+              <line x1="23" y1="9" x2="30" y2="37" stroke="${d}" stroke-width="2" stroke-linecap="round"/>
+              <line x1="23" y1="9" x2="38" y2="37" stroke="${d}" stroke-width="2" stroke-linecap="round"/>`;
+            break;
+        // ─ UAV: swept-wing V chevron ──────────────────────────────────
+        case "uav":
+            interior = `<path d="M4 12 L23 34 L42 12 L38 12 L23 28 L8 12 Z" fill="${d}"/>`;
+            break;
+        // ─ Position: small diamond ────────────────────────────────────
+        case "position":
+            interior = `<path d="M23 14 L32 23 L23 32 L14 23 Z" fill="${d}"/>`;
+            break;
+    }
+
+    const bar = barColor
+        ? `<rect x="5" y="47" width="36" height="7" fill="${barColor}" rx="1.5"/>`
+        : "";
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="46" height="57" viewBox="0 0 46 57">
+      <!-- NATO friendly frame: blue rectangle -->
+      <rect x="3" y="3" width="40" height="40" fill="${fill}" stroke="${d}" stroke-width="2"/>
+      <!-- Unit designator -->
+      ${interior}
+      <!-- Status bar -->
+      ${bar}
+    </svg>`;
+}
+// ─── SYMBOL PANEL (enemy / friendly toggle) ───────────────────────────────────
+let placingSide = "enemy";   // "enemy" | "friendly"
+
+function rebuildSymbolPanel() {
+    const isFriendly = placingSide === "friendly";
+    Object.entries(symbolGroups).forEach(([group, types]) => {
+        const row = document.getElementById(`row-${group}`);
+        if (!row) return;
+        row.innerHTML = "";
+        types.forEach((type) => {
+            const btn = document.createElement("button");
+            btn.className    = "symbolBtn";
+            btn.dataset.type = type;
+            btn.title        = type.replace(/_/g, " ").toUpperCase();
+            btn.innerHTML    = isFriendly ? symbolSVGFriendly(type) : symbolSVG(type);
+            btn.addEventListener("click", () => {
+                selectedSymbol = type;
+                document.querySelectorAll(".symbolBtn").forEach(b => b.classList.remove("active"));
+                btn.classList.add("active");
+            });
+            row.appendChild(btn);
         });
-        row.appendChild(btn);
+    });
+    // Restore active state for currently selected symbol
+    let matched = false;
+    document.querySelectorAll(".symbolBtn").forEach(b => {
+        b.classList.remove("active");
+        if (b.dataset.type === selectedSymbol) { b.classList.add("active"); matched = true; }
+    });
+    if (!matched) document.querySelector(".symbolBtn")?.classList.add("active");
+}
+rebuildSymbolPanel();
+
+// Side-toggle buttons
+document.querySelectorAll(".side-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+        placingSide = btn.dataset.side;
+        document.querySelectorAll(".side-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        rebuildSymbolPanel();
     });
 });
-// Activate first button
-document.querySelector(".symbolBtn")?.classList.add("active");
 // ─── MAP CONTROLS ─────────────────────────────────────────────────────────────
 document.getElementById("zoomInBtn").addEventListener("click",  () => map.zoomIn());
 document.getElementById("zoomOutBtn").addEventListener("click", () => map.zoomOut());
@@ -409,7 +537,7 @@ const displayedMarkers = {};        // id → { marker, data }
 let pendingEditMarkerId = null;     // auto-open popup for freshly placed marker
 
 function createIcon(type, data = {}) {
-    const svg    = symbolSVG(type);
+    const svg    = (data.side === "friendly") ? symbolSVGFriendly(type) : symbolSVG(type);
     const date   = escHtml(data.date   || "");
     const amount = escHtml(String(data.amount || ""));
     const info   = escHtml(data.info   || "");
@@ -507,6 +635,7 @@ map.on("click", async (e) => {
         x:       e.latlng.lng,
         y:       e.latlng.lat,
         type:    selectedSymbol,
+        side:    placingSide,
         created: Date.now(),
         date:    dateStr,
         amount:  "",
@@ -545,7 +674,7 @@ function openMarkerEditPopup(markerId, markerLeaflet, data) {
 
     // Close any previously opened popup, then open a fresh standalone one
     map.closePopup();
-    const popup = L.popup({ className: "mep-outer", maxWidth: 230, minWidth: 200, autoPan: true })
+    const popup = L.popup({ className: "mep-outer", maxWidth: 230, minWidth: 200, autoPan: true, offset: L.point(160, 40) })
         .setLatLng(markerLeaflet.getLatLng())
         .setContent(popupContent)
         .openOn(map);
@@ -1751,6 +1880,8 @@ themeToggleBtn.addEventListener("click", () => {
     document.body.classList.toggle("light-theme", isLightTheme);
     themeToggleBtn.title = isLightTheme ? "Switch to dark theme" : "Switch to light theme";
     themeToggleBtn.classList.toggle("active", isLightTheme);
+    const logoImg = document.querySelector(".brand-shield img");
+    if (logoImg) logoImg.src = isLightTheme ? "logo_light.png" : "logo.png";
     const themeIcon = document.getElementById("themeIcon");
     if (isLightTheme) {
         themeIcon.innerHTML = `
@@ -2010,7 +2141,7 @@ document.getElementById("artyCalcBtn")?.addEventListener("click", () => {
     const noResult= document.getElementById("artyNoResult");
 
     if (isNaN(gx)||isNaN(gy)||isNaN(tx)||isNaN(ty)) {
-        results.innerHTML = `<div class="arty-error-card">ENTER ALL FOUR COORDINATES</div>`;
+        results.innerHTML = `<div class="arty-error-row">${t("artyEnterCoords")}</div>`;
         return;
     }
     const gun  = ARTY_GUNS[+gunSel.value];
@@ -2027,7 +2158,7 @@ document.getElementById("artyCalcBtn")?.addEventListener("click", () => {
     const highElev = artyCalcHighElev(distM, v, heightM);
 
     if (lowElev === null) {
-        results.innerHTML = `<div class="arty-error-card">OUT OF RANGE — target is beyond maximum range for ${escHtml(proj.name)} (v=${v} m/s)</div>`;
+        results.innerHTML = `<div class="arty-error-row">OUT OF RANGE — ${escHtml(proj.name)} (v=${v} m/s)</div>`;
         return;
     }
 
@@ -2038,32 +2169,110 @@ document.getElementById("artyCalcBtn")?.addEventListener("click", () => {
     const fmt0 = n => (n === null ? "---" : Math.round(n).toString());
 
     results.innerHTML = `
-      <div class="arty-result-card span2 accent-card">
-        <span class="arty-result-label">AZIMUTH</span>
+      <div class="arty-result-row accent-result">
+        <span class="arty-result-label">${t("artyAzimuth")}</span>
         <span class="arty-result-val large">${fmt1(azimuth)}<span class="arty-result-unit">°</span></span>
       </div>
-      <div class="arty-result-card span2">
-        <span class="arty-result-label">DISTANCE</span>
-        <span class="arty-result-val">${fmt0(distStuds)}<span class="arty-result-unit">studs</span></span>
-        <span class="arty-result-sub">${fmt1(distM)} m</span>
+      <div class="arty-result-row">
+        <span class="arty-result-label">${t("artyDistance")}</span>
+        <span class="arty-result-val">${fmt0(distStuds)}<span class="arty-result-unit"> studs</span>
+          <span class="arty-result-sub"> · ${fmt1(distM)} m</span></span>
       </div>
-      <div class="arty-result-card">
-        <span class="arty-result-label">LOW ARC — ELEVATION</span>
-        <span class="arty-result-val">${fmt1(lowElev)}<span class="arty-result-unit">°</span></span>
-        <span class="arty-result-sub">TOF: ${fmt1(tofLow)} s</span>
+      <div class="arty-result-row">
+        <span class="arty-result-label">${t("artyLowArc")}</span>
+        <span class="arty-result-val">${fmt1(lowElev)}<span class="arty-result-unit">°</span>
+          <span class="arty-result-sub"> · ${t("artyTof")}: ${fmt1(tofLow)} s</span></span>
       </div>
-      <div class="arty-result-card">
-        <span class="arty-result-label">HIGH ARC — ELEVATION</span>
-        <span class="arty-result-val ${highElev === null ? "dim" : ""}">${highElev !== null ? fmt1(highElev) : "N/A"}<span class="arty-result-unit">${highElev !== null ? "°" : ""}</span></span>
-        <span class="arty-result-sub">${tofHigh !== null ? "TOF: " + fmt1(tofHigh) + " s" : "not available"}</span>
+      <div class="arty-result-row">
+        <span class="arty-result-label">${t("artyHighArc")}</span>
+        <span class="arty-result-val ${highElev === null ? "dim" : ""}">${highElev !== null ? fmt1(highElev) + "°" : "N/A"}
+          <span class="arty-result-sub">${tofHigh !== null ? " · " + t("artyTof") + ": " + fmt1(tofHigh) + " s" : ""}</span></span>
       </div>
-      <div class="arty-result-card span2">
-        <span class="arty-result-label">PROJECTILE</span>
-        <span style="font-family:var(--font-mono);font-size:13px;color:var(--text-primary)">${escHtml(gun.name)} — ${escHtml(proj.name)}</span>
-        <span class="arty-result-sub">Muzzle velocity: ${v} m/s · Height diff: ${hd > 0 ? "+" : ""}${hd} studs</span>
+      <div class="arty-result-row muted-row">
+        <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);line-height:1.5">
+          ${escHtml(gun.name)}<br>${escHtml(proj.name)} · ${v} m/s · Δh: ${hd > 0 ? "+" : ""}${hd} studs
+        </span>
       </div>`;
     if (noResult) noResult.style.display = "none";
 });
+
+// ─── Artillery Map (Leaflet instance inside ARTY view) ───────────────────────
+let artyMapInstance = null;
+let artyGunMarker   = null;
+let artyTgtMarker   = null;
+let artyLine        = null;
+
+function makeArtyIcon(label, color) {
+    return L.divIcon({
+        html: `<div style="
+            width:30px;height:30px;background:${color};border:2.5px solid #111;
+            border-radius:50%;display:flex;align-items:center;justify-content:center;
+            font-family:monospace;font-size:13px;font-weight:900;color:#111;line-height:1;
+            box-shadow:0 2px 6px rgba(0,0,0,.5);">${label}</div>`,
+        className: "", iconSize: [30, 30], iconAnchor: [15, 15]
+    });
+}
+
+function updateArtyLine() {
+    if (artyLine) { artyLine.remove(); artyLine = null; }
+    const gx = parseFloat(document.getElementById("artyGunX")?.value);
+    const gy = parseFloat(document.getElementById("artyGunY")?.value);
+    const tx = parseFloat(document.getElementById("artyTgtX")?.value);
+    const ty = parseFloat(document.getElementById("artyTgtY")?.value);
+    if (!isNaN(gx) && !isNaN(gy) && !isNaN(tx) && !isNaN(ty) && artyMapInstance) {
+        artyLine = L.polyline([[gy, gx], [ty, tx]], {
+            color: "#facc15", weight: 2, dashArray: "6 4", opacity: 0.85
+        }).addTo(artyMapInstance);
+    }
+}
+
+function triggerArtyCalc() {
+    const gx = parseFloat(document.getElementById("artyGunX")?.value);
+    const gy = parseFloat(document.getElementById("artyGunY")?.value);
+    const tx = parseFloat(document.getElementById("artyTgtX")?.value);
+    const ty = parseFloat(document.getElementById("artyTgtY")?.value);
+    if (!isNaN(gx) && !isNaN(gy) && !isNaN(tx) && !isNaN(ty)) {
+        document.getElementById("artyCalcBtn")?.click();
+    }
+}
+
+function initArtyMap() {
+    const el = document.getElementById("artyMapEl");
+    if (!el) return;
+    if (artyMapInstance) {
+        setTimeout(() => artyMapInstance.invalidateSize(), 60);
+        return;
+    }
+    artyMapInstance = L.map("artyMapEl", {
+        crs: L.CRS.Simple, minZoom: -3, maxZoom: 2,
+        zoomControl: true, attributionControl: false
+    });
+    const artBounds = [[0, 0], [imageHeight, imageWidth]];
+    L.imageOverlay("map.png", artBounds).addTo(artyMapInstance);
+    artyMapInstance.fitBounds(artBounds);
+
+    artyMapInstance.on("click", (e) => {
+        document.getElementById("artyGunX").value = Math.round(e.latlng.lng);
+        document.getElementById("artyGunY").value = Math.round(e.latlng.lat);
+        if (artyGunMarker) artyGunMarker.remove();
+        artyGunMarker = L.marker([e.latlng.lat, e.latlng.lng], {
+            icon: makeArtyIcon("G", "#4ade80")
+        }).addTo(artyMapInstance);
+        updateArtyLine();
+        triggerArtyCalc();
+    });
+
+    artyMapInstance.on("contextmenu", (e) => {
+        document.getElementById("artyTgtX").value = Math.round(e.latlng.lng);
+        document.getElementById("artyTgtY").value = Math.round(e.latlng.lat);
+        if (artyTgtMarker) artyTgtMarker.remove();
+        artyTgtMarker = L.marker([e.latlng.lat, e.latlng.lng], {
+            icon: makeArtyIcon("T", "#f87171")
+        }).addTo(artyMapInstance);
+        updateArtyLine();
+        triggerArtyCalc();
+    });
+}
 
 // ─── Artillery view switching ─────────────────────────────────────────────────
 let artilleryActive = false;
@@ -2079,6 +2288,7 @@ function enterArtillery() {
     mapViewBtn.classList.remove("active");
     vezhaViewBtn.classList.remove("active");
     artilleryViewBtn.classList.add("active");
+    requestAnimationFrame(() => initArtyMap());
 }
 
 function exitArtillery() {
@@ -2099,3 +2309,9 @@ const _origMapClick  = mapViewBtn.onclick;
 const _origVezhaClick = vezhaViewBtn.onclick;
 mapViewBtn.addEventListener("click",  () => { if (artilleryActive) exitArtillery(); });
 vezhaViewBtn.addEventListener("click",() => { if (artilleryActive) exitArtillery(); });
+
+// ─── Kill browser autofill in coordinate search box ──────────────────────────
+setTimeout(() => {
+    const csi = document.getElementById("coordSearchInput");
+    if (csi) { csi.value = ""; csi.setAttribute("readonly", ""); setTimeout(() => csi.removeAttribute("readonly"), 100); }
+}, 250);
