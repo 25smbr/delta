@@ -1175,6 +1175,13 @@ function applyLang() {
     // Refresh dynamic status bar
     const mc = document.getElementById("markerCount");
     if (mc) mc.textContent = t("markers", Object.keys(displayedMarkers || {}).length);
+    const drawSt = document.getElementById("drawModeStatus");
+    if (drawSt) drawSt.textContent = t(typeof drawMode !== "undefined" && drawMode ? "drawOn" : "drawOff");
+    const rulerSt = document.getElementById("rulerStatus");
+    if (rulerSt) rulerSt.textContent = t(typeof rulerMode !== "undefined" && rulerMode ? "rulerOn" : "rulerOff");
+    // Sync body class for font-size compensation
+    document.body.classList.remove("lang-en", "lang-ru", "lang-ua");
+    document.body.classList.add("lang-" + currentLang);
     updateMicBtn();
     updateDeafenBtn();
 }
@@ -1418,6 +1425,7 @@ mapViewBtn.addEventListener("click",   () => { if (vezhaActive)  exitVezha(); })
 vezhaViewBtn.addEventListener("click", () => { if (!vezhaActive) enterVezha(); });
 
 async function enterVezha() {
+    if (typeof artilleryActive !== "undefined" && artilleryActive) exitArtillery();
     vezhaActive    = true;
     vezhaEnterTime = Date.now();
 
@@ -1762,3 +1770,332 @@ themeToggleBtn.addEventListener("click", () => {
             <line x1="2.9" y1="13.1" x2="4.3" y2="11.7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>`;
     }
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ARTILLERY CALCULATOR  —  based on grand-hawk/artillery-calculator (MIT)
+// Math ported from packages/mtc-artillery/src/utils/math.ts
+// Gun data from packages/mtc-artillery/src/config/guns.ts + importedGuns.json
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Physics constants (MTC game values) ─────────────────────────────────────
+const ARTY_G = 9.8 * 1.8;                          // in-game gravity
+const STUDS_PER_M = 5 / 1.8;
+function studsToMeters(s) { return s / STUDS_PER_M; }
+function metersToStuds(m) { return m * STUDS_PER_M; }
+
+function artyCalcLowElev(d, v, h = 0) {
+    const disc = v ** 4 - ARTY_G * (ARTY_G * d * d + 2 * h * v * v);
+    if (disc < 0) return null;
+    return Math.atan((v * v - Math.sqrt(disc)) / (ARTY_G * d)) * (180 / Math.PI);
+}
+function artyCalcHighElev(d, v, h = 0) {
+    const disc = v ** 4 - ARTY_G * (ARTY_G * d * d + 2 * h * v * v);
+    if (disc < 0) return null;
+    return Math.atan((v * v + Math.sqrt(disc)) / (ARTY_G * d)) * (180 / Math.PI);
+}
+function artyCalcToF(elevDeg, v, d) {
+    const rad = elevDeg * Math.PI / 180;
+    return d / (v * Math.cos(rad));
+}
+function artyCalcAzimuth(x1, y1, x2, y2) {
+    const rad = Math.atan2(y2 - y1, x2 - x1);
+    return (90 + (rad * 180 / Math.PI) + 360) % 360;
+}
+function artyCalcDist(x1, y1, x2, y2) {
+    return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+}
+
+// ─── Gun database (importedGuns.json + custom guns from guns.ts) ──────────────
+const ARTY_GUNS = [
+    // ── Custom guns (from guns.ts) ──
+    { name: "82mm PM-43 Mortar", projectiles: [
+        { name: "O-832D Low Charge",    velocity: 80  },
+        { name: "O-832D Medium Charge", velocity: 140 },
+        { name: "O-832D High Charge",   velocity: 211 },
+    ]},
+    { name: "AGS-17 Plamya", projectiles: [
+        { name: "VOG-17M", velocity: 185 },
+    ]},
+    { name: "122mm D-30", projectiles: [
+        { name: "OF-462 Low Charge",    velocity: 200 },
+        { name: "OF-462 Medium Charge", velocity: 400 },
+        { name: "OF-462 High Charge",   velocity: 690 },
+    ]},
+    { name: "2B9 Vasilek", projectiles: [
+        { name: "O-832D Low Charge",    velocity: 80  },
+        { name: "O-832D Medium Charge", velocity: 140 },
+        { name: "O-832D High Charge",   velocity: 211 },
+    ]},
+    { name: "Hell Cannon", projectiles: [
+        { name: "Propane Canister Low",  velocity: 80  },
+        { name: "Propane Canister High", velocity: 150 },
+    ]},
+    { name: "UB-32 Rocket Pod", projectiles: [
+        { name: "S-5 Rocket", velocity: 500 },
+    ]},
+    { name: "12-Pounder Cannon", projectiles: [
+        { name: "Round Shot", velocity: 437 },
+    ]},
+    // ── Imported guns (importedGuns.json) ──
+    { name: "2S19 Msta-S", projectiles: [
+        { name: "3VO28 Low Charge",        velocity: 207 },
+        { name: "3VOF91 Low Charge",       velocity: 216 },
+        { name: "OF-72 Low Charge",        velocity: 216 },
+        { name: "3VO28 Medium Charge",     velocity: 414 },
+        { name: "3VOF91 Medium Charge",    velocity: 432 },
+        { name: "OF-72 Medium Charge",     velocity: 432 },
+        { name: "3VO28 High Charge",       velocity: 828 },
+        { name: "3VOF91 High Charge",      velocity: 864 },
+        { name: "OF-72 High Charge",       velocity: 864 },
+    ]},
+    { name: "2S43", projectiles: [
+        { name: "3VO28 Low Charge",        velocity: 207 },
+        { name: "3VOF91 Low Charge",       velocity: 216 },
+        { name: "3VO28 Medium Charge",     velocity: 414 },
+        { name: "3VOF91 Medium Charge",    velocity: 432 },
+        { name: "3VO28 High Charge",       velocity: 828 },
+        { name: "3VOF91 High Charge",      velocity: 864 },
+    ]},
+    { name: "2S7 Pion", projectiles: [
+        { name: "3VO15 Low Charge",        velocity: 194 },
+        { name: "3VOF34 Low Charge",       velocity: 194 },
+        { name: "3VO15 Medium Charge",     velocity: 388 },
+        { name: "3VOF34 Medium Charge",    velocity: 388 },
+        { name: "3VO15 High Charge",       velocity: 775 },
+        { name: "3VOF34 High Charge",      velocity: 775 },
+        { name: "2VG11",                   velocity: 864 },
+    ]},
+    { name: "9K720 Iskander", projectiles: [
+        { name: "SS-26 HE-frag Low",       velocity: 500  },
+        { name: "SS-26 HE-frag Medium",    velocity: 1000 },
+        { name: "SS-26 HE-frag High",      velocity: 2000 },
+    ]},
+    { name: "BM-21 Grad",    projectiles: [{ name: "9M22/M21 HE-Frag",          velocity: 180 }]},
+    { name: "BMP-1TS",       projectiles: [{ name: "VOG-17M",                   velocity: 185 }]},
+    { name: "BMP-2M",        projectiles: [{ name: "VOG-17M",                   velocity: 185 }]},
+    { name: "BMP-30M",       projectiles: [{ name: "VOG-17M",                   velocity: 185 }]},
+    { name: "BMPT Terminator",projectiles:[{ name: "VOG-17M",                   velocity: 185 }]},
+    { name: "BTR-4",         projectiles: [{ name: "VOG-17M",                   velocity: 185 }]},
+    { name: "BTR-90",        projectiles: [{ name: "VOG-17M",                   velocity: 185 }]},
+    { name: "Centurion Mk.5 AVRE", projectiles: [{ name: "L33A1",              velocity: 259 }]},
+    { name: "Cheonma-2",     projectiles: [{ name: "VOG-17M",                   velocity: 185 }]},
+    { name: "Churchill AVRE",projectiles: [{ name: "L33A1",                     velocity: 259 }]},
+    { name: "CV 9040C",      projectiles: [
+        { name: "M383",   velocity: 241 },
+        { name: "M430A1", velocity: 241 },
+    ]},
+    { name: "GAZ Tigr M",    projectiles: [{ name: "VOG-17M",                   velocity: 185 }]},
+    { name: "Humvee",        projectiles: [
+        { name: "M383",   velocity: 241 },
+        { name: "M430A1", velocity: 241 },
+    ]},
+    { name: "Karl-Gerät",    projectiles: [{ name: "Schwere Betongranate",      velocity: 150 }]},
+    { name: "LUAZ-672",      projectiles: [{ name: "9M22/M21 HE-Frag",          velocity: 180 }]},
+    { name: "M1117 ASV",     projectiles: [
+        { name: "M383",   velocity: 241 },
+        { name: "M430A1", velocity: 241 },
+    ]},
+    { name: "M109",          projectiles: [
+        { name: "M107 Low Charge",    velocity: 171 },
+        { name: "M107 Medium Charge", velocity: 342 },
+        { name: "M107 High Charge",   velocity: 684 },
+        { name: "M110 Low Charge",    velocity: 171 },
+        { name: "M110 Medium Charge", velocity: 342 },
+        { name: "M110 High Charge",   velocity: 684 },
+    ]},
+    { name: "M109A6",        projectiles: [
+        { name: "M107 Low Charge",    velocity: 171 },
+        { name: "M107 Medium Charge", velocity: 342 },
+        { name: "M107 High Charge",   velocity: 684 },
+    ]},
+    { name: "M17 Whizbang",  projectiles: [{ name: "7.2 in T37",               velocity: 49  }]},
+    { name: "M26 T99",       projectiles: [{ name: "HE Rockets",                velocity: 260 }]},
+    { name: "M270 MLRS",     projectiles: [
+        { name: "M26A1 Low Charge",    velocity: 180 },
+        { name: "M31A2 Low Charge",    velocity: 180 },
+        { name: "M26A1 Medium Charge", velocity: 300 },
+        { name: "M31A2 Medium Charge", velocity: 300 },
+        { name: "M26A1 High Charge",   velocity: 420 },
+        { name: "M31A2 High Charge",   velocity: 420 },
+    ]},
+    { name: "M7 Priest",     projectiles: [
+        { name: "M67 shot", velocity: 381 },
+        { name: "M1 shell", velocity: 472 },
+    ]},
+    { name: "Merkava Mk.1B", projectiles: [
+        { name: "Blast-frag Low Charge",  velocity: 30  },
+        { name: "Blast-frag Med Charge",  velocity: 80  },
+        { name: "Blast-frag High Charge", velocity: 150 },
+        { name: "Smoke",                  velocity: 30  },
+    ]},
+    { name: "Merkava Mk.4M", projectiles: [
+        { name: "Blast-frag Low Charge",  velocity: 30  },
+        { name: "Blast-frag Med Charge",  velocity: 80  },
+        { name: "Blast-frag High Charge", velocity: 150 },
+        { name: "Smoke",                  velocity: 30  },
+    ]},
+    { name: "Namer 30",      projectiles: [
+        { name: "Blast-frag Low Charge",  velocity: 30  },
+        { name: "Blast-frag Med Charge",  velocity: 80  },
+        { name: "Blast-frag High Charge", velocity: 150 },
+    ]},
+    { name: "Object 781",    projectiles: [{ name: "VOG-17M",                   velocity: 185 }]},
+    { name: "PzH 2000",      projectiles: [
+        { name: "DM121 Low Charge",     velocity: 254  },
+        { name: "DM121 Medium Charge",  velocity: 506  },
+        { name: "DM121 High Charge",    velocity: 1015 },
+        { name: "DM702A1 Low Charge",   velocity: 254  },
+        { name: "DM702A1 Medium Charge",velocity: 506  },
+        { name: "DM702A1 High Charge",  velocity: 1015 },
+    ]},
+    { name: "Pz.W.42",       projectiles: [{ name: "15 cm Wurfgranate 41",      velocity: 340 }]},
+    { name: "RBT-5",         projectiles: [{ name: "TT-250 Rocket",             velocity: 135 }]},
+    { name: "RBU-6000 MT-LB",projectiles: [{ name: "RGB-60",                    velocity: 400 }]},
+    { name: "RSZO-1",        projectiles: [{ name: "HE Rockets",                 velocity: 150 }]},
+    { name: "RSZO-2",        projectiles: [{ name: "HE Rockets",                 velocity: 150 }]},
+    { name: "SAU-2",         projectiles: [
+        { name: "3OF25 Low Charge",    velocity: 200 },
+        { name: "3OF25 Medium Charge", velocity: 400 },
+        { name: "3OF25 High Charge",   velocity: 665 },
+        { name: "BR-540B",             velocity: 600 },
+        { name: "3VO28",               velocity: 200 },
+        { name: "Smoke Shell",         velocity: 200 },
+    ]},
+    { name: "Sturmtiger",    projectiles: [{ name: "38 cm R Spgr.4581",         velocity: 150 }]},
+    { name: "T-62 Berezhok", projectiles: [{ name: "VOG-17M",                   velocity: 185 }]},
+    { name: "T-64E",         projectiles: [{ name: "VOG-17M",                   velocity: 185 }]},
+    { name: "T34 Calliope",  projectiles: [{ name: "HE Rockets",                velocity: 260 }]},
+    { name: "TOS-1A BM-1",  projectiles: [
+        { name: "Blast fragmentation", velocity: 180 },
+        { name: "Incendiary",          velocity: 180 },
+        { name: "Thermobaric",         velocity: 180 },
+    ]},
+].sort((a, b) => a.name.localeCompare(b.name));
+
+// ─── Populate gun/projectile selects ─────────────────────────────────────────
+{
+    const gunSel  = document.getElementById("artyGunSelect");
+    const projSel = document.getElementById("artyProjectileSelect");
+    if (gunSel && projSel) {
+        ARTY_GUNS.forEach((gun, i) => {
+            const opt = document.createElement("option");
+            opt.value = i; opt.textContent = gun.name;
+            gunSel.appendChild(opt);
+        });
+        function populateProjectiles() {
+            projSel.innerHTML = "";
+            const gun = ARTY_GUNS[+gunSel.value];
+            if (!gun) return;
+            gun.projectiles.forEach((p, i) => {
+                const opt = document.createElement("option");
+                opt.value = i; opt.textContent = `${p.name}  (v=${p.velocity} m/s)`;
+                projSel.appendChild(opt);
+            });
+        }
+        gunSel.addEventListener("change", populateProjectiles);
+        populateProjectiles();
+    }
+}
+
+// ─── Calculate ────────────────────────────────────────────────────────────────
+document.getElementById("artyCalcBtn")?.addEventListener("click", () => {
+    const gunSel  = document.getElementById("artyGunSelect");
+    const projSel = document.getElementById("artyProjectileSelect");
+    const gx = parseFloat(document.getElementById("artyGunX").value);
+    const gy = parseFloat(document.getElementById("artyGunY").value);
+    const tx = parseFloat(document.getElementById("artyTgtX").value);
+    const ty = parseFloat(document.getElementById("artyTgtY").value);
+    const hd = parseFloat(document.getElementById("artyHeightDiff").value) || 0;
+    const results = document.getElementById("artyResults");
+    const noResult= document.getElementById("artyNoResult");
+
+    if (isNaN(gx)||isNaN(gy)||isNaN(tx)||isNaN(ty)) {
+        results.innerHTML = `<div class="arty-error-card">ENTER ALL FOUR COORDINATES</div>`;
+        return;
+    }
+    const gun  = ARTY_GUNS[+gunSel.value];
+    const proj = gun?.projectiles[+projSel.value];
+    if (!proj) return;
+
+    const distStuds = artyCalcDist(gx, gy, tx, ty);
+    const distM     = studsToMeters(distStuds);
+    const heightM   = studsToMeters(hd);
+    const azimuth   = artyCalcAzimuth(gx, gy, tx, ty);
+    const v         = proj.velocity;
+
+    const lowElev  = artyCalcLowElev(distM, v, heightM);
+    const highElev = artyCalcHighElev(distM, v, heightM);
+
+    if (lowElev === null) {
+        results.innerHTML = `<div class="arty-error-card">OUT OF RANGE — target is beyond maximum range for ${escHtml(proj.name)} (v=${v} m/s)</div>`;
+        return;
+    }
+
+    const tofLow  = artyCalcToF(lowElev,  v, distM);
+    const tofHigh = (highElev !== null) ? artyCalcToF(highElev, v, distM) : null;
+
+    const fmt1 = n => (n === null ? "---" : n.toFixed(1));
+    const fmt0 = n => (n === null ? "---" : Math.round(n).toString());
+
+    results.innerHTML = `
+      <div class="arty-result-card span2 accent-card">
+        <span class="arty-result-label">AZIMUTH</span>
+        <span class="arty-result-val large">${fmt1(azimuth)}<span class="arty-result-unit">°</span></span>
+      </div>
+      <div class="arty-result-card span2">
+        <span class="arty-result-label">DISTANCE</span>
+        <span class="arty-result-val">${fmt0(distStuds)}<span class="arty-result-unit">studs</span></span>
+        <span class="arty-result-sub">${fmt1(distM)} m</span>
+      </div>
+      <div class="arty-result-card">
+        <span class="arty-result-label">LOW ARC — ELEVATION</span>
+        <span class="arty-result-val">${fmt1(lowElev)}<span class="arty-result-unit">°</span></span>
+        <span class="arty-result-sub">TOF: ${fmt1(tofLow)} s</span>
+      </div>
+      <div class="arty-result-card">
+        <span class="arty-result-label">HIGH ARC — ELEVATION</span>
+        <span class="arty-result-val ${highElev === null ? "dim" : ""}">${highElev !== null ? fmt1(highElev) : "N/A"}<span class="arty-result-unit">${highElev !== null ? "°" : ""}</span></span>
+        <span class="arty-result-sub">${tofHigh !== null ? "TOF: " + fmt1(tofHigh) + " s" : "not available"}</span>
+      </div>
+      <div class="arty-result-card span2">
+        <span class="arty-result-label">PROJECTILE</span>
+        <span style="font-family:var(--font-mono);font-size:13px;color:var(--text-primary)">${escHtml(gun.name)} — ${escHtml(proj.name)}</span>
+        <span class="arty-result-sub">Muzzle velocity: ${v} m/s · Height diff: ${hd > 0 ? "+" : ""}${hd} studs</span>
+      </div>`;
+    if (noResult) noResult.style.display = "none";
+});
+
+// ─── Artillery view switching ─────────────────────────────────────────────────
+let artilleryActive = false;
+const artilleryViewBtn = document.getElementById("artilleryViewBtn");
+
+function enterArtillery() {
+    if (vezhaActive) exitVezha();
+    artilleryActive = true;
+    document.getElementById("appBody").style.display = "none";
+    document.getElementById("vezhaView").classList.remove("active");
+    document.getElementById("artilleryView").classList.add("active");
+    brandModule.textContent = "ARTY";
+    mapViewBtn.classList.remove("active");
+    vezhaViewBtn.classList.remove("active");
+    artilleryViewBtn.classList.add("active");
+}
+
+function exitArtillery() {
+    artilleryActive = false;
+    document.getElementById("artilleryView").classList.remove("active");
+    document.getElementById("appBody").style.display = "flex";
+    brandModule.textContent = "MONITOR";
+    artilleryViewBtn.classList.remove("active");
+    mapViewBtn.classList.add("active");
+}
+
+artilleryViewBtn?.addEventListener("click", () => {
+    if (!artilleryActive) enterArtillery();
+});
+
+// Patch mapViewBtn and vezhaViewBtn to also exit artillery
+const _origMapClick  = mapViewBtn.onclick;
+const _origVezhaClick = vezhaViewBtn.onclick;
+mapViewBtn.addEventListener("click",  () => { if (artilleryActive) exitArtillery(); });
+vezhaViewBtn.addEventListener("click",() => { if (artilleryActive) exitArtillery(); });
