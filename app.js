@@ -2057,7 +2057,7 @@ function updateModalState() {
         if (csInp) csInp.value = user.callsign || user.username;
         // Show/hide admin panel
         const adminWrap = document.getElementById("adminPanelWrap");
-        if (adminWrap) adminWrap.style.display = user.role === "owner" ? "" : "none";
+        if (adminWrap) adminWrap.style.display = user.role === "owner" ? "block" : "none";
     } else {
         loginPanel?.style && (loginPanel.style.display = "flex");
         registerPanel?.style && (registerPanel.style.display = "none");
@@ -2112,11 +2112,13 @@ async function doLogin(username, pw, errEl, busyBtnId) {
             return;
         }
         const resolvedRole   = (username === OWNER_CALLSIGN) ? "owner" : acct.role;
-        // Ensure the account has a userId; generate and save if missing
+        // Ensure the account has a userId; generate and save if missing.
+        // The updateDoc is best-effort — if rules block it (e.g. read-only accounts
+        // collection) we still log the user in with a locally-generated ID.
         let userId = acct.userId;
         if (!userId) {
             userId = generateUserId();
-            await updateDoc(doc(db, "accounts", username), { userId });
+            try { await updateDoc(doc(db, "accounts", username), { userId }); } catch (_) {}
         }
         applyCurrentUser({
             username, role: resolvedRole,
@@ -2194,6 +2196,14 @@ document.getElementById("logoutBtn")?.addEventListener("click", () => {
 document.getElementById("accountBtn")?.addEventListener("click", () => {
     updateModalState();
     document.getElementById("accountModal").style.display = "flex";
+    // Auto-expand admin panel for owner so it's immediately visible
+    const u = getCurrentUser();
+    if (u?.role === "owner") {
+        const body = document.getElementById("adminPanel");
+        const chevron = document.querySelector("#adminToggle .modal-collapsible-chevron");
+        if (body) body.style.display = "flex";
+        if (chevron) chevron.textContent = "▴";
+    }
 });
 document.getElementById("accountModalClose")?.addEventListener("click", () => {
     document.getElementById("accountModal").style.display = "none";
@@ -2204,39 +2214,64 @@ document.getElementById("accountModal")?.addEventListener("click", e => {
 });
 
 // Restore logged-in user on page load
+// Always validate the cached session against Firestore to catch:
+//  - accounts deleted by admin
+//  - accounts that are still pending (pre-approval-feature sessions)
+//  - stale sessions from before the auth screen was added
 {
     const user = getCurrentUser();
     if (user) {
-        const callsign = user.callsign || user.username;
-        const callEl = document.getElementById("callsignInput");
-        if (callEl) callEl.value = callsign;
-        const roleEl = document.getElementById("roleSelect");
-        if (roleEl) roleEl.value = user.role;
-        // Auth screen stays hidden (started hidden in HTML)
-        updatePresence();
-        presenceInterval = setInterval(updatePresence, 30000);
-        if (user.role === "owner") startAdminListeners();
-        restoreUserState(user.username);
-        updateModalState();
-        // Get or generate userId — may be absent in sessions predating the feature
-        if (user.userId) {
-            drawWatermarkCanvas(user.userId);
-        } else {
-            // Fetch from Firestore, generate if still missing, then draw
-            getDoc(doc(db, "accounts", user.username)).then(async snap => {
-                let uid = snap.exists() ? snap.data().userId : null;
-                if (!uid) {
-                    uid = generateUserId();
-                    try { await updateDoc(doc(db, "accounts", user.username), { userId: uid }); } catch (_) {}
-                }
-                const updatedUser = { ...user, userId: uid };
-                localStorage.setItem("deltaCurrentUser", JSON.stringify(updatedUser));
-                drawWatermarkCanvas(uid);
-                // Update the ID display in modal
-                const idEl = document.getElementById("loggedInId");
-                if (idEl) idEl.textContent = uid;
-            }).catch(() => {});
-        }
+        // Validate against Firestore before restoring
+        getDoc(doc(db, "accounts", user.username)).then(async snap => {
+            // Account deleted or pending → force logout and show auth screen
+            if (!snap.exists() || (snap.data().status === "pending")) {
+                localStorage.removeItem("deltaCurrentUser");
+                showAuthScreen();
+                return;
+            }
+            // Account valid — restore session
+            const acctData = snap.data();
+            // Sync any server-side changes (role, callsign, userId)
+            const syncedUser = {
+                ...user,
+                role:     acctData.role     || user.role,
+                callsign: acctData.callsign || user.callsign || user.username,
+                userId:   acctData.userId   || user.userId   || null,
+            };
+            // Generate userId if still missing
+            if (!syncedUser.userId) {
+                syncedUser.userId = generateUserId();
+                try { await updateDoc(doc(db, "accounts", user.username), { userId: syncedUser.userId }); } catch (_) {}
+            }
+            localStorage.setItem("deltaCurrentUser", JSON.stringify(syncedUser));
+
+            const callEl = document.getElementById("callsignInput");
+            if (callEl) callEl.value = syncedUser.callsign || syncedUser.username;
+            const roleEl = document.getElementById("roleSelect");
+            if (roleEl) roleEl.value = syncedUser.role;
+
+            updatePresence();
+            presenceInterval = setInterval(updatePresence, 30000);
+            if (syncedUser.role === "owner") startAdminListeners();
+            restoreUserState(syncedUser.username);
+            updateModalState();
+            drawWatermarkCanvas(syncedUser.userId);
+
+            const idEl = document.getElementById("loggedInId");
+            if (idEl) idEl.textContent = syncedUser.userId || "——";
+        }).catch(() => {
+            // Firestore unreachable — restore from cache optimistically
+            const callEl = document.getElementById("callsignInput");
+            if (callEl) callEl.value = user.callsign || user.username;
+            const roleEl = document.getElementById("roleSelect");
+            if (roleEl) roleEl.value = user.role;
+            updatePresence();
+            presenceInterval = setInterval(updatePresence, 30000);
+            if (user.role === "owner") startAdminListeners();
+            restoreUserState(user.username);
+            updateModalState();
+            drawWatermarkCanvas(user.userId || null);
+        });
     } else {
         showAuthScreen();
     }
@@ -2334,6 +2369,8 @@ document.getElementById("adminToggle")?.addEventListener("click", () => {
 document.addEventListener("keydown", async (e) => {
     const tag = document.activeElement?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    // Undo/redo only operates on the main map — disable in arty calculator
+    if (artilleryActive) return;
     if (e.ctrlKey || e.metaKey) {
         const k = e.key.toLowerCase();   // "z" regardless of Shift case
         if (k === "z" && !e.shiftKey) { e.preventDefault(); await undoLast(); }
