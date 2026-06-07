@@ -7,6 +7,7 @@ import {
     setDoc,
     deleteDoc,
     doc,
+    getDoc,
     onSnapshot,
     getDocs,
     writeBatch,
@@ -63,6 +64,8 @@ const i18n = {
         errUserExists: "Username already taken",
         errBadCreds: "Invalid username or password",
         errFillAll: "Please fill in all fields",
+        errPassLen: "Password must be at least 8 characters",
+        errNetwork: "Network error — please try again",
         artyCalcTitle: "ARTILLERY CALCULATOR",
         artyConfig: "CONFIGURATION",
         artyGun: "GUN", artyProjectile: "PROJECTILE",
@@ -106,6 +109,8 @@ const i18n = {
         errUserExists: "Это имя уже занято",
         errBadCreds: "Неверный логин или пароль",
         errFillAll: "Заполните все поля",
+        errPassLen: "Пароль должен содержать минимум 8 символов",
+        errNetwork: "Ошибка сети — попробуйте снова",
         artyCalcTitle: "АРТКАЛЬКУЛЯТОР",
         artyConfig: "КОНФИГУРАЦИЯ",
         artyGun: "ОРУДИЕ", artyProjectile: "СНАРЯД",
@@ -149,6 +154,8 @@ const i18n = {
         errUserExists: "Це ім'я вже зайнято",
         errBadCreds: "Невірний логін або пароль",
         errFillAll: "Заповніть усі поля",
+        errPassLen: "Пароль має містити щонайменше 8 символів",
+        errNetwork: "Помилка мережі — спробуйте знову",
         artyCalcTitle: "АРТКАЛЬКУЛЯТОР",
         artyConfig: "КОНФІГУРАЦІЯ",
         artyGun: "ГАРМАТА", artyProjectile: "СНАРЯД",
@@ -233,6 +240,8 @@ let currentStroke = null;
 // FIX #5: scale calibrated to correct image dimensions
 // The scale constant remains the same (142px = 250m at zoom 0) — keep original calibration
 const PIXELS_PER_METER = 142 / 250;
+// Calibration correction factor (measured vs. real-world ground truth)
+const DIST_CORRECTION = 1.01346;
 let rulerMode   = false;
 let rulerPoints = [];
 // ════════════════════════════════════════════════════════════════════
@@ -1119,7 +1128,7 @@ function pixelsToMeters(pixelDist) {
     const zoom  = map.getZoom();
     const scale = Math.pow(2, zoom);
     const pxAt0 = pixelDist / scale;
-    return pxAt0 / PIXELS_PER_METER;
+    return (pxAt0 / PIXELS_PER_METER) * DIST_CORRECTION;
 }
 function rulerTotalMeters() {
     let total = 0;
@@ -1236,13 +1245,21 @@ function drawRulerOverlay() {
 const collapseBtn  = document.getElementById("collapseLeftBtn");
 const leftPanel    = document.getElementById("leftPanel");
 let panelCollapsed = false;
+
+function isMobileLayout() { return window.innerWidth <= 600; }
+
 collapseBtn.addEventListener("click", () => {
-    panelCollapsed = !panelCollapsed;
-    leftPanel.classList.toggle("collapsed", panelCollapsed);
-    collapseBtn.classList.toggle("flipped", panelCollapsed);
+    if (isMobileLayout()) {
+        // Mobile: toggle overlay open/close
+        leftPanel.classList.toggle("mobile-open");
+    } else {
+        // Desktop: normal collapse
+        panelCollapsed = !panelCollapsed;
+        leftPanel.classList.toggle("collapsed", panelCollapsed);
+        collapseBtn.classList.toggle("flipped", panelCollapsed);
+    }
     // FIX #4: tell Leaflet the map container changed size so all coordinate
     // transforms (latLngToContainerPoint etc.) recalculate correctly.
-    // We wait for the CSS transition to finish (250ms) then invalidate.
     setTimeout(() => {
         map.invalidateSize({ animate: false });
         resizeCanvas();
@@ -1394,11 +1411,10 @@ function updateDeafenBtn() {
 document.getElementById("micBtn")?.addEventListener("click", toggleMic);
 document.getElementById("deafenBtn")?.addEventListener("click", toggleDeafen);
 
-// ─── ACCOUNT MODAL — AUTH ────────────────────────────────────────────────────
-function getAccounts() {
-    try { return JSON.parse(localStorage.getItem("deltaAccounts") || "[]"); } catch { return []; }
-}
-function saveAccounts(arr) { localStorage.setItem("deltaAccounts", JSON.stringify(arr)); }
+// ─── ACCOUNT MODAL — AUTH (Firestore-backed, cross-device) ───────────────────
+// Accounts live in Firestore "accounts/{USERNAME}" so any device can log in.
+// Current session is cached in localStorage for instant page-load restore.
+
 function getCurrentUser() {
     try { return JSON.parse(localStorage.getItem("deltaCurrentUser") || "null"); } catch { return null; }
 }
@@ -1441,7 +1457,6 @@ function updateModalState() {
         registerPanel?.style && (registerPanel.style.display = "none");
         loggedInPanel?.style && (loggedInPanel.style.display = "none");
         if (tabs) tabs.style.display = "flex";
-        // Make sure login tab is active
         document.getElementById("tabLogin")?.classList.add("active");
         document.getElementById("tabRegister")?.classList.remove("active");
     }
@@ -1463,36 +1478,64 @@ document.getElementById("tabRegister")?.addEventListener("click", () => {
     document.getElementById("regError").textContent = "";
 });
 
-// LOGIN
-document.getElementById("loginBtn")?.addEventListener("click", () => {
+// Helper: disable/enable a button + show spinner text while async op runs
+function setAuthBusy(btnId, busy) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.disabled = busy;
+    btn.style.opacity = busy ? "0.6" : "";
+}
+
+// LOGIN — Firestore lookup
+document.getElementById("loginBtn")?.addEventListener("click", async () => {
     const username = document.getElementById("loginUsername").value.trim().toUpperCase();
     const pw       = document.getElementById("loginPassword").value;
     const errEl    = document.getElementById("loginError");
-    if (!username || !pw) { errEl.textContent = t("errFillAll"); return; }
-    const acct = getAccounts().find(a => a.username === username && a.passHash === hashPass(pw));
-    if (!acct) { errEl.textContent = t("errBadCreds"); return; }
     errEl.textContent = "";
-    document.getElementById("loginPassword").value = "";
-    applyCurrentUser({ username: acct.username, role: acct.role });
+    if (!username || !pw) { errEl.textContent = t("errFillAll"); return; }
+    setAuthBusy("loginBtn", true);
+    try {
+        const snap = await getDoc(doc(db, "accounts", username));
+        if (!snap.exists() || snap.data().passHash !== hashPass(pw)) {
+            errEl.textContent = t("errBadCreds");
+            setAuthBusy("loginBtn", false);
+            return;
+        }
+        const acct = snap.data();
+        document.getElementById("loginPassword").value = "";
+        applyCurrentUser({ username: acct.username, role: acct.role });
+    } catch (e) {
+        console.error("Login error:", e);
+        errEl.textContent = t("errNetwork");
+    }
+    setAuthBusy("loginBtn", false);
 });
 
-// REGISTER
-document.getElementById("registerBtn")?.addEventListener("click", () => {
+// REGISTER — Firestore write, cross-device
+document.getElementById("registerBtn")?.addEventListener("click", async () => {
     const username = document.getElementById("regUsername").value.trim().toUpperCase();
     const pw       = document.getElementById("regPassword").value;
     const confirm  = document.getElementById("regConfirm").value;
     const role     = document.getElementById("regRole").value;
     const errEl    = document.getElementById("regError");
-    if (!username || !pw || !confirm) { errEl.textContent = t("errFillAll"); return; }
-    if (pw !== confirm) { errEl.textContent = t("errPassMatch"); return; }
-    const accounts = getAccounts();
-    if (accounts.find(a => a.username === username)) { errEl.textContent = t("errUserExists"); return; }
-    accounts.push({ username, passHash: hashPass(pw), role });
-    saveAccounts(accounts);
     errEl.textContent = "";
-    document.getElementById("regPassword").value = "";
-    document.getElementById("regConfirm").value = "";
-    applyCurrentUser({ username, role });
+    if (!username || !pw || !confirm) { errEl.textContent = t("errFillAll"); return; }
+    if (pw.length < 8) { errEl.textContent = t("errPassLen"); return; }
+    if (pw !== confirm) { errEl.textContent = t("errPassMatch"); return; }
+    setAuthBusy("registerBtn", true);
+    try {
+        const ref  = doc(db, "accounts", username);
+        const snap = await getDoc(ref);
+        if (snap.exists()) { errEl.textContent = t("errUserExists"); setAuthBusy("registerBtn", false); return; }
+        await setDoc(ref, { username, passHash: hashPass(pw), role });
+        document.getElementById("regPassword").value = "";
+        document.getElementById("regConfirm").value = "";
+        applyCurrentUser({ username, role });
+    } catch (e) {
+        console.error("Register error:", e);
+        errEl.textContent = t("errNetwork");
+    }
+    setAuthBusy("registerBtn", false);
 });
 
 // LOGOUT
@@ -2167,8 +2210,14 @@ document.getElementById("artyCalcBtn")?.addEventListener("click", () => {
     const tofLow  = artyCalcToF(lowElev,  v, distM);
     const tofHigh = (highElev !== null) ? artyCalcToF(highElev, v, distM) : null;
 
-    const fmt1 = n => (n === null ? "---" : n.toFixed(1));
-    const fmt0 = n => (n === null ? "---" : Math.round(n).toString());
+    // 2 decimal places; omit decimals when the value is a whole number
+    const fmt2 = n => {
+        if (n === null) return "---";
+        const r = Math.round(n * 100) / 100;
+        return Number.isInteger(r) ? r.toString() : r.toFixed(2);
+    };
+    const fmt1 = fmt2;   // alias — all arty values now use fmt2
+    const fmt0 = fmt2;
 
     results.innerHTML = `
       <div class="arty-result-row accent-result">
@@ -2198,9 +2247,9 @@ document.getElementById("artyCalcBtn")?.addEventListener("click", () => {
 });
 
 // ─── Artillery Map (Leaflet instance inside ARTY view) ───────────────────────
-// 1 stud = 1 m; 1 pixel = (1/PIXELS_PER_METER) metres
-const ARTY_PX_TO_STUD = 1 / PIXELS_PER_METER;   // ≈ 1.761 m/px  (250/142)
-const ARTY_STUD_TO_PX = PIXELS_PER_METER;        // ≈ 0.568 px/m
+// 1 stud = 1 m; 1 pixel = (1/PIXELS_PER_METER) metres × calibration correction
+const ARTY_PX_TO_STUD = (1 / PIXELS_PER_METER) * DIST_CORRECTION;  // ≈ 1.785 m/px
+const ARTY_STUD_TO_PX = 1 / ARTY_PX_TO_STUD;
 
 let artyMapInstance = null;
 let artyGunMarker   = null;
