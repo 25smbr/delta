@@ -1042,6 +1042,188 @@ const vezha_chat     = collection(db, "vezha_chat");
 const myPeerId   = "peer_" + Math.random().toString(36).substr(2, 9);
 const myShortId  = myPeerId.slice(-6).toUpperCase();
 let vezhaActive    = false;
+// ─── i18n ─────────────────────────────────────────────────────────────────────
+const i18n = {
+    en: {
+        filter: "FILTER", unitSymbols: "UNIT SYMBOLS",
+        clearAll: "CLEAR ALL MARKERS", clearDrawings: "CLEAR DRAWINGS",
+        shareScreen: "SHARE SCREEN", stopSharing: "STOP SHARING",
+        noStreams: "NO ACTIVE STREAMS",
+        streamHint: "Click SHARE SCREEN to broadcast your display to all connected operators",
+        comms: "COMMS", typeMessage: "TYPE MESSAGE...", callsign: "CALLSIGN",
+        unmute: "UNMUTE", mute: "MUTE", deafen: "DEAFEN", undeafen: "UNDEAFEN",
+        account: "ACCOUNT", nickname: "CALLSIGN / NICKNAME", role: "ROLE",
+        password: "PASSWORD", save: "SAVE",
+        operators: n => `OPERATORS: ${n} ONLINE`,
+    },
+    ru: {
+        filter: "ФИЛЬТР", unitSymbols: "СИМВОЛЫ",
+        clearAll: "УДАЛИТЬ ВСЕ МАРКЕРЫ", clearDrawings: "УДАЛИТЬ РИСУНКИ",
+        shareScreen: "ТРАНСЛЯЦИЯ", stopSharing: "СТОП",
+        noStreams: "НЕТ АКТИВНЫХ ТРАНСЛЯЦИЙ",
+        streamHint: "Нажмите ТРАНСЛЯЦИЯ чтобы транслировать экран всем операторам",
+        comms: "СВЯЗЬ", typeMessage: "СООБЩЕНИЕ...", callsign: "ПОЗЫВНОЙ",
+        unmute: "ВКЛ МИК", mute: "ОТКЛ МИК", deafen: "ЗАГЛУШИТЬ", undeafen: "ЗВУК ВКЛ",
+        account: "АККАУНТ", nickname: "ПОЗЫВНОЙ / НИК", role: "РОЛЬ",
+        password: "ПАРОЛЬ", save: "СОХРАНИТЬ",
+        operators: n => `ОПЕРАТОРОВ: ${n} В СЕТИ`,
+    },
+    ua: {
+        filter: "ФІЛЬТР", unitSymbols: "СИМВОЛИ",
+        clearAll: "ВИДАЛИТИ ВСІ МАРКЕРИ", clearDrawings: "ВИДАЛИТИ МАЛЮНКИ",
+        shareScreen: "ТРАНСЛЯЦІЯ", stopSharing: "ЗУПИНИТИ",
+        noStreams: "НЕМАЄ АКТИВНИХ ТРАНСЛЯЦІЙ",
+        streamHint: "Натисніть ТРАНСЛЯЦІЯ щоб транслювати екран усім операторам",
+        comms: "ЗВ'ЯЗОК", typeMessage: "ПОВІДОМЛЕННЯ...", callsign: "ПОЗИВНИЙ",
+        unmute: "УВІМК МІК", mute: "ВИМК МІК", deafen: "ЗАГЛУШИТИ", undeafen: "ЗВУК УВ.",
+        account: "АККАУНТ", nickname: "ПОЗИВНИЙ / НІК", role: "РОЛЬ",
+        password: "ПАРОЛЬ", save: "ЗБЕРЕГТИ",
+        operators: n => `ОПЕРАТОРІВ: ${n} ОНЛАЙН`,
+    }
+};
+let currentLang = localStorage.getItem("vezhaLang") || "en";
+
+function t(key, ...args) {
+    const v = (i18n[currentLang] || i18n.en)[key];
+    return (typeof v === "function") ? v(...args) : (v !== undefined ? v : key);
+}
+function applyLang() {
+    document.querySelectorAll("[data-i18n]").forEach(el => {
+        const v = t(el.dataset.i18n);
+        if (v) el.textContent = v;
+    });
+    document.querySelectorAll("[data-i18n-ph]").forEach(el => {
+        const v = t(el.dataset.i18nPh);
+        if (v) el.placeholder = v;
+    });
+    document.querySelectorAll(".lang-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.lang === currentLang);
+    });
+    updateMicBtn();
+    updateDeafenBtn();
+}
+document.querySelectorAll(".lang-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+        currentLang = btn.dataset.lang;
+        localStorage.setItem("vezhaLang", currentLang);
+        applyLang();
+    });
+});
+
+// ─── MIC / DEAFEN ─────────────────────────────────────────────────────────────
+let micStream    = null;
+let isMicMuted   = true;   // start muted
+let isDeafened   = false;  // start not deafened
+
+async function initMic() {
+    try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        micStream.getAudioTracks().forEach(t => { t.enabled = false; }); // start muted
+        // Add to any already-existing peer connections
+        Object.values(peers).forEach(({ pc }) => {
+            micStream.getAudioTracks().forEach(track => {
+                try { pc.addTrack(track, micStream); } catch (_) {}
+            });
+        });
+    } catch (e) { console.warn("Mic unavailable:", e); }
+    updateMicBtn();
+}
+
+function stopMic() {
+    if (micStream) { micStream.getTracks().forEach(tr => tr.stop()); micStream = null; }
+    isMicMuted = true; isDeafened = false;
+    updateMicBtn(); updateDeafenBtn();
+}
+
+function toggleMic() {
+    isMicMuted = !isMicMuted;
+    if (micStream) micStream.getAudioTracks().forEach(tr => { tr.enabled = !isMicMuted; });
+    updateMicBtn();
+}
+
+function toggleDeafen() {
+    isDeafened = !isDeafened;
+    document.querySelectorAll(".vezha-tile:not(.vezha-tile-self) video").forEach(v => {
+        v.muted = isDeafened;
+    });
+    updateDeafenBtn();
+}
+
+function updateMicBtn() {
+    const btn = document.getElementById("micBtn");
+    const lbl = document.getElementById("micLabel");
+    if (!btn || !lbl) return;
+    if (isMicMuted) {
+        btn.classList.add("vezha-danger-btn");
+        btn.title = t("unmute") + " microphone";
+        lbl.textContent = t("unmute");
+    } else {
+        btn.classList.remove("vezha-danger-btn");
+        btn.title = t("mute") + " microphone";
+        lbl.textContent = t("mute");
+    }
+}
+
+function updateDeafenBtn() {
+    const btn = document.getElementById("deafenBtn");
+    const lbl = document.getElementById("deafenLabel");
+    if (!btn || !lbl) return;
+    if (isDeafened) {
+        btn.classList.add("vezha-danger-btn");
+        btn.title = t("undeafen");
+        lbl.textContent = t("undeafen");
+    } else {
+        btn.classList.remove("vezha-danger-btn");
+        btn.title = t("deafen");
+        lbl.textContent = t("deafen");
+    }
+}
+
+document.getElementById("micBtn")?.addEventListener("click", toggleMic);
+document.getElementById("deafenBtn")?.addEventListener("click", toggleDeafen);
+
+// ─── ACCOUNT MODAL ────────────────────────────────────────────────────────────
+document.getElementById("accountBtn")?.addEventListener("click", () => {
+    const modal = document.getElementById("accountModal");
+    const cs = localStorage.getItem("vezhaCallsign") || "";
+    const rl = localStorage.getItem("vezhaRole") || "operator";
+    document.getElementById("accountCallsign").value = cs;
+    const roleEl = document.getElementById("accountRole");
+    if (roleEl) roleEl.value = rl;
+    updateRolePreview(rl);
+    modal.style.display = "flex";
+});
+document.getElementById("accountModalClose")?.addEventListener("click", () => {
+    document.getElementById("accountModal").style.display = "none";
+});
+document.getElementById("accountModal")?.addEventListener("click", e => {
+    if (e.target === document.getElementById("accountModal")) {
+        document.getElementById("accountModal").style.display = "none";
+    }
+});
+document.getElementById("accountRole")?.addEventListener("change", e => {
+    updateRolePreview(e.target.value);
+});
+function updateRolePreview(role) {
+    const preview = document.getElementById("accountRolePreview");
+    if (preview) preview.style.background = ROLE_COLORS[role] || ROLE_COLORS.operator;
+}
+document.getElementById("accountSave")?.addEventListener("click", () => {
+    const cs = document.getElementById("accountCallsign")?.value.trim() || "";
+    const rl = document.getElementById("accountRole")?.value || "operator";
+    if (cs) {
+        localStorage.setItem("vezhaCallsign", cs);
+        const callEl = document.getElementById("callsignInput");
+        if (callEl) callEl.value = cs;
+    }
+    localStorage.setItem("vezhaRole", rl);
+    const roleEl = document.getElementById("roleSelect");
+    if (roleEl) roleEl.value = rl;
+    const pw = document.getElementById("accountPassword")?.value || "";
+    if (pw) localStorage.setItem("vezhaPassHash", btoa(pw));
+    document.getElementById("accountModal").style.display = "none";
+});
+
 let localStream    = null;
 let mySessionRef   = null;
 let vezhaUnsubs    = [];
@@ -1140,7 +1322,7 @@ async function enterVezha() {
                 if (now - ls < 45000) count++;
             }
         });
-        document.getElementById("vezhaStatus").textContent = `OPERATORS: ${count} ONLINE`;
+        document.getElementById("vezhaStatus").textContent = t("operators", count);
     });
     vezhaUnsubs.push(unsubSess);
 
@@ -1156,10 +1338,12 @@ async function enterVezha() {
     );
 
     updateTileLayout();
+    initMic();
 }
 
 function exitVezha() {
     stopSharing();
+    stopMic();
     vezhaActive = false;
 
     clearInterval(heartbeatTimer); heartbeatTimer = null;
@@ -1229,6 +1413,7 @@ function getOrCreatePeer(userId) {
 async function createOffer(userId) {
     const pc = getOrCreatePeer(userId);
     if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+    if (micStream) micStream.getAudioTracks().forEach(t => { try { pc.addTrack(t, micStream); } catch (_) {} });
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     addDoc(vezha_signals, { from: myPeerId, to: userId, type: "offer", data: { sdp: offer.sdp, type: offer.type }, created: Date.now() });
@@ -1240,6 +1425,7 @@ async function handleSignal(sig, docId) {
         if (type === "offer") {
             const pc = getOrCreatePeer(from);
             if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+            if (micStream) micStream.getAudioTracks().forEach(t => { try { pc.addTrack(t, micStream); } catch (_) {} });
             await pc.setRemoteDescription(new RTCSessionDescription(data));
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
@@ -1333,6 +1519,9 @@ function getRole() {
     if (cs) { const el = document.getElementById("callsignInput"); if (el) el.value = cs; }
     if (rl) { const el = document.getElementById("roleSelect");    if (el) el.value = rl; }
 }
+// Apply language on load
+applyLang();
+
 document.getElementById("callsignInput")?.addEventListener("input", e => {
     localStorage.setItem("vezhaCallsign", e.target.value.trim());
 });
