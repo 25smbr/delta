@@ -1098,12 +1098,16 @@ body.lang-ua .danger-btn { font-size: 9px; letter-spacing: 0.5px; }
 
 /* ─── ARTILLERY CALCULATOR VIEW ──────────────────────────────────────────────*/
 #artilleryView {
-  display: none; flex: 1; min-height: 0;
+  display: none;
+  position: fixed;
+  top: var(--topbar-h); bottom: var(--statusbar-h);
+  left: 0; right: 0;
+  flex-direction: column;
   background: var(--bg-base);
   overflow: hidden;
   padding: 20px;
   gap: 16px;
-  flex-direction: column;
+  z-index: 10;
   transition: background 0.3s;
 }
 #artilleryView.active { display: flex; }
