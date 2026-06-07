@@ -230,6 +230,18 @@ let selectedSymbol = "infantry_alive";
 const undoStack = [];
 const redoStack = [];
 let isLightTheme = false;
+
+// ─── ROLE CONSTANTS (needed early by updateModalState / applyCurrentUser) ──────
+const ROLE_COLORS = {
+    owner:      "#f59e0b",   // gold — admin
+    operator:   "#4fa3ff",
+    commander:  "#ff6b6b",
+    drone:      "#a78bfa",
+    sniper:     "#34d399",
+    medic:      "#fbbf24",
+    intel:      "#22d3ee"
+};
+const OWNER_CALLSIGN = "PLAYFRA";
 // ─── DRAWING STATE ───────────────────────────────────────────────────────────
 let drawMode    = false;
 let activeTool  = "pen";
@@ -2584,16 +2596,7 @@ document.getElementById("vezhaChatInput").addEventListener("keydown", e => {
 }
 
 // ─── CALLSIGN / ROLE (persisted in localStorage) ─────────────────────────────
-const ROLE_COLORS = {
-    owner:      "#f59e0b",   // gold — admin/owner
-    operator:   "#4fa3ff",
-    commander:  "#ff6b6b",
-    drone:      "#a78bfa",
-    sniper:     "#34d399",
-    medic:      "#fbbf24",
-    intel:      "#22d3ee"
-};
-const OWNER_CALLSIGN = "PLAYFRA";
+// ROLE_COLORS and OWNER_CALLSIGN are declared at the top of the file.
 function isOwner() { return getCallsign().toUpperCase() === OWNER_CALLSIGN; }
 
 function getCallsign() {
