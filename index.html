@@ -275,6 +275,7 @@
     <div id="mapWrapper">
       <div id="map"></div>
       <canvas id="drawCanvas"></canvas>
+      <canvas id="watermarkCanvas"></canvas>
       <!-- floating input for text-label tool -->
       <div id="labelInputWrap" style="display:none;position:absolute;z-index:900;">
         <input id="labelInputField" type="text" maxlength="40"
@@ -625,6 +626,54 @@
           <div class="modal-role-preview" id="accountRolePreview"></div>
           <span id="loggedInRole" class="mono" style="font-size:10px;letter-spacing:1px;color:var(--text-primary)"></span>
         </div>
+        <div class="modal-field modal-field-row">
+          <span class="modal-label">ID</span>
+          <span id="loggedInId" class="mono" style="font-size:11px;letter-spacing:3px;color:var(--accent);opacity:0.7"></span>
+        </div>
+
+        <!-- Settings section -->
+        <div class="modal-collapsible">
+          <button class="modal-collapsible-header" id="settingsToggle">
+            <span>⚙ SETTINGS</span><span class="modal-collapsible-chevron">▾</span>
+          </button>
+          <div class="modal-collapsible-body" id="settingsPanel" style="display:none">
+            <div class="modal-field">
+              <label class="modal-label">CALLSIGN (DISPLAY NAME IN CHAT)</label>
+              <input id="settingsCallsign" class="modal-input mono" type="text" maxlength="12"
+                     placeholder="DISPLAY NAME" autocomplete="off" spellcheck="false"/>
+            </div>
+            <div class="modal-field">
+              <label class="modal-label">NEW PASSWORD (BLANK = KEEP CURRENT)</label>
+              <input id="settingsPass" class="modal-input mono" type="password" maxlength="32"
+                     placeholder="NEW PASSWORD" autocomplete="new-password"/>
+            </div>
+            <div class="modal-field">
+              <label class="modal-label">CONFIRM NEW PASSWORD</label>
+              <input id="settingsPassConfirm" class="modal-input mono" type="password" maxlength="32"
+                     placeholder="REPEAT PASSWORD" autocomplete="new-password"/>
+            </div>
+            <div class="modal-error" id="settingsError"></div>
+            <button class="modal-save-btn" id="settingsSaveBtn" style="margin:4px 0 0">SAVE CHANGES</button>
+          </div>
+        </div>
+
+        <!-- Admin panel (only visible to admin) -->
+        <div class="modal-collapsible" id="adminPanelWrap" style="display:none">
+          <button class="modal-collapsible-header" id="adminToggle">
+            <span>⬛ ADMIN PANEL</span><span class="modal-collapsible-chevron">▾</span>
+          </button>
+          <div class="modal-collapsible-body" id="adminPanel" style="display:none">
+            <div class="admin-sub-section">
+              <div class="admin-sub-title">PENDING REQUESTS</div>
+              <div id="adminPendingList" class="admin-list"><span class="admin-empty">No pending requests</span></div>
+            </div>
+            <div class="admin-sub-section">
+              <div class="admin-sub-title">ACCOUNTS</div>
+              <div id="adminAccountsList" class="admin-list"></div>
+            </div>
+          </div>
+        </div>
+
         <button id="logoutBtn" class="modal-save-btn modal-logout-btn">
           <span data-i18n="logout">LOG OUT</span>
         </button>
@@ -657,6 +706,78 @@
 </div>
 
 <div id="groupInfoTooltip"></div>
+
+<!-- ═══════════════ AUTH SCREEN (shown on page load until logged in) ═══════════════ -->
+<div id="authScreen" class="auth-screen">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <img src="logo.png" height="48" alt="DELTA" id="authBrandLogo" style="width:auto;flex-shrink:0;">
+      <div class="auth-brand-text">
+        <div class="auth-brand-name">DELTA / MONITOR</div>
+        <div class="auth-brand-sub">TACTICAL SITUATIONAL AWARENESS</div>
+      </div>
+    </div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="authTabLogin">LOG IN</button>
+      <button class="auth-tab" id="authTabRegister">REGISTER</button>
+    </div>
+    <!-- Login panel -->
+    <div id="authLoginPanel" class="auth-panel">
+      <div class="auth-field">
+        <label class="auth-label">USERNAME</label>
+        <input id="authLoginUser" class="auth-input mono" type="text" maxlength="16"
+               autocomplete="off" spellcheck="false" placeholder="ENTER USERNAME"/>
+      </div>
+      <div class="auth-field">
+        <label class="auth-label">PASSWORD</label>
+        <input type="password" style="display:none" tabindex="-1" aria-hidden="true" autocomplete="new-password"/>
+        <input id="authLoginPass" class="auth-input mono" type="password" maxlength="32"
+               autocomplete="new-password" placeholder="ENTER PASSWORD"/>
+      </div>
+      <div class="auth-error" id="authLoginError"></div>
+      <button class="auth-btn" id="authLoginBtn">LOG IN</button>
+    </div>
+    <!-- Register panel -->
+    <div id="authRegPanel" class="auth-panel" style="display:none">
+      <div class="auth-field">
+        <label class="auth-label">USERNAME</label>
+        <input id="authRegUser" class="auth-input mono" type="text" maxlength="16"
+               autocomplete="off" spellcheck="false" placeholder="CHOOSE USERNAME"/>
+      </div>
+      <div class="auth-field">
+        <label class="auth-label">ROLE</label>
+        <select id="authRegRole" class="auth-input mono">
+          <option value="operator">OPERATOR</option>
+          <option value="commander">COMMANDER</option>
+          <option value="drone">DRONE PILOT</option>
+          <option value="sniper">SNIPER</option>
+          <option value="medic">MEDIC</option>
+          <option value="intel">INTEL</option>
+        </select>
+      </div>
+      <div class="auth-field">
+        <label class="auth-label">PASSWORD</label>
+        <input id="authRegPass" class="auth-input mono" type="password" maxlength="32"
+               autocomplete="new-password" placeholder="MIN 8 CHARACTERS"/>
+      </div>
+      <div class="auth-field">
+        <label class="auth-label">CONFIRM PASSWORD</label>
+        <input id="authRegConfirm" class="auth-input mono" type="password" maxlength="32"
+               autocomplete="new-password" placeholder="REPEAT PASSWORD"/>
+      </div>
+      <div class="auth-error" id="authRegError"></div>
+      <button class="auth-btn" id="authRegBtn">CREATE ACCOUNT</button>
+    </div>
+    <!-- Pending approval panel -->
+    <div id="authPendingPanel" class="auth-panel auth-pending" style="display:none">
+      <div class="auth-pending-icon">⏳</div>
+      <div class="auth-pending-title">REQUEST SUBMITTED</div>
+      <div class="auth-pending-msg">Your registration request has been sent to an admin. You will be able to log in once your account is approved.</div>
+      <button class="auth-btn auth-btn-outline" id="authPendingBack">← BACK TO LOGIN</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script type="module" src="app.js"></script>
 </body>
