@@ -28,13 +28,23 @@
         <svg width="16" height="16" viewBox="0 0 16 16"><rect x="1" y="3" width="14" height="9" rx="1.5" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M5 12v1.5M11 12v1.5M3 14h10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><circle cx="8" cy="7.5" r="1.8" fill="currentColor" opacity=".7"/><path d="M5.5 5a3.5 3.5 0 0 1 5 0M4 3.5a5.5 5.5 0 0 1 8 0" stroke="currentColor" stroke-width="1.1" fill="none" stroke-linecap="round"/></svg>
       </button>
       <button class="topBtn" id="artilleryViewBtn" title="DELTA ARTY — Artillery Calculator">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <rect x="1" y="6.5" width="10" height="3" rx="1" stroke="currentColor" stroke-width="1.2"/>
-          <rect x="11" y="7" width="3" height="2" rx="0.5" fill="currentColor" opacity=".7"/>
-          <circle cx="4" cy="12" r="2.5" stroke="currentColor" stroke-width="1.2"/>
-          <circle cx="4" cy="12" r="0.8" fill="currentColor"/>
-          <line x1="8" y1="9.5" x2="6" y2="13" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-          <line x1="6" y1="6.5" x2="9" y2="3.5" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity=".6"/>
+        <!-- Howitzer / field-gun silhouette (D-30 / M777 inspired) -->
+        <svg width="18" height="16" viewBox="0 0 18 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- Barrel (long, slightly elevated) -->
+          <line x1="5" y1="8" x2="17" y2="4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <!-- Breech block at barrel base -->
+          <rect x="3" y="6.8" width="3.2" height="2.8" rx="0.8" stroke="currentColor" stroke-width="1.2" fill="none"/>
+          <!-- Carriage / trail body -->
+          <path d="M4 9.6 L1.5 13.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M6 9.6 L8 13.2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <!-- Axle -->
+          <line x1="1.5" y1="12" x2="8" y2="12" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          <!-- Left wheel -->
+          <circle cx="2.5" cy="13.2" r="2" stroke="currentColor" stroke-width="1.2"/>
+          <!-- Right wheel -->
+          <circle cx="7.5" cy="13.2" r="2" stroke="currentColor" stroke-width="1.2"/>
+          <!-- Muzzle flash hint -->
+          <path d="M17 4.5 L18 3.2 M17 4.5 L18.2 4.8 M17 4.5 L17.5 3" stroke="currentColor" stroke-width="0.9" stroke-linecap="round" opacity="0.55"/>
         </svg>
       </button>
     </div>
@@ -267,7 +277,7 @@
 
     <!-- ── RIGHT SIDEBAR ── -->
     <aside id="rightPanel">
-      <button class="rightBtn active" title="Zoom In" id="zoomInBtn">
+      <button class="rightBtn" title="Zoom In" id="zoomInBtn">
         <svg width="16" height="16" viewBox="0 0 16 16"><line x1="8" y1="3" x2="8" y2="13" stroke="currentColor" stroke-width="1.8"/><line x1="3" y1="8" x2="13" y2="8" stroke="currentColor" stroke-width="1.8"/></svg>
       </button>
       <button class="rightBtn" title="Zoom Out" id="zoomOutBtn">
