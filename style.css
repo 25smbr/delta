@@ -1308,33 +1308,65 @@ body.lang-ua .danger-btn { font-size: 9px; letter-spacing: 0.5px; }
   /* Clock smaller */
   #clock { font-size: 11px; letter-spacing: 0; }
 
-  /* ── Left panel: auto-collapse on mobile, full-width overlay ── */
+  /* ── Left panel: icon-strip visible by default, slides open ── */
   #leftPanel {
     position: fixed;
     top: var(--topbar-h); bottom: var(--statusbar-h);
     left: 0; z-index: 2000;
-    width: 0;               /* collapsed by default */
-    overflow: hidden;
+    width: 30px;            /* just the collapse-arrow strip */
+    overflow: visible;
+    border-right: 1px solid var(--border);
     transition: width 0.25s ease;
   }
   #leftPanel.mobile-open {
-    width: min(260px, 85vw);
-    box-shadow: 4px 0 24px rgba(0,0,0,0.6);
+    width: min(248px, 82vw);
+    box-shadow: 4px 0 24px rgba(0,0,0,0.65);
   }
-  /* Collapse button: always visible, floats over map */
+  /* Collapse arrow: always visible in the 30 px strip */
   #collapseLeftBtn {
-    right: -34px;
+    position: absolute;
+    top: 50%;
+    right: 4px;
+    transform: translateY(-50%);
+    z-index: 2600;
+    width: 22px; height: 22px;
     background: var(--bg-panel);
     border-color: var(--border-light);
   }
-  #leftPanel.mobile-open #collapseLeftBtn { right: 6px; }
-  #leftPanel.mobile-open #collapseLeftBtn svg { transform: none; }
+  /* Arrow points right (→ open) when closed, left (← close) when open */
+  #leftPanel:not(.mobile-open) #collapseLeftBtn svg { transform: rotate(180deg); }
+  #leftPanel.mobile-open #collapseLeftBtn { right: 6px; top: 8px; transform: none; }
+  /* Panel inner hidden until open */
+  #leftPanel:not(.mobile-open) .panel-inner { opacity: 0; pointer-events: none; }
 
-  /* Map fills full width since panel is overlay (not in flow) */
-  #appBody { position: fixed; top: var(--topbar-h); bottom: var(--statusbar-h); left: 0; right: 0; }
+  /* Offset appBody by the 30px strip so map content isn't hidden behind it */
+  #appBody { left: 30px; }
 
   /* ── Right toolbar ── */
   #rightToolbar { display: none; }   /* hide vertical right rail on mobile */
+
+  /* ── Vezha: collapse chat sidebar by default on mobile ── */
+  .vezha-chat-sidebar { width: 26px; min-width: 26px; }
+  .vezha-chat-sidebar .chat-inner { opacity: 0; pointer-events: none; }
+
+  /* ── Vezha bottom controls bar ── */
+  .vezha-controls {
+    height: auto; min-height: 44px;
+    flex-wrap: wrap;
+    gap: 5px; padding: 6px 8px;
+    justify-content: flex-start;
+  }
+  .vezha-ctrl-btn {
+    padding: 5px 9px;
+    font-size: 9px; letter-spacing: 0.8px;
+    gap: 5px;
+  }
+  .vezha-ctrl-btn svg { width: 12px; height: 12px; flex-shrink: 0; }
+  .vezha-ctrl-sep { height: 18px; margin: 0 2px; }
+  .vezha-status { font-size: 9px; letter-spacing: 0.5px; white-space: nowrap; }
+  /* Override the collapsed hide when user manually opens it */
+  .vezha-chat-sidebar:not(.collapsed) .chat-inner { opacity: 1; pointer-events: auto; }
+  .vezha-chat-sidebar:not(.collapsed) { width: min(240px, 78vw); }
 
   /* ── Artillery view ── */
   #artilleryView { padding: 8px; gap: 8px; }
