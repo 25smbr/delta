@@ -14,7 +14,9 @@ import {
     query,
     where,
     updateDoc,
-    orderBy
+    orderBy,
+    limit,
+    startAfter
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 // ─── FIREBASE ───────────────────────────────────────────────────────────────
 const firebaseConfig = {
@@ -209,7 +211,8 @@ const symbolGroups = {
     position:  ["position_alive",  "position_wounded",  "position_destroyed", "position_unknown"],
     humvee:    ["humvee_alive",    "humvee_damaged",    "humvee_destroyed",   "humvee_unknown"],
     truck:     ["truck_alive",     "truck_damaged",     "truck_destroyed",    "truck_unknown"],
-    uav:       ["uav_alive",       "uav_damaged",       "uav_destroyed",      "uav_unknown"]
+    uav:       ["uav_alive",       "uav_damaged",       "uav_destroyed",      "uav_unknown"],
+    info:      ["info_note"]   // single-state info marker
 };
 // Status bar color below the NATO diamond. null = no bar (unknown).
 const statusColors = {
@@ -319,6 +322,14 @@ function symbolSVG(type = "infantry_alive") {
         case "uav":
             interior = `<path d="M4 10 L23 34 L42 10 L38 10 L23 26 L8 10 Z" fill="${d}"/>`;
             break;
+        case "info":
+            // Special rendering — return a NATO-style info marker (blue circle with "i")
+            return `<svg xmlns="http://www.w3.org/2000/svg" width="46" height="57" viewBox="0 0 46 57">
+              <circle cx="23" cy="23" r="19" fill="#3b82f6" fill-opacity="0.9"/>
+              <circle cx="23" cy="23" r="19" fill="none" stroke="${d}" stroke-width="2"/>
+              <text x="23" y="30" text-anchor="middle" font-family="serif" font-size="22"
+                    font-weight="700" fill="#fff">i</text>
+            </svg>`;
     }
 
     // ── Status bar sits below the diamond (y 47–54) ──────────────────
@@ -399,6 +410,14 @@ function symbolSVGFriendly(type = "infantry_alive") {
         case "position":
             interior = `<path d="M23 14 L32 23 L23 32 L14 23 Z" fill="${d}"/>`;
             break;
+        // ─ Info: same circle style regardless of side ─────────────────
+        case "info":
+            return `<svg xmlns="http://www.w3.org/2000/svg" width="46" height="57" viewBox="0 0 46 57">
+              <circle cx="23" cy="23" r="19" fill="#3b82f6" fill-opacity="0.9"/>
+              <circle cx="23" cy="23" r="19" fill="none" stroke="${d}" stroke-width="2"/>
+              <text x="23" y="30" text-anchor="middle" font-family="serif" font-size="22"
+                    font-weight="700" fill="#fff">i</text>
+            </svg>`;
     }
 
     const bar = barColor
@@ -446,6 +465,38 @@ function rebuildSymbolPanel() {
     if (!matched) document.querySelector(".symbolBtn")?.classList.add("active");
 }
 rebuildSymbolPanel();
+
+// ─── GROUP INFO TOOLTIPS ──────────────────────────────────────────────────────
+{
+    const tip = document.getElementById("groupInfoTooltip");
+    document.querySelectorAll(".group-info-btn").forEach(btn => {
+        btn.addEventListener("mouseenter", e => {
+            tip.textContent = btn.dataset.tip;
+            tip.style.display = "block";
+        });
+        btn.addEventListener("mousemove", e => {
+            let x = e.clientX + 12, y = e.clientY + 8;
+            if (x + 210 > window.innerWidth)  x = e.clientX - 218;
+            if (y + 80  > window.innerHeight) y = e.clientY - 88;
+            tip.style.left = x + "px";
+            tip.style.top  = y + "px";
+        });
+        btn.addEventListener("mouseleave", () => { tip.style.display = "none"; });
+        // Mobile: tap to toggle tooltip
+        btn.addEventListener("click", e => {
+            e.stopPropagation();
+            const showing = tip.style.display === "block";
+            tip.style.display = showing ? "none" : "block";
+            if (!showing) {
+                tip.textContent = btn.dataset.tip;
+                const r = btn.getBoundingClientRect();
+                tip.style.left = (r.right + 6) + "px";
+                tip.style.top  = r.top + "px";
+            }
+        });
+    });
+    document.addEventListener("click", () => { tip.style.display = "none"; });
+}
 
 // Side-toggle buttons
 document.querySelectorAll(".side-btn").forEach(btn => {
@@ -586,11 +637,8 @@ onSnapshot(markersCollection, (snapshot) => {
                 }
             });
             displayedMarkers[id] = { marker, data };
-            // Auto-open edit popup for the marker just placed by this client
-            if (pendingEditMarkerId === id) {
-                pendingEditMarkerId = null;
-                openMarkerEditPopup(id, marker, data);
-            }
+            // Clear the pending flag (popup no longer auto-opens on placement)
+            if (pendingEditMarkerId === id) pendingEditMarkerId = null;
         } else if (change.type === "modified") {
             if (displayedMarkers[id]) {
                 displayedMarkers[id].marker.setIcon(
@@ -631,9 +679,13 @@ onSnapshot(drawingsCollection, (snapshot) => {
 }, (error) => {
     console.error("Drawings sync error:", error);
 });
-// ─── ADD MARKERS ─────────────────────────────────────────────────────────────
+// ─── ADD MARKERS — Shift+LMB only (mobile: long-tap, see below) ──────────────
 map.on("click", async (e) => {
     if (drawMode || rulerMode) return;
+    if (!e.originalEvent.shiftKey) return;   // desktop: require Shift held
+    // Reject clicks outside the map image bounds
+    if (e.latlng.lng < 0 || e.latlng.lng > imageWidth ||
+        e.latlng.lat < 0 || e.latlng.lat > imageHeight) return;
     // UTC+2 timestamp (matches the HUD clock)
     const now  = new Date(Date.now() + 2 * 3600 * 1000);
     const p    = n => String(n).padStart(2, "0");
@@ -660,7 +712,24 @@ map.on("click", async (e) => {
 // ─── MARKER EDIT POPUP ───────────────────────────────────────────────────────
 // Uses a standalone L.popup (not bound to marker) so it can be reopened anytime.
 function openMarkerEditPopup(markerId, markerLeaflet, data) {
-    const popupContent = `
+    const isInfo = (data.type || "").startsWith("info");
+    const popupContent = isInfo ? `
+      <div class="mep-popup">
+        <div class="mep-row">
+          <span class="mep-label">DATE</span>
+          <span class="mep-date">${escHtml(data.date || "")}</span>
+        </div>
+        <div class="mep-row">
+          <span class="mep-label">BY</span>
+          <span class="mep-date">${escHtml(data.author || "—")}</span>
+        </div>
+        <div class="mep-row">
+          <label class="mep-label" for="mep-inf">INFO</label>
+          <input class="mep-inp" id="mep-inf" type="text" maxlength="120"
+                 value="${escHtml(data.info || "")}" placeholder="Enter information…"/>
+        </div>
+        <button class="mep-save" id="mep-save">SAVE</button>
+      </div>` : `
       <div class="mep-popup">
         <div class="mep-row">
           <span class="mep-label">DATE</span>
@@ -698,10 +767,11 @@ function openMarkerEditPopup(markerId, markerLeaflet, data) {
     // Wait one animation frame for Leaflet to insert the DOM, then wire the button
     requestAnimationFrame(() => {
         document.getElementById("mep-save")?.addEventListener("click", async () => {
-            const amt = document.getElementById("mep-amt")?.value || "";
-            const inf = document.getElementById("mep-inf")?.value || "";
-            const src = document.getElementById("mep-src")?.value || "";
-            await updateDoc(doc(db, "markers", markerId), { amount: amt, info: inf, source: src });
+            const amt = document.getElementById("mep-amt")?.value ?? "";
+            const inf = document.getElementById("mep-inf")?.value ?? "";
+            const src = document.getElementById("mep-src")?.value ?? "";
+            const update = isInfo ? { info: inf } : { amount: amt, info: inf, source: src };
+            await updateDoc(doc(db, "markers", markerId), update);
             map.closePopup();
         });
     });
@@ -1466,6 +1536,51 @@ collapseBtn.addEventListener("click", () => {
         }
     }, { passive: true });
 }
+// ─── MOBILE LONG-TAP TO PLACE MARKER ─────────────────────────────────────────
+{
+    let longTapTimer   = null;
+    let longTapMoved   = false;
+    const LONG_TAP_MS  = 600;
+
+    // Prevent native "select all" on long-press via CSS in JS
+    document.body.style.webkitUserSelect = "none";
+    document.body.style.userSelect       = "none";
+
+    const mapEl = document.getElementById("map");
+    mapEl.addEventListener("touchstart", e => {
+        if (drawMode || rulerMode) return;
+        if (e.touches.length !== 1) return;
+        longTapMoved = false;
+        const touch = e.touches[0];
+        longTapTimer = setTimeout(async () => {
+            if (longTapMoved) return;
+            // Convert touch position to Leaflet latlng
+            const rect = mapEl.getBoundingClientRect();
+            const pt   = map.containerPointToLatLng(
+                L.point(touch.clientX - rect.left, touch.clientY - rect.top)
+            );
+            if (pt.lng < 0 || pt.lng > imageWidth || pt.lat < 0 || pt.lat > imageHeight) return;
+            // Haptic feedback if available
+            if (navigator.vibrate) navigator.vibrate(30);
+            const now    = new Date(Date.now() + 2 * 3600 * 1000);
+            const pad    = n => String(n).padStart(2, "0");
+            const dateStr = `${pad(now.getUTCDate())}/${pad(now.getUTCMonth()+1)}/${String(now.getUTCFullYear()).slice(-2)} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())}`;
+            const newRef = doc(markersCollection);
+            await setDoc(newRef, {
+                x: pt.lng, y: pt.lat,
+                type: selectedSymbol, side: placingSide,
+                created: Date.now(), date: dateStr,
+                amount: "", info: "", source: "",
+                author: getCallsign()
+            });
+            undoStack.push({ type: "marker", id: newRef.id });
+        }, LONG_TAP_MS);
+    }, { passive: true });
+
+    mapEl.addEventListener("touchmove",  () => { longTapMoved = true; clearTimeout(longTapTimer); }, { passive: true });
+    mapEl.addEventListener("touchend",   () => clearTimeout(longTapTimer), { passive: true });
+    mapEl.addEventListener("touchcancel",() => clearTimeout(longTapTimer), { passive: true });
+}
 // ─── PER-SECTION COLLAPSE ────────────────────────────────────────────────────
 document.querySelectorAll(".section-collapse-btn").forEach((btn) => {
     const targetId = btn.dataset.target;
@@ -1703,7 +1818,9 @@ document.getElementById("loginBtn")?.addEventListener("click", async () => {
         }
         const acct = snap.data();
         document.getElementById("loginPassword").value = "";
-        applyCurrentUser({ username: acct.username, role: acct.role });
+        // Override role to owner if this is the owner account
+        const resolvedRole = (acct.username === OWNER_CALLSIGN) ? "owner" : acct.role;
+        applyCurrentUser({ username: acct.username, role: resolvedRole });
     } catch (e) {
         console.error("Login error:", e);
         errEl.textContent = t("errNetwork");
@@ -1871,10 +1988,10 @@ async function enterVezha() {
     });
     vezhaUnsubs.push(unsubSess);
 
-    // ── Subscribe to chat ──
+    // ── Subscribe to chat — fast load: last 60 msgs, then live tail ──
     document.getElementById("vezhaChatMessages").innerHTML = "";
     chatUnsub = onSnapshot(
-        query(vezha_chat, orderBy("created", "asc")),
+        query(vezha_chat, orderBy("created", "asc"), limit(60)),
         snapshot => {
             snapshot.docChanges().forEach(change => {
                 if (change.type === "added") renderChatMessage(change.doc.data());
@@ -2039,8 +2156,34 @@ document.getElementById("vezhaChatInput").addEventListener("keydown", e => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); }
 });
 
+// ─── CHAT SEARCH ─────────────────────────────────────────────────────────────
+{
+    const toggle    = document.getElementById("chatSearchToggle");
+    const searchBar = document.getElementById("chatSearchBar");
+    const searchInp = document.getElementById("chatSearchInput");
+    const msgsEl    = document.getElementById("vezhaChatMessages");
+
+    toggle?.addEventListener("click", () => {
+        const open = searchBar.style.display === "none";
+        searchBar.style.display = open ? "block" : "none";
+        if (open) { searchInp.value = ""; searchInp.focus(); filterChat(""); }
+        else filterChat("");
+    });
+
+    function filterChat(term) {
+        const q = term.trim().toLowerCase();
+        msgsEl?.querySelectorAll(".chat-msg").forEach(el => {
+            const text = el.textContent.toLowerCase();
+            el.style.display = (!q || text.includes(q)) ? "" : "none";
+        });
+    }
+
+    searchInp?.addEventListener("input", e => filterChat(e.target.value));
+}
+
 // ─── CALLSIGN / ROLE (persisted in localStorage) ─────────────────────────────
 const ROLE_COLORS = {
+    owner:      "#f59e0b",   // gold — admin/owner
     operator:   "#4fa3ff",
     commander:  "#ff6b6b",
     drone:      "#a78bfa",
@@ -2048,6 +2191,8 @@ const ROLE_COLORS = {
     medic:      "#fbbf24",
     intel:      "#22d3ee"
 };
+const OWNER_CALLSIGN = "PLAYFRA";
+function isOwner() { return getCallsign().toUpperCase() === OWNER_CALLSIGN; }
 
 function getCallsign() {
     return (document.getElementById("callsignInput")?.value.trim() ||
@@ -2132,12 +2277,36 @@ applyLang();
     window.__monitorRenderHook = renderMonitorMsg;
 }
 
+function enforceOwnerRole() {
+    const cs       = getCallsign();
+    const roleEl   = document.getElementById("roleSelect");
+    if (!roleEl) return;
+    const ownerOpt = roleEl.querySelector('option[value="owner"]');
+    if (cs === OWNER_CALLSIGN) {
+        // Force owner role and lock the select
+        roleEl.value    = "owner";
+        roleEl.disabled = true;
+        if (ownerOpt) ownerOpt.style.display = "";
+        localStorage.setItem("vezhaRole", "owner");
+    } else {
+        roleEl.disabled = false;
+        // Hide owner option for non-owners
+        if (ownerOpt) ownerOpt.style.display = "none";
+        // If somehow set to owner, reset to operator
+        if (roleEl.value === "owner") { roleEl.value = "operator"; localStorage.setItem("vezhaRole", "operator"); }
+    }
+}
 document.getElementById("callsignInput")?.addEventListener("input", e => {
     localStorage.setItem("vezhaCallsign", e.target.value.trim());
+    enforceOwnerRole();
 });
 document.getElementById("roleSelect")?.addEventListener("change", e => {
+    if (e.target.value === "owner" && getCallsign() !== OWNER_CALLSIGN) {
+        e.target.value = "operator";   // non-owners can't select owner
+    }
     localStorage.setItem("vezhaRole", e.target.value);
 });
+enforceOwnerRole();
 
 async function sendChat() {
     const input    = document.getElementById("vezhaChatInput");
