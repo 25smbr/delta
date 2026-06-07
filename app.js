@@ -29,6 +29,111 @@ const app = initializeApp(firebaseConfig);
 const db  = getFirestore(app);
 const markersCollection  = collection(db, "markers");
 const drawingsCollection = collection(db, "drawings");
+
+// ─── i18n (must be before initFilterUI) ──────────────────────────────────────
+const i18n = {
+    en: {
+        filter: "FILTER", unitSymbols: "UNIT SYMBOLS",
+        drawings: "DRAW TOOLS", coordinates: "GO TO COORDINATES",
+        infantry: "INFANTRY", tank: "ARMOR", artillery: "ARTILLERY",
+        helicopter: "HELICOPTER", position: "POSITION",
+        humvee: "HUMVEE", truck: "TRUCK", uav: "UAV",
+        width: "WIDTH", color: "COLOR",
+        clearAll: "CLEAR ALL MARKERS", clearDrawings: "CLEAR DRAWINGS",
+        markers: n => `MARKERS: ${n}`,
+        drawOff: "DRAW: OFF", drawOn: "DRAW: ON",
+        rulerOff: "RULER: OFF", rulerOn: "RULER: ON",
+        coordsLabel: "COORDS",
+        shareScreen: "SHARE SCREEN", stopSharing: "STOP SHARING",
+        noStreams: "NO ACTIVE STREAMS",
+        streamHint: "Click SHARE SCREEN to broadcast your display to all connected operators",
+        operators: n => `OPERATORS: ${n} ONLINE`,
+        unmute: "UNMUTE", mute: "MUTE", deafen: "DEAFEN", undeafen: "UNDEAFEN",
+        comms: "COMMS", typeMessage: "TYPE MESSAGE...", callsign: "CALLSIGN",
+        roleOperator: "OPERATOR", roleCommander: "COMMANDER",
+        roleDrone: "DRONE PILOT", roleSniper: "SNIPER",
+        roleMedic: "MEDIC", roleIntel: "INTEL",
+        accountTitle: "ACCOUNT",
+        login: "LOGIN", register: "REGISTER",
+        username: "USERNAME", password: "PASSWORD", confirmPassword: "CONFIRM PASSWORD",
+        role: "ROLE",
+        loginBtn: "LOG IN", registerBtn: "CREATE ACCOUNT",
+        logout: "LOG OUT", loggedInAs: "LOGGED IN AS",
+        errPassMatch: "Passwords do not match",
+        errUserExists: "Username already taken",
+        errBadCreds: "Invalid username or password",
+        errFillAll: "Please fill in all fields",
+    },
+    ru: {
+        filter: "ФИЛЬТР", unitSymbols: "СИМВОЛЫ ЕДИНИЦ",
+        drawings: "РИСУНКИ", coordinates: "ПЕРЕЙТИ К КООРДИНАТАМ",
+        infantry: "ПЕХОТА", tank: "БРОНЯ", artillery: "АРТИЛЛЕРИЯ",
+        helicopter: "ВЕРТОЛЁТ", position: "ПОЗИЦИЯ",
+        humvee: "ХАМВИ", truck: "ГРУЗОВИК", uav: "БПЛА",
+        width: "ШИРИНА", color: "ЦВЕТ",
+        clearAll: "УДАЛИТЬ ВСЕ МАРКЕРЫ", clearDrawings: "УДАЛИТЬ РИСУНКИ",
+        markers: n => `МАРКЕРЫ: ${n}`,
+        drawOff: "РИСУНОК: ВЫКЛ", drawOn: "РИСУНОК: ВКЛ",
+        rulerOff: "ЛИНЕЙКА: ВЫКЛ", rulerOn: "ЛИНЕЙКА: ВКЛ",
+        coordsLabel: "КООРДИНАТЫ",
+        shareScreen: "ТРАНСЛЯЦИЯ", stopSharing: "СТОП",
+        noStreams: "НЕТ АКТИВНЫХ ТРАНСЛЯЦИЙ",
+        streamHint: "Нажмите ТРАНСЛЯЦИЯ чтобы транслировать экран всем операторам",
+        operators: n => `ОПЕРАТОРОВ: ${n} В СЕТИ`,
+        unmute: "ВКЛ МИК", mute: "ОТКЛ МИК", deafen: "ЗАГЛУШИТЬ", undeafen: "ЗВУК ВКЛ",
+        comms: "СВЯЗЬ", typeMessage: "СООБЩЕНИЕ...", callsign: "ПОЗЫВНОЙ",
+        roleOperator: "ОПЕРАТОР", roleCommander: "КОМАНДИР",
+        roleDrone: "ПИЛОТ БПЛА", roleSniper: "СНАЙПЕР",
+        roleMedic: "МЕДИК", roleIntel: "РАЗВЕДКА",
+        accountTitle: "АККАУНТ",
+        login: "ВОЙТИ", register: "РЕГИСТРАЦИЯ",
+        username: "ЛОГИН", password: "ПАРОЛЬ", confirmPassword: "ПОВТОР ПАРОЛЯ",
+        role: "РОЛЬ",
+        loginBtn: "ВОЙТИ", registerBtn: "СОЗДАТЬ АККАУНТ",
+        logout: "ВЫЙТИ", loggedInAs: "ВЫ ВОШЛИ КАК",
+        errPassMatch: "Пароли не совпадают",
+        errUserExists: "Это имя уже занято",
+        errBadCreds: "Неверный логин или пароль",
+        errFillAll: "Заполните все поля",
+    },
+    ua: {
+        filter: "ФІЛЬТР", unitSymbols: "СИМВОЛИ ОДИНИЦЬ",
+        drawings: "МАЛЮНКИ", coordinates: "ПЕРЕЙТИ ДО КООРДИНАТ",
+        infantry: "ПІХОТА", tank: "БРОНЯ", artillery: "АРТИЛЕРІЯ",
+        helicopter: "ВЕРТОЛІТ", position: "ПОЗИЦІЯ",
+        humvee: "ХАМВІ", truck: "ВАНТАЖІВКА", uav: "БПЛА",
+        width: "ШИРИНА", color: "КОЛІР",
+        clearAll: "ВИДАЛИТИ ВСІ МАРКЕРИ", clearDrawings: "ВИДАЛИТИ МАЛЮНКИ",
+        markers: n => `МАРКЕРИ: ${n}`,
+        drawOff: "МАЛЮНОК: ВИМК", drawOn: "МАЛЮНОК: УВ.",
+        rulerOff: "ЛІНІЙКА: ВИМК", rulerOn: "ЛІНІЙКА: УВ.",
+        coordsLabel: "КООРДИНАТИ",
+        shareScreen: "ТРАНСЛЯЦІЯ", stopSharing: "ЗУПИНИТИ",
+        noStreams: "НЕМАЄ АКТИВНИХ ТРАНСЛЯЦІЙ",
+        streamHint: "Натисніть ТРАНСЛЯЦІЯ щоб транслювати екран усім операторам",
+        operators: n => `ОПЕРАТОРІВ: ${n} ОНЛАЙН`,
+        unmute: "УВІМК МІК", mute: "ВИМК МІК", deafen: "ЗАГЛУШИТИ", undeafen: "ЗВУК УВ.",
+        comms: "ЗВ'ЯЗОК", typeMessage: "ПОВІДОМЛЕННЯ...", callsign: "ПОЗИВНИЙ",
+        roleOperator: "ОПЕРАТОР", roleCommander: "КОМАНДИР",
+        roleDrone: "ПІЛОТ БПЛА", roleSniper: "СНАЙПЕР",
+        roleMedic: "МЕДИК", roleIntel: "РОЗВІДКА",
+        accountTitle: "АККАУНТ",
+        login: "УВІЙТИ", register: "РЕЄСТРАЦІЯ",
+        username: "ЛОГІН", password: "ПАРОЛЬ", confirmPassword: "ПІДТВЕРДИТИ ПАРОЛЬ",
+        role: "РОЛЬ",
+        loginBtn: "УВІЙТИ", registerBtn: "СТВОРИТИ АККАУНТ",
+        logout: "ВИЙТИ", loggedInAs: "ВИ УВІЙШЛИ ЯК",
+        errPassMatch: "Паролі не збігаються",
+        errUserExists: "Це ім'я вже зайнято",
+        errBadCreds: "Невірний логін або пароль",
+        errFillAll: "Заповніть усі поля",
+    }
+};
+let currentLang = localStorage.getItem("vezhaLang") || "en";
+function t(key, ...args) {
+    const v = (i18n[currentLang] || i18n.en)[key];
+    return (typeof v === "function") ? v(...args) : (v !== undefined ? v : key);
+}
 // ─── MAP ─────────────────────────────────────────────────────────────────────
 // FIX #5: correct image dimensions — width 1204, height 1290
 const imageWidth  = 1204;
@@ -283,7 +388,7 @@ function initFilterUI() {
         const chip = document.createElement("button");
         chip.className      = "filter-chip active";
         chip.dataset.unit   = unit;
-        chip.textContent    = t(unit);
+        chip.textContent    = unit.toUpperCase(); // applyLang() will translate on load
         chip.addEventListener("click", () => {
             if (hiddenUnits.has(unit)) {
                 hiddenUnits.delete(unit);
@@ -1042,123 +1147,7 @@ const vezha_chat     = collection(db, "vezha_chat");
 const myPeerId   = "peer_" + Math.random().toString(36).substr(2, 9);
 const myShortId  = myPeerId.slice(-6).toUpperCase();
 let vezhaActive    = false;
-// ─── i18n ─────────────────────────────────────────────────────────────────────
-const i18n = {
-    en: {
-        // Section headers
-        filter: "FILTER", unitSymbols: "UNIT SYMBOLS",
-        drawings: "DRAWINGS", coordinates: "GO TO COORDINATES",
-        // Unit group labels & filter chips
-        infantry: "INFANTRY", tank: "ARMOR", artillery: "ARTILLERY",
-        helicopter: "HELICOPTER", position: "POSITION",
-        humvee: "HUMVEE", truck: "TRUCK", uav: "UAV",
-        // Drawing tools
-        width: "WIDTH", color: "COLOR",
-        clearAll: "CLEAR ALL MARKERS", clearDrawings: "CLEAR DRAWINGS",
-        // Status bar
-        markers: n => `MARKERS: ${n}`,
-        drawOff: "DRAW: OFF", drawOn: "DRAW: ON",
-        rulerOff: "RULER: OFF", rulerOn: "RULER: ON",
-        coordsLabel: "COORDS",
-        // VEZHA screen share
-        shareScreen: "SHARE SCREEN", stopSharing: "STOP SHARING",
-        noStreams: "NO ACTIVE STREAMS",
-        streamHint: "Click SHARE SCREEN to broadcast your display to all connected operators",
-        operators: n => `OPERATORS: ${n} ONLINE`,
-        // Mic / Deafen
-        unmute: "UNMUTE", mute: "MUTE", deafen: "DEAFEN", undeafen: "UNDEAFEN",
-        // Chat
-        comms: "COMMS", typeMessage: "TYPE MESSAGE...", callsign: "CALLSIGN",
-        // Roles
-        roleOperator: "OPERATOR", roleCommander: "COMMANDER",
-        roleDrone: "DRONE PILOT", roleSniper: "SNIPER",
-        roleMedic: "MEDIC", roleIntel: "INTEL",
-        // Account modal
-        accountTitle: "ACCOUNT",
-        login: "LOGIN", register: "REGISTER",
-        username: "USERNAME", password: "PASSWORD", confirmPassword: "CONFIRM PASSWORD",
-        role: "ROLE",
-        loginBtn: "LOG IN", registerBtn: "CREATE ACCOUNT",
-        logout: "LOG OUT",
-        loggedInAs: "LOGGED IN AS",
-        errPassMatch: "Passwords do not match",
-        errUserExists: "Username already taken",
-        errBadCreds: "Invalid username or password",
-        errFillAll: "Please fill in all fields",
-    },
-    ru: {
-        filter: "ФИЛЬТР", unitSymbols: "СИМВОЛЫ ЕДИНИЦ",
-        drawings: "РИСУНКИ", coordinates: "ПЕРЕЙТИ К КООРДИНАТАМ",
-        infantry: "ПЕХОТА", tank: "БРОНЯ", artillery: "АРТИЛЛЕРИЯ",
-        helicopter: "ВЕРТОЛЁТ", position: "ПОЗИЦИЯ",
-        humvee: "ХАМВИ", truck: "ГРУЗОВИК", uav: "БПЛА",
-        width: "ШИРИНА", color: "ЦВЕТ",
-        clearAll: "УДАЛИТЬ ВСЕ МАРКЕРЫ", clearDrawings: "УДАЛИТЬ РИСУНКИ",
-        markers: n => `МАРКЕРЫ: ${n}`,
-        drawOff: "РИСУНОК: ВЫКЛ", drawOn: "РИСУНОК: ВКЛ",
-        rulerOff: "ЛИНЕЙКА: ВЫКЛ", rulerOn: "ЛИНЕЙКА: ВКЛ",
-        coordsLabel: "КООРДИНАТЫ",
-        shareScreen: "ТРАНСЛЯЦИЯ", stopSharing: "СТОП",
-        noStreams: "НЕТ АКТИВНЫХ ТРАНСЛЯЦИЙ",
-        streamHint: "Нажмите ТРАНСЛЯЦИЯ чтобы транслировать экран всем операторам",
-        operators: n => `ОПЕРАТОРОВ: ${n} В СЕТИ`,
-        unmute: "ВКЛ МИК", mute: "ОТКЛ МИК", deafen: "ЗАГЛУШИТЬ", undeafen: "ЗВУК ВКЛ",
-        comms: "СВЯЗЬ", typeMessage: "СООБЩЕНИЕ...", callsign: "ПОЗЫВНОЙ",
-        roleOperator: "ОПЕРАТОР", roleCommander: "КОМАНДИР",
-        roleDrone: "ПИЛОТ БПЛА", roleSniper: "СНАЙПЕР",
-        roleMedic: "МЕДИК", roleIntel: "РАЗВЕДКА",
-        accountTitle: "АККАУНТ",
-        login: "ВОЙТИ", register: "РЕГИСТРАЦИЯ",
-        username: "ЛОГИН", password: "ПАРОЛЬ", confirmPassword: "ПОВТОР ПАРОЛЯ",
-        role: "РОЛЬ",
-        loginBtn: "ВОЙТИ", registerBtn: "СОЗДАТЬ АККАУНТ",
-        logout: "ВЫЙТИ",
-        loggedInAs: "ВЫ ВОШЛИ КАК",
-        errPassMatch: "Пароли не совпадают",
-        errUserExists: "Это имя уже занято",
-        errBadCreds: "Неверный логин или пароль",
-        errFillAll: "Заполните все поля",
-    },
-    ua: {
-        filter: "ФІЛЬТР", unitSymbols: "СИМВОЛИ ОДИНИЦЬ",
-        drawings: "МАЛЮНКИ", coordinates: "ПЕРЕЙТИ ДО КООРДИНАТ",
-        infantry: "ПІХОТА", tank: "БРОНЯ", artillery: "АРТИЛЕРІЯ",
-        helicopter: "ВЕРТОЛІТ", position: "ПОЗИЦІЯ",
-        humvee: "ХАМВІ", truck: "ВАНТАЖІВКА", uav: "БПЛА",
-        width: "ШИРИНА", color: "КОЛІР",
-        clearAll: "ВИДАЛИТИ ВСІ МАРКЕРИ", clearDrawings: "ВИДАЛИТИ МАЛЮНКИ",
-        markers: n => `МАРКЕРИ: ${n}`,
-        drawOff: "МАЛЮНОК: ВИМК", drawOn: "МАЛЮНОК: УВ.",
-        rulerOff: "ЛІНІЙКА: ВИМК", rulerOn: "ЛІНІЙКА: УВ.",
-        coordsLabel: "КООРДИНАТИ",
-        shareScreen: "ТРАНСЛЯЦІЯ", stopSharing: "ЗУПИНИТИ",
-        noStreams: "НЕМАЄ АКТИВНИХ ТРАНСЛЯЦІЙ",
-        streamHint: "Натисніть ТРАНСЛЯЦІЯ щоб транслювати екран усім операторам",
-        operators: n => `ОПЕРАТОРІВ: ${n} ОНЛАЙН`,
-        unmute: "УВІМК МІК", mute: "ВИМК МІК", deafen: "ЗАГЛУШИТИ", undeafen: "ЗВУК УВ.",
-        comms: "ЗВ'ЯЗОК", typeMessage: "ПОВІДОМЛЕННЯ...", callsign: "ПОЗИВНИЙ",
-        roleOperator: "ОПЕРАТОР", roleCommander: "КОМАНДИР",
-        roleDrone: "ПІЛОТ БПЛА", roleSniper: "СНАЙПЕР",
-        roleMedic: "МЕДИК", roleIntel: "РОЗВІДКА",
-        accountTitle: "АККАУНТ",
-        login: "УВІЙТИ", register: "РЕЄСТРАЦІЯ",
-        username: "ЛОГІН", password: "ПАРОЛЬ", confirmPassword: "ПІДТВЕРДИТИ ПАРОЛЬ",
-        role: "РОЛЬ",
-        loginBtn: "УВІЙТИ", registerBtn: "СТВОРИТИ АККАУНТ",
-        logout: "ВИЙТИ",
-        loggedInAs: "ВИ УВІЙШЛИ ЯК",
-        errPassMatch: "Паролі не збігаються",
-        errUserExists: "Це ім'я вже зайнято",
-        errBadCreds: "Невірний логін або пароль",
-        errFillAll: "Заповніть усі поля",
-    }
-};
-let currentLang = localStorage.getItem("vezhaLang") || "en";
-
-function t(key, ...args) {
-    const v = (i18n[currentLang] || i18n.en)[key];
-    return (typeof v === "function") ? v(...args) : (v !== undefined ? v : key);
-}
+// ─── i18n helpers (object + t() declared near top of file) ───────────────────
 function applyLang() {
     document.querySelectorAll("[data-i18n]").forEach(el => {
         const v = t(el.dataset.i18n);
