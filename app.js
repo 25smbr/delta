@@ -742,6 +742,9 @@ map.on("click", async (e) => {
 // events except the .mkr-icon element (pointer-events:auto in CSS).
 // We delegate from the map container so clicking outside the icon still places
 // a new marker, and clicking the icon opens the edit popup.
+// Capture phase (true) so our handler fires BEFORE Leaflet's internal listeners
+// on the same element — stopPropagation then prevents the map click/contextmenu
+// handlers from firing when the user clicked the marker icon.
 document.getElementById("map").addEventListener("click", e => {
     const iconEl = e.target.closest(".mkr-icon");
     if (!iconEl) return;
@@ -751,9 +754,9 @@ document.getElementById("map").addEventListener("click", e => {
     if (id && displayedMarkers[id]) {
         openMarkerEditPopup(id, displayedMarkers[id].marker, displayedMarkers[id].data);
     }
-    // Stop propagation so map.on("click") doesn't also place a new marker
+    // Stop the event in capture phase so Leaflet never sees it → no new marker placed
     e.stopPropagation();
-});
+}, true);  // ← capture phase
 document.getElementById("map").addEventListener("contextmenu", async e => {
     const iconEl = e.target.closest(".mkr-icon");
     if (!iconEl) return;
@@ -762,13 +765,15 @@ document.getElementById("map").addEventListener("contextmenu", async e => {
     const id = wrap.dataset.mid;
     if (id && displayedMarkers[id]) {
         e.preventDefault();
+        // Stop propagation in capture phase so the coord popup never shows
+        e.stopPropagation();
         if (confirm("Delete this marker?")) {
             await deleteDoc(doc(db, "markers", id));
             const idx = undoStack.findIndex(u => u.type === "marker" && u.id === id);
             if (idx !== -1) undoStack.splice(idx, 1);
         }
     }
-});
+}, true);  // ← capture phase
 
 // ─── MARKER EDIT POPUP ───────────────────────────────────────────────────────
 // Uses a standalone L.popup (not bound to marker) so it can be reopened anytime.
@@ -1827,10 +1832,8 @@ function drawWatermarkCanvas(userId) {
     };
     // Defer one frame so the flex layout has resolved before we measure
     requestAnimationFrame(draw);
-    // Also refresh arty watermark if artillery view is visible
-    if (typeof artilleryActive !== "undefined" && artilleryActive) {
-        drawArtyWatermark(userId);
-    }
+    // Always refresh arty canvas too — drawArtyWatermark is a no-op if not visible
+    drawArtyWatermark(userId);
 }
 
 function drawArtyWatermark(userId) {
