@@ -67,7 +67,7 @@ const i18n = {
         artyConfig: "CONFIGURATION",
         artyGun: "GUN", artyProjectile: "PROJECTILE",
         artyGunPos: "GUN POSITION", artyTgtPos: "TARGET POSITION",
-        artyHeightLabel: "HEIGHT DIFF (studs)",
+        artyHeightLabel: "HEIGHT DIFF (m)",
         artyCalcBtn: "CALCULATE",
         artyAzimuth: "AZIMUTH", artyDistance: "DISTANCE",
         artyLowArc: "LOW ARC", artyHighArc: "HIGH ARC", artyTof: "TOF",
@@ -110,7 +110,7 @@ const i18n = {
         artyConfig: "КОНФИГУРАЦИЯ",
         artyGun: "ОРУДИЕ", artyProjectile: "СНАРЯД",
         artyGunPos: "ПОЗИЦИЯ ОРУДИЯ", artyTgtPos: "ПОЗИЦИЯ ЦЕЛИ",
-        artyHeightLabel: "РАЗН. ВЫСОТ (стадов)",
+        artyHeightLabel: "РАЗН. ВЫСОТ (м)",
         artyCalcBtn: "РАССЧИТАТЬ",
         artyAzimuth: "АЗИМУТ", artyDistance: "ДАЛЬНОСТЬ",
         artyLowArc: "НАСТИЛЬНАЯ", artyHighArc: "НАВЕСНАЯ", artyTof: "ВРЕМЯ ПОЛЁТА",
@@ -153,7 +153,7 @@ const i18n = {
         artyConfig: "КОНФІГУРАЦІЯ",
         artyGun: "ГАРМАТА", artyProjectile: "СНАРЯД",
         artyGunPos: "ПОЗИЦІЯ ГАРМАТИ", artyTgtPos: "ПОЗИЦІЯ ЦІЛІ",
-        artyHeightLabel: "РІЗН. ВИСОТ (стадів)",
+        artyHeightLabel: "РІЗН. ВИСОТ (м)",
         artyCalcBtn: "РОЗРАХУВАТИ",
         artyAzimuth: "АЗИМУТ", artyDistance: "ДАЛЬНІСТЬ",
         artyLowArc: "НАСТИЛЬНА", artyHighArc: "НАВІСНА", artyTof: "ЧАС ПОЛЬОТУ",
@@ -1908,11 +1908,10 @@ themeToggleBtn.addEventListener("click", () => {
 // Gun data from packages/mtc-artillery/src/config/guns.ts + importedGuns.json
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ─── Physics constants (MTC game values) ─────────────────────────────────────
-const ARTY_G = 9.8 * 1.8;                          // in-game gravity
-const STUDS_PER_M = 5 / 1.8;
-function studsToMeters(s) { return s / STUDS_PER_M; }
-function metersToStuds(m) { return m * STUDS_PER_M; }
+// ─── Physics constants (MTC game values, 1 stud = 1 m) ───────────────────────
+const ARTY_G = 9.8 * 1.8;     // in-game gravity (Roblox = 1.8× Earth) m/s²
+// 1:1 stud = meter — no conversion needed
+function studsToMeters(s) { return s; }   // identity: coordinates ARE in metres
 
 function artyCalcLowElev(d, v, h = 0) {
     const disc = v ** 4 - ARTY_G * (ARTY_G * d * d + 2 * h * v * v);
@@ -1928,9 +1927,11 @@ function artyCalcToF(elevDeg, v, d) {
     const rad = elevDeg * Math.PI / 180;
     return d / (v * Math.cos(rad));
 }
+// Azimuth: 0° = North (target directly north of gun), 90° = East, etc.
+// Leaflet CRS.Simple: lat increases upward (north), lng increases rightward (east)
 function artyCalcAzimuth(x1, y1, x2, y2) {
     const rad = Math.atan2(y2 - y1, x2 - x1);
-    return (90 + (rad * 180 / Math.PI) + 360) % 360;
+    return (90 - (rad * 180 / Math.PI) + 360) % 360;
 }
 function artyCalcDist(x1, y1, x2, y2) {
     return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
@@ -1938,34 +1939,35 @@ function artyCalcDist(x1, y1, x2, y2) {
 
 // ─── Gun database (importedGuns.json + custom guns from guns.ts) ──────────────
 const ARTY_GUNS = [
-    // ── Custom guns (from guns.ts) ──
-    { name: "82mm PM-43 Mortar", projectiles: [
-        { name: "O-832D Low Charge",    velocity: 80  },
-        { name: "O-832D Medium Charge", velocity: 140 },
-        { name: "O-832D High Charge",   velocity: 211 },
+    // ── Custom guns (from guns.ts — exact repo data) ──
+    { name: "Mortar", projectiles: [
+        { name: "Low Charge",    velocity: 125 },
+        { name: "Medium Charge", velocity: 172 },
+        { name: "High Charge",   velocity: 225 },
     ]},
-    { name: "AGS-17 Plamya", projectiles: [
+    { name: "AGS-17", projectiles: [
         { name: "VOG-17M", velocity: 185 },
     ]},
     { name: "122mm D-30", projectiles: [
-        { name: "OF-462 Low Charge",    velocity: 200 },
-        { name: "OF-462 Medium Charge", velocity: 400 },
-        { name: "OF-462 High Charge",   velocity: 690 },
+        { name: "3BK-10",               velocity: 726 },
+        { name: "3OF56 Low Charge",     velocity: 175 },
+        { name: "3OF56 Medium Charge",  velocity: 350 },
+        { name: "3OF56 High Charge",    velocity: 690 },
     ]},
-    { name: "2B9 Vasilek", projectiles: [
-        { name: "O-832D Low Charge",    velocity: 80  },
-        { name: "O-832D Medium Charge", velocity: 140 },
-        { name: "O-832D High Charge",   velocity: 211 },
+    { name: "82mm 2B9 Vasilek", projectiles: [
+        { name: "Low Charge",    velocity: 75  },
+        { name: "Medium Charge", velocity: 175 },
+        { name: "High Charge",   velocity: 255 },
     ]},
     { name: "Hell Cannon", projectiles: [
-        { name: "Propane Canister Low",  velocity: 80  },
-        { name: "Propane Canister High", velocity: 150 },
+        { name: "Propane", velocity: 130 },
     ]},
-    { name: "UB-32 Rocket Pod", projectiles: [
-        { name: "S-5 Rocket", velocity: 500 },
+    { name: "UB-32", projectiles: [
+        { name: "S-5K1", velocity: 650 },
     ]},
     { name: "12-Pounder Cannon", projectiles: [
-        { name: "Round Shot", velocity: 437 },
+        { name: "Roundshot", velocity: 480 },
+        { name: "Grapeshot", velocity: 365 },
     ]},
     // ── Imported guns (importedGuns.json) ──
     { name: "2S19 Msta-S", projectiles: [
@@ -2175,8 +2177,7 @@ document.getElementById("artyCalcBtn")?.addEventListener("click", () => {
       </div>
       <div class="arty-result-row">
         <span class="arty-result-label">${t("artyDistance")}</span>
-        <span class="arty-result-val">${fmt0(distStuds)}<span class="arty-result-unit"> studs</span>
-          <span class="arty-result-sub"> · ${fmt1(distM)} m</span></span>
+        <span class="arty-result-val">${fmt0(distM)}<span class="arty-result-unit"> m</span></span>
       </div>
       <div class="arty-result-row">
         <span class="arty-result-label">${t("artyLowArc")}</span>
@@ -2190,16 +2191,16 @@ document.getElementById("artyCalcBtn")?.addEventListener("click", () => {
       </div>
       <div class="arty-result-row muted-row">
         <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);line-height:1.5">
-          ${escHtml(gun.name)}<br>${escHtml(proj.name)} · ${v} m/s · Δh: ${hd > 0 ? "+" : ""}${hd} studs
+          ${escHtml(gun.name)}<br>${escHtml(proj.name)} · ${v} m/s · Δh: ${hd > 0 ? "+" : ""}${hd} m
         </span>
       </div>`;
     if (noResult) noResult.style.display = "none";
 });
 
 // ─── Artillery Map (Leaflet instance inside ARTY view) ───────────────────────
-// Pixel→Stud conversion: 1 map-pixel = (1/PIXELS_PER_METER) m × (5/1.8 studs/m)
-const ARTY_PX_TO_STUD = (1 / PIXELS_PER_METER) * (5 / 1.8);   // ≈ 4.89 studs/px
-const ARTY_STUD_TO_PX = 1 / ARTY_PX_TO_STUD;                   // ≈ 0.204 px/stud
+// 1 stud = 1 m; 1 pixel = (1/PIXELS_PER_METER) metres
+const ARTY_PX_TO_STUD = 1 / PIXELS_PER_METER;   // ≈ 1.761 m/px  (250/142)
+const ARTY_STUD_TO_PX = PIXELS_PER_METER;        // ≈ 0.568 px/m
 
 let artyMapInstance = null;
 let artyGunMarker   = null;
