@@ -1332,9 +1332,9 @@ let map3DState  = null;   // active 3D instance for the monitor map
 let arty3DState = null;   // active 3D instance for the arty calculator
 
 async function create3DScene(container) {
-    // Dynamic import so Three.js is only fetched when the user first clicks 3D
-    const THREE = await import("https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js");
-    const { OrbitControls } = await import("https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/controls/OrbitControls.js");
+    // Dynamic import — resolved via the importmap in index.html
+    const THREE = await import("three");
+    const { OrbitControls } = await import("three/addons/controls/OrbitControls.js");
 
     const W = container.clientWidth  || 800;
     const H = container.clientHeight || 600;
