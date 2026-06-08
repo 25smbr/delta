@@ -180,10 +180,24 @@ function t(key, ...args) {
     return (typeof v === "function") ? v(...args) : (v !== undefined ? v : key);
 }
 // ─── MAP CONFIGURATIONS ──────────────────────────────────────────────────────
+// Map image files are served from the same directory as the app (or update
+// the `file` paths to raw GitHub URLs once you confirm the repo).
+// Width/height are the PNG pixel dimensions — update them once you know each
+// image's actual size.  ppm (pixels-per-metre) will be calibrated later.
+// ppm (pixels-per-metre) for new maps: to be calibrated — placeholder kept from Dustbowl 2
 const MAPS = [
-    { id: "map1", name: "Dustbowl 2", file: "map.png",  width: 1204, height: 1290, ppm: 142/250 },
-    // Add more maps here — e.g.:
-    // { id: "map2", name: "MAP 2", file: "map2.png", width: 2000, height: 2000, ppm: 200/250 },
+    { id: "map1",  name: "Dustbowl 2",       file: "map.png",              width: 1204, height: 1290, ppm: 142/250 },
+    { id: "map2",  name: "Sokolovka",         file: "sokolovka.png",        width:  628, height:  629, ppm: 142/250 },
+    { id: "map3",  name: "Arctic Airbase",    file: "arctic_airbase.png",   width:  627, height:  631, ppm: 142/250 },
+    { id: "map4",  name: "Muddy Fields",      file: "muddy_fields.png",     width:  625, height:  633, ppm: 142/250 },
+    { id: "map5",  name: "Fulvia Gap",        file: "fulvia_gap.png",       width:  617, height:  628, ppm: 142/250 },
+    { id: "map6",  name: "Snowy Fields",      file: "snowy_fields.png",     width:  629, height:  626, ppm: 142/250 },
+    { id: "map7",  name: "Rohkstov",          file: "rohkstov.png",         width:  628, height:  635, ppm: 142/250 },
+    { id: "map8",  name: "Rohkstov Short",    file: "rohkshort.png",        width:  615, height:  622, ppm: 142/250 },
+    { id: "map9",  name: "Roinburg",          file: "roinburg.png",         width:  620, height:  628, ppm: 142/250 },
+    { id: "map10", name: "Zone 11",           file: "zone_11.png",          width:  626, height:  631, ppm: 142/250 },
+    { id: "map11", name: "Normandy Bocage",   file: "normandy_bocage.png",  width:  629, height:  634, ppm: 142/250 },
+    { id: "map12", name: "Villers Sommeil",   file: "villers_sommeil.png",  width:  618, height:  631, ppm: 142/250 },
 ];
 let currentMapIdx = parseInt(localStorage.getItem("currentMapIdx") || "0");
 if (currentMapIdx >= MAPS.length) currentMapIdx = 0;
@@ -4930,36 +4944,26 @@ document.getElementById("artyCalcBtn")?.addEventListener("click", () => {
       </div>
       <div class="arty-result-row">
         <span class="arty-result-label">${t("artyLowArc")}</span>
-        <span class="arty-result-val">${fmt1(lowElev)}<span class="arty-result-unit">°</span>
-          <span class="arty-result-sub"> · ${t("artyTof")}: ${fmt1(tofLow)} s</span></span>
+        <span class="arty-result-val">${fmt1(lowElev)}<span class="arty-result-unit">°</span></span>
+      </div>
+      <div class="arty-result-row">
+        <span class="arty-result-label">${t("artyTof")} (LOW)</span>
+        <span class="arty-result-val">${fmt1(tofLow)}<span class="arty-result-unit"> s</span></span>
       </div>
       <div class="arty-result-row">
         <span class="arty-result-label">${t("artyHighArc")}</span>
-        <span class="arty-result-val ${highElev === null ? "dim" : ""}">${highElev !== null ? fmt1(highElev) + "°" : "N/A"}
-          <span class="arty-result-sub">${tofHigh !== null ? " · " + t("artyTof") + ": " + fmt1(tofHigh) + " s" : ""}</span></span>
-      </div>
+        <span class="arty-result-val ${highElev === null ? "dim" : ""}">${highElev !== null ? fmt1(highElev) + "°" : "N/A"}</span>
+      </div>${tofHigh !== null ? `
+      <div class="arty-result-row">
+        <span class="arty-result-label">${t("artyTof")} (HIGH)</span>
+        <span class="arty-result-val">${fmt1(tofHigh)}<span class="arty-result-unit"> s</span></span>
+      </div>` : ""}
       <div class="arty-result-row muted-row">
         <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);line-height:1.5">
           ${escHtml(gun.name)}<br>${escHtml(proj.name)} · ${v} m/s · Δh: ${hd > 0 ? "+" : ""}${hd} m
         </span>
       </div>`;
     if (noResult) noResult.style.display = "none";
-
-    // ── Fire mission log ──────────────────────────────────────────────────────
-    const logContainer = document.getElementById("artyMissionLog");
-    if (logContainer) {
-        const logEntry = document.createElement("div");
-        logEntry.className = "arty-log-entry";
-        const ts = new Date();
-        const pad = n => String(n).padStart(2, "0");
-        const timeStr = `${pad(ts.getHours())}:${pad(ts.getMinutes())}:${pad(ts.getSeconds())}`;
-        logEntry.innerHTML = `
-          <div class="arty-log-time">${timeStr}</div>
-          <div class="arty-log-line"><b>${escHtml(gun.name)}</b> · ${escHtml(proj.name)}</div>
-          <div class="arty-log-line">AZ <b>${fmt1(azimuth)}°</b> · DIST <b>${fmt0(distM)} m</b> · Δh <b>${hd >= 0 ? "+" : ""}${hd} m</b></div>
-          <div class="arty-log-line">LOW <b>${fmt1(lowElev)}°</b> (${fmt1(tofLow)}s)${highElev !== null ? ` · HIGH <b>${fmt1(highElev)}°</b> (${fmt1(tofHigh)}s)` : ""}</div>`;
-        logContainer.prepend(logEntry);   // newest on top
-    }
 });
 
 // ─── Artillery Map (Leaflet instance inside ARTY view) ───────────────────────
@@ -5297,19 +5301,47 @@ document.getElementById("mkrSizeDown")?.addEventListener("click", () => setMarke
 function buildMapSelectorDropdown() {
     const drop = document.getElementById("mapSelDropdown");
     if (!drop) return;
-    drop.innerHTML = MAPS.map((m, i) =>
-        `<div class="map-sel-opt${i === currentMapIdx ? " active" : ""}" data-idx="${i}">
-           ${m.name}
-           <span class="map-sel-scale">${Math.round(1 / m.ppm)}m per pixel</span>
-         </div>`
-    ).join("");
-    drop.querySelectorAll(".map-sel-opt").forEach(opt => {
-        opt.addEventListener("click", () => {
-            const idx = parseInt(opt.dataset.idx);
-            drop.classList.remove("open");
-            if (idx !== currentMapIdx) loadMapConfig(idx);
+
+    // ── Search box ────────────────────────────────────────────────────────────
+    drop.innerHTML =
+        `<div class="map-sel-search-wrap">
+           <input id="mapSelSearch" class="map-sel-search" type="text"
+                  placeholder="Search maps…" autocomplete="off" spellcheck="false"/>
+         </div>
+         <div id="mapSelList"></div>`;
+
+    const searchInput = drop.querySelector("#mapSelSearch");
+    const listEl      = drop.querySelector("#mapSelList");
+
+    function renderMapList(filter) {
+        const q = (filter || "").trim().toLowerCase();
+        listEl.innerHTML = MAPS
+            .map((m, i) => ({ m, i }))
+            .filter(({ m }) => !q || m.name.toLowerCase().includes(q))
+            .map(({ m, i }) =>
+                `<div class="map-sel-opt${i === currentMapIdx ? " active" : ""}" data-idx="${i}">
+                   ${m.name}
+                   <span class="map-sel-scale">${Math.round(1 / m.ppm)}m/px</span>
+                 </div>`)
+            .join("") || `<div class="map-sel-empty">No maps found</div>`;
+
+        listEl.querySelectorAll(".map-sel-opt").forEach(opt => {
+            opt.addEventListener("click", () => {
+                const idx = parseInt(opt.dataset.idx);
+                drop.classList.remove("open");
+                searchInput.value = "";
+                renderMapList("");
+                if (idx !== currentMapIdx) loadMapConfig(idx);
+            });
         });
-    });
+    }
+
+    renderMapList("");
+    searchInput.addEventListener("input", () => renderMapList(searchInput.value));
+    // Stop click inside search from closing the dropdown
+    searchInput.addEventListener("click", e => e.stopPropagation());
+    // Re-render & focus search whenever dropdown opens
+    drop._refreshSearch = () => { searchInput.value = ""; renderMapList(""); searchInput.focus(); };
 }
 buildMapSelectorDropdown();
 // Set initial label
@@ -5319,7 +5351,10 @@ buildMapSelectorDropdown();
 }
 document.getElementById("mapSelBtn")?.addEventListener("click", e => {
     e.stopPropagation();
-    document.getElementById("mapSelDropdown")?.classList.toggle("open");
+    const drop = document.getElementById("mapSelDropdown");
+    const wasOpen = drop?.classList.contains("open");
+    drop?.classList.toggle("open");
+    if (!wasOpen && drop?._refreshSearch) drop._refreshSearch();
 });
 document.addEventListener("click", () => {
     document.getElementById("mapSelDropdown")?.classList.remove("open");
