@@ -696,35 +696,29 @@ onSnapshot(drawingsCollection, (snapshot) => {
             if (!strokes.some(s => s.firestoreId === id)) {
                 strokes.push({ ...data, firestoreId: id });
             }
+            if (map3DState) map3DState.addStroke3D(id, data);
         } else if (change.type === "modified") {
             const idx = strokes.findIndex(s => s.firestoreId === id);
-            if (idx !== -1) {
-                strokes[idx] = { ...data, firestoreId: id };
-            }
+            if (idx !== -1) strokes[idx] = { ...data, firestoreId: id };
+            if (map3DState) map3DState.addStroke3D(id, data);
         } else if (change.type === "removed") {
             strokes = strokes.filter(s => s.firestoreId !== id);
+            if (map3DState) map3DState.removeStroke3D(id);
         }
     });
     redrawAll();
 }, (error) => {
     console.error("Drawings sync error:", error);
 });
-// ─── ADD MARKERS — LMB (mobile: long-tap, see below) ─────────────────────────
-map.on("click", async (e) => {
+// ─── ADD MARKERS — shared handler (called by Leaflet click AND 3D canvas) ────
+async function handleMapClickLatLng(lat, lng) {
     if (drawMode || rulerMode) return;
-    // Reject clicks outside the map image bounds
-    if (e.latlng.lng < 0 || e.latlng.lng > imageWidth ||
-        e.latlng.lat < 0 || e.latlng.lat > imageHeight) return;
-    // UTC+2 timestamp (matches the HUD clock)
     const now  = new Date(Date.now() + 2 * 3600 * 1000);
     const p    = n => String(n).padStart(2, "0");
     const dateStr = `${p(now.getUTCDate())}/${p(now.getUTCMonth()+1)}/${String(now.getUTCFullYear()).slice(-2)} ${p(now.getUTCHours())}:${p(now.getUTCMinutes())}:${p(now.getUTCSeconds())}`;
-    // Pre-generate the ref ID synchronously so pendingEditMarkerId is set
-    // BEFORE Firestore fires the onSnapshot for the local-cache write.
     const newRef  = doc(markersCollection);
     const mkrData = {
-        x:       e.latlng.lng,
-        y:       e.latlng.lat,
+        x: lng, y: lat,
         type:    selectedSymbol,
         side:    placingSide,
         created: Date.now(),
@@ -736,8 +730,14 @@ map.on("click", async (e) => {
     };
     pendingEditMarkerId = newRef.id;
     await setDoc(newRef, mkrData);
-    // Store data in the undo entry so undoLast() never needs a Firestore read
     undoStack.push({ type: "marker", id: newRef.id, data: mkrData });
+}
+
+// ─── ADD MARKERS — LMB (mobile: long-tap, see below) ─────────────────────────
+map.on("click", async (e) => {
+    if (e.latlng.lng < 0 || e.latlng.lng > imageWidth ||
+        e.latlng.lat < 0 || e.latlng.lat > imageHeight) return;
+    await handleMapClickLatLng(e.latlng.lat, e.latlng.lng);
 });
 
 // ─── MARKER CLICK / CONTEXTMENU — DOM DELEGATION ─────────────────────────────
@@ -923,6 +923,7 @@ function goToCoords() {
         fillColor: "rgba(79,163,255,0.2)", fillOpacity: 1
     }).addTo(map);
     setTimeout(() => map.removeLayer(flash), 2000);
+    if (map3DState) map3DState.flyTo(y, x);
 }
 coordSearchBtn.addEventListener("click", goToCoords);
 coordSearchInput.addEventListener("keydown", (e) => { if (e.key === "Enter") goToCoords(); });
@@ -981,6 +982,7 @@ toggleBtn.addEventListener("click", () => {
     toggleBtn.textContent = drawMode ? "ON" : "OFF";
     toggleBtn.classList.toggle("on", drawMode);
     canvas.classList.toggle("active", drawMode);
+    document.getElementById("mapWrapper")?.classList.toggle("draw-mode-3d", drawMode);
     map.dragging[drawMode ? "disable" : "enable"]();
     map.scrollWheelZoom[drawMode ? "disable" : "enable"]();
     document.getElementById("drawModeStatus").textContent = t(drawMode ? "drawOn" : "drawOff");
@@ -1335,14 +1337,13 @@ let map3DState  = null;   // active 3D instance for the monitor map
 let arty3DState = null;   // active 3D instance for the arty calculator
 
 async function create3DScene(container, { withMarkers = false } = {}) {
-    // Dynamic import — resolved via the importmap in index.html
     const THREE = await import("three");
     const { OrbitControls } = await import("three/addons/controls/OrbitControls.js");
 
     const W = container.clientWidth  || 800;
     const H = container.clientHeight || 600;
 
-    // ── Renderer ──
+    // ── Renderer ──────────────────────────────────────────────────────────────
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(W, H);
@@ -1350,17 +1351,15 @@ async function create3DScene(container, { withMarkers = false } = {}) {
     canvas.className = "view-3d-canvas";
     container.appendChild(canvas);
 
-    // ── Scene ──
-    const scene = new THREE.Scene();
+    // ── Scene / camera ────────────────────────────────────────────────────────
+    const scene  = new THREE.Scene();
     scene.background = new THREE.Color(0x060c16);
-
-    // ── Camera ──
     const camera = new THREE.PerspectiveCamera(50, W / H, 1, 8000);
     camera.position.set(0, 900, 650);
 
-    // ── Map plane ──
-    const PW = imageWidth;   // 1204
-    const PH = imageHeight;  // 1290
+    // ── Map plane ─────────────────────────────────────────────────────────────
+    const PW = imageWidth;    // 1204
+    const PH = imageHeight;   // 1290
     const texture = await new Promise((res, rej) =>
         new THREE.TextureLoader().load("map.png", res, undefined, rej)
     );
@@ -1372,7 +1371,6 @@ async function create3DScene(container, { withMarkers = false } = {}) {
     mesh.rotation.x = -Math.PI / 2;
     scene.add(mesh);
 
-    // Thin accent border
     const borderGeo = new THREE.EdgesGeometry(geo);
     const borderMat = new THREE.LineBasicMaterial({ color: 0x4fa3ff, transparent: true, opacity: 0.35 });
     const border = new THREE.LineSegments(borderGeo, borderMat);
@@ -1380,7 +1378,7 @@ async function create3DScene(container, { withMarkers = false } = {}) {
     border.position.y = 1;
     scene.add(border);
 
-    // ── OrbitControls ──
+    // ── OrbitControls ─────────────────────────────────────────────────────────
     const controls = new OrbitControls(camera, canvas);
     controls.enableDamping      = true;
     controls.dampingFactor      = 0.06;
@@ -1388,16 +1386,15 @@ async function create3DScene(container, { withMarkers = false } = {}) {
     controls.minDistance        = 60;
     controls.maxDistance        = 4000;
     controls.maxPolarAngle      = Math.PI / 2 - 0.01;
-    // Left-drag = pan, middle-drag = orbit, right-drag = zoom (dolly)
     controls.mouseButtons = {
-        LEFT:   THREE.MOUSE.PAN,         // LMB drag: pan
-        MIDDLE: THREE.MOUSE.ROTATE,      // MMB drag: orbit
-        RIGHT:  THREE.MOUSE.DOLLY        // RMB drag: zoom
+        LEFT:   THREE.MOUSE.PAN,
+        MIDDLE: THREE.MOUSE.ROTATE,
+        RIGHT:  THREE.MOUSE.DOLLY
     };
     controls.target.set(0, 0, 0);
     controls.update();
 
-    // ── Render loop ──
+    // ── Render loop ───────────────────────────────────────────────────────────
     let animId;
     const animate = () => {
         animId = requestAnimationFrame(animate);
@@ -1406,7 +1403,7 @@ async function create3DScene(container, { withMarkers = false } = {}) {
     };
     animate();
 
-    // ── Resize observer ──
+    // ── Resize observer ───────────────────────────────────────────────────────
     const ro = new ResizeObserver(() => {
         const w = container.clientWidth, h = container.clientHeight;
         if (!w || !h) return;
@@ -1416,43 +1413,148 @@ async function create3DScene(container, { withMarkers = false } = {}) {
     });
     ro.observe(container);
 
-    // ── 3D Markers (only for monitor map) ──────────────────────────────────────
-    const markers3D = {};  // id → { line, lineGeo, lineMat, sprite?, tex?, spriteMat? }
+    // ── Coordinate helpers ────────────────────────────────────────────────────
+    // Leaflet (lat=y, lng=x) ↔ Three.js world XZ
+    function l2t(lat, lng) { return { x: lng - PW / 2, z: PH / 2 - lat }; }
 
-    // Convert Leaflet (lat=y, lng=x) to Three.js world coords on the XZ plane
-    function l2t(lat, lng) {
-        return { x: lng - PW / 2, z: PH / 2 - lat };
+    // ── Raycaster ─────────────────────────────────────────────────────────────
+    const raycaster  = new THREE.Raycaster();
+    const _mouseNDC  = new THREE.Vector2();
+    function getHitOnPlane(clientX, clientY) {
+        const r = canvas.getBoundingClientRect();
+        _mouseNDC.set(
+            ((clientX - r.left) / r.width)  *  2 - 1,
+            -((clientY - r.top)  / r.height) *  2 + 1
+        );
+        raycaster.setFromCamera(_mouseNDC, camera);
+        const hits = raycaster.intersectObject(mesh);
+        return hits.length ? hits[0].point : null;
     }
 
-    // Build a CanvasTexture from an SVG string (returns Promise<THREE.CanvasTexture>)
+    // ── Pointer interaction (capture phase — runs before OrbitControls) ────────
+    let _ptrStart  = null;   // for click-to-place-marker detection
+    let _draw3D    = false;
+    let _drawStroke3D = null;
+    let _drawStartLL  = null;
+
+    canvas.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
+        if (drawMode) {
+            e.stopPropagation();   // block OrbitControls while drawing
+            _draw3D = true;
+            const pt = getHitOnPlane(e.clientX, e.clientY);
+            if (!pt) return;
+            const ll = { lat: PH / 2 - pt.z, lng: pt.x + PW / 2 };
+            _drawStartLL = ll;
+            if (activeTool === "pen" || activeTool === "eraser") {
+                _drawStroke3D = { tool: activeTool, color: penColor, width: penWidth, points: [ll] };
+            }
+        } else {
+            _ptrStart = { x: e.clientX, y: e.clientY };
+        }
+    }, true);
+
+    canvas.addEventListener("pointermove", (e) => {
+        if (!_draw3D || !drawMode) return;
+        e.stopPropagation();
+        const pt = getHitOnPlane(e.clientX, e.clientY);
+        if (!pt) return;
+        const ll = { lat: PH / 2 - pt.z, lng: pt.x + PW / 2 };
+        if (_drawStroke3D) {
+            _drawStroke3D.points.push(ll);
+            _updatePreview3D(_drawStroke3D.points);
+        }
+    }, true);
+
+    canvas.addEventListener("pointerup", async (e) => {
+        if (e.button !== 0) return;
+        if (drawMode && _draw3D) {
+            e.stopPropagation();
+            _draw3D = false;
+            const pt = getHitOnPlane(e.clientX, e.clientY);
+            const endLL = pt ? { lat: PH / 2 - pt.z, lng: pt.x + PW / 2 } : _drawStartLL;
+            _clearPreview3D();
+            if (_drawStroke3D) {
+                const sd = { tool: _drawStroke3D.tool, color: _drawStroke3D.color,
+                             width: _drawStroke3D.width, points: _drawStroke3D.points,
+                             created: Date.now() };
+                _drawStroke3D = null;
+                if (sd.points.length >= 2) {
+                    try {
+                        const ref = await addDoc(drawingsCollection, sd);
+                        undoStack.push({ type: "drawing", id: ref.id });
+                    } catch (err) { console.error("3D drawing save:", err); }
+                }
+            } else if (_drawStartLL && endLL) {
+                const sd = { tool: activeTool, color: penColor, width: penWidth,
+                             ll1: _drawStartLL, ll2: endLL, created: Date.now() };
+                _drawStartLL = null;
+                try {
+                    const ref = await addDoc(drawingsCollection, sd);
+                    undoStack.push({ type: "drawing", id: ref.id });
+                } catch (err) { console.error("3D drawing save:", err); }
+            }
+            _drawStartLL = null;
+        } else if (!drawMode && !rulerMode && _ptrStart) {
+            const dx = e.clientX - _ptrStart.x, dy = e.clientY - _ptrStart.y;
+            _ptrStart = null;
+            if (Math.hypot(dx, dy) < 5) {
+                const pt = getHitOnPlane(e.clientX, e.clientY);
+                if (pt) {
+                    const lat = PH / 2 - pt.z, lng = pt.x + PW / 2;
+                    if (lat >= 0 && lat <= PH && lng >= 0 && lng <= PW) {
+                        await handleMapClickLatLng(lat, lng);
+                    }
+                }
+            }
+        } else {
+            _ptrStart = null;
+        }
+    }, true);
+
+    // ── Live pen-stroke preview ────────────────────────────────────────────────
+    let _previewLine = null;
+    function _updatePreview3D(points) {
+        _clearPreview3D();
+        if (points.length < 2) return;
+        const verts = points.map(p => { const { x, z } = l2t(p.lat, p.lng); return new THREE.Vector3(x, 1.5, z); });
+        const g = new THREE.BufferGeometry().setFromPoints(verts);
+        const m = new THREE.LineBasicMaterial({ color: new THREE.Color(penColor), transparent: true, opacity: 0.9 });
+        _previewLine = new THREE.Line(g, m);
+        scene.add(_previewLine);
+    }
+    function _clearPreview3D() {
+        if (!_previewLine) return;
+        scene.remove(_previewLine);
+        _previewLine.geometry.dispose();
+        _previewLine.material.dispose();
+        _previewLine = null;
+    }
+
+    // ── 3D Markers ─────────────────────────────────────────────────────────────
+    const markers3D = {};
+
     function svgToTex(svgStr) {
         return new Promise(resolve => {
-            const SX = 2;  // super-sample scale
-            const CW = 46 * SX, CH = 57 * SX;
-            const cv  = document.createElement("canvas");
-            cv.width  = CW; cv.height = CH;
+            const SX = 2, CW = 46 * SX, CH = 57 * SX;
+            const cv = document.createElement("canvas");
+            cv.width = CW; cv.height = CH;
             const ctx = cv.getContext("2d");
-            const blob = new Blob([svgStr], { type: "image/svg+xml" });
-            const url  = URL.createObjectURL(blob);
-            const img  = new Image(CW, CH);
-            img.onload = () => {
+            const url = URL.createObjectURL(new Blob([svgStr], { type: "image/svg+xml" }));
+            const img = new Image(CW, CH);
+            const done = () => {
                 URL.revokeObjectURL(url);
-                ctx.drawImage(img, 0, 0, CW, CH);
                 const t = new THREE.CanvasTexture(cv);
                 t.needsUpdate = true;
                 resolve(t);
             };
+            img.onload = () => { ctx.drawImage(img, 0, 0, CW, CH); done(); };
             img.onerror = () => {
-                URL.revokeObjectURL(url);
-                // Fallback: simple coloured shape
                 ctx.fillStyle = "#f87171";
                 ctx.beginPath();
-                ctx.moveTo(CW/2, 4); ctx.lineTo(CW-4, CH/2);
-                ctx.lineTo(CW/2, CH-4); ctx.lineTo(4, CH/2);
+                ctx.moveTo(CW/2,4); ctx.lineTo(CW-4,CH/2); ctx.lineTo(CW/2,CH-4); ctx.lineTo(4,CH/2);
                 ctx.closePath(); ctx.fill();
-                const t = new THREE.CanvasTexture(cv);
-                t.needsUpdate = true;
-                resolve(t);
+                done();
             };
             img.src = url;
         });
@@ -1461,27 +1563,19 @@ async function create3DScene(container, { withMarkers = false } = {}) {
     async function addMarker3D(id, data) {
         removeMarker3D(id);
         if (!withMarkers) return;
-
         const { x: mx, z: mz } = l2t(data.y, data.x);
         const POLE = 65;
-
-        // Vertical pole from ground to icon base
-        const pts = new Float32Array([mx, 2, mz,  mx, POLE, mz]);
+        const pts = new Float32Array([mx, 2, mz, mx, POLE, mz]);
         const lineGeo = new THREE.BufferGeometry();
         lineGeo.setAttribute("position", new THREE.BufferAttribute(pts, 3));
         const lineMat = new THREE.LineBasicMaterial({ color: 0xbcccdd, transparent: true, opacity: 0.85 });
         const line = new THREE.Line(lineGeo, lineMat);
         scene.add(line);
-
-        // Store immediately so removeMarker3D can clean up even during async texture load
         markers3D[id] = { line, lineGeo, lineMat };
 
-        // Build SVG texture then attach sprite
         const type = data.type || "infantry_alive";
         const svgStr = (data.side === "friendly") ? symbolSVGFriendly(type) : symbolSVG(type);
         const tex = await svgToTex(svgStr);
-
-        // Might have been removed while texture was loading
         if (!markers3D[id]) { tex.dispose(); return; }
 
         const spriteMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
@@ -1489,35 +1583,97 @@ async function create3DScene(container, { withMarkers = false } = {}) {
         sprite.position.set(mx, POLE + 24, mz);
         sprite.scale.set(42, 52, 1);
         scene.add(sprite);
-
         Object.assign(markers3D[id], { sprite, tex, spriteMat });
     }
 
     function removeMarker3D(id) {
-        const m = markers3D[id];
-        if (!m) return;
-        if (m.line)     { scene.remove(m.line);   m.lineGeo?.dispose(); m.lineMat?.dispose(); }
-        if (m.sprite)   { scene.remove(m.sprite);  m.tex?.dispose();    m.spriteMat?.dispose(); }
+        const m = markers3D[id]; if (!m) return;
+        scene.remove(m.line);   m.lineGeo?.dispose(); m.lineMat?.dispose();
+        if (m.sprite) { scene.remove(m.sprite); m.tex?.dispose(); m.spriteMat?.dispose(); }
         delete markers3D[id];
     }
 
-    function clearMarkers3D() {
-        Object.keys(markers3D).forEach(removeMarker3D);
+    // ── 3D Drawings ────────────────────────────────────────────────────────────
+    const strokes3D = {};   // firestoreId → { line, geo, mat }
+    const DRAW_Y = 1.5;     // height above plane
+
+    function _strokeVerts(data) {
+        if (data.points?.length >= 2) {
+            return data.points.map(p => { const { x, z } = l2t(p.lat, p.lng); return new THREE.Vector3(x, DRAW_Y, z); });
+        }
+        if (data.ll1 && data.ll2) {
+            const a = l2t(data.ll1.lat, data.ll1.lng);
+            const b = l2t(data.ll2.lat, data.ll2.lng);
+            if (data.tool === "circle") {
+                const cx = (a.x+b.x)/2, cz = (a.z+b.z)/2;
+                const rx = Math.abs(b.x-a.x)/2, rz = Math.abs(b.z-a.z)/2;
+                return Array.from({ length: 65 }, (_, i) => {
+                    const t = (i / 64) * Math.PI * 2;
+                    return new THREE.Vector3(cx + rx * Math.cos(t), DRAW_Y, cz + rz * Math.sin(t));
+                });
+            }
+            if (data.tool === "rect") {
+                return [
+                    new THREE.Vector3(a.x, DRAW_Y, a.z), new THREE.Vector3(b.x, DRAW_Y, a.z),
+                    new THREE.Vector3(b.x, DRAW_Y, b.z), new THREE.Vector3(a.x, DRAW_Y, b.z),
+                    new THREE.Vector3(a.x, DRAW_Y, a.z)
+                ];
+            }
+            return [new THREE.Vector3(a.x, DRAW_Y, a.z), new THREE.Vector3(b.x, DRAW_Y, b.z)];
+        }
+        return null;
     }
 
+    function addStroke3D(id, data) {
+        removeStroke3D(id);
+        if (data.tool === "eraser") return;
+        const verts = _strokeVerts(data);
+        if (!verts || verts.length < 2) return;
+        const g = new THREE.BufferGeometry().setFromPoints(verts);
+        const m = new THREE.LineBasicMaterial({ color: new THREE.Color(data.color || "#ff4444") });
+        const line = new THREE.Line(g, m);
+        scene.add(line);
+        strokes3D[id] = { line, g, m };
+    }
+
+    function removeStroke3D(id) {
+        const s = strokes3D[id]; if (!s) return;
+        scene.remove(s.line); s.g.dispose(); s.m.dispose();
+        delete strokes3D[id];
+    }
+
+    // ── Fly-to animation (for coordinate search) ─────────────────────────────
+    function flyTo(lat, lng) {
+        const { x, z } = l2t(lat, lng);
+        const from = controls.target.clone();
+        const to   = new THREE.Vector3(x, 0, z);
+        const t0   = performance.now();
+        const dur  = 600;
+        (function step() {
+            const t = Math.min((performance.now() - t0) / dur, 1);
+            const e = t < .5 ? 2*t*t : -1 + (4 - 2*t)*t;
+            controls.target.lerpVectors(from, to, e);
+            controls.update();
+            if (t < 1) requestAnimationFrame(step);
+        })();
+    }
+
+    // ── Dispose ───────────────────────────────────────────────────────────────
     return {
         addMarker3D,
         removeMarker3D,
+        addStroke3D,
+        removeStroke3D,
+        flyTo,
         dispose() {
-            clearMarkers3D();
+            Object.keys(markers3D).forEach(removeMarker3D);
+            Object.keys(strokes3D).forEach(removeStroke3D);
+            _clearPreview3D();
             cancelAnimationFrame(animId);
             ro.disconnect();
             controls.dispose();
-            texture.dispose();
-            mat.dispose();
-            geo.dispose();
-            borderGeo.dispose();
-            borderMat.dispose();
+            texture.dispose(); mat.dispose(); geo.dispose();
+            borderGeo.dispose(); borderMat.dispose();
             renderer.dispose();
             canvas.remove();
         }
@@ -1545,8 +1701,9 @@ document.getElementById("map3DBtn")?.addEventListener("click", async () => {
         map3DState = await create3DScene(document.getElementById("mapWrapper"), { withMarkers: true });
         document.getElementById("map3DBtn").classList.add("active");
         document.getElementById("map2DBtn").classList.remove("active");
-        // Populate existing 2D markers into the 3D scene
+        // Populate existing markers and drawings into the 3D scene
         Object.entries(displayedMarkers).forEach(([id, { data }]) => map3DState.addMarker3D(id, data));
+        strokes.forEach(s => { if (s.firestoreId) map3DState.addStroke3D(s.firestoreId, s); });
     } catch (e) {
         console.error("3D init error:", e);
     }
