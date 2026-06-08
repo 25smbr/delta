@@ -186,18 +186,18 @@ function t(key, ...args) {
 // image's actual size.  ppm (pixels-per-metre) will be calibrated later.
 // ppm (pixels-per-metre) for new maps: to be calibrated — placeholder kept from Dustbowl 2
 const MAPS = [
-    { id: "map1",  name: "Dustbowl 2",       file: "map.png",              width: 1204, height: 1290, ppm: 142/250 },
-    { id: "map2",  name: "Sokolovka",         file: "sokolovka.png",        width:  628, height:  629, ppm: 142/250 },
-    { id: "map3",  name: "Arctic Airbase",    file: "arctic_airbase.png",   width:  627, height:  631, ppm: 142/250 },
-    { id: "map4",  name: "Muddy Fields",      file: "muddy_fields.png",     width:  625, height:  633, ppm: 142/250 },
-    { id: "map5",  name: "Fulvia Gap",        file: "fulvia_gap.png",       width:  617, height:  628, ppm: 142/250 },
-    { id: "map6",  name: "Snowy Fields",      file: "snowy_fields.png",     width:  629, height:  626, ppm: 142/250 },
-    { id: "map7",  name: "Rohkstov",          file: "rohkstov.png",         width:  628, height:  635, ppm: 142/250 },
-    { id: "map8",  name: "Rohkstov Short",    file: "rohkshort.png",        width:  615, height:  622, ppm: 142/250 },
-    { id: "map9",  name: "Roinburg",          file: "roinburg.png",         width:  620, height:  628, ppm: 142/250 },
-    { id: "map10", name: "Zone 11",           file: "zone_11.png",          width:  626, height:  631, ppm: 142/250 },
-    { id: "map11", name: "Normandy Bocage",   file: "normandy_bocage.png",  width:  629, height:  634, ppm: 142/250 },
-    { id: "map12", name: "Villers Sommeil",   file: "villers_sommeil.png",  width:  618, height:  631, ppm: 142/250 },
+    { id: "map1",  name: "Dustbowl 2",       file: "map.png",              width: 1204, height: 1290, ppm: 142/250  },
+    { id: "map2",  name: "Sokolovka",         file: "sokolovka.png",        width:  628, height:  629, ppm: 65/200   },
+    { id: "map3",  name: "Arctic Airbase",    file: "arctic_airbase.png",   width:  627, height:  631, ppm: 65/162   },
+    { id: "map4",  name: "Muddy Fields",      file: "muddy_fields.png",     width:  625, height:  633, ppm: 65/240   },
+    { id: "map5",  name: "Fulvia Gap",        file: "fulvia_gap.png",       width:  617, height:  628, ppm: 65/320   },
+    { id: "map6",  name: "Snowy Fields",      file: "snowy_fields.png",     width:  629, height:  626, ppm: 65/240   },
+    { id: "map7",  name: "Rohkstov",          file: "rohkstov.png",         width:  628, height:  635, ppm: 65/600   },
+    { id: "map8",  name: "Rohkshort",         file: "rohkshort.png",        width:  615, height:  622, ppm: 65/369   },
+    { id: "map9",  name: "Roinburg",          file: "roinburg.png",         width:  620, height:  628, ppm: 65/142   },
+    { id: "map10", name: "Zone 11",           file: "zone_11.png",          width:  626, height:  631, ppm: 65/324   },
+    { id: "map11", name: "Normandy Bocage",   file: "normandy_bocage.png",  width:  629, height:  634, ppm: 65/239   },
+    { id: "map12", name: "Villers Sommeil",   file: "villers_sommeil.png",  width:  618, height:  631, ppm: 65/120   },
 ];
 let currentMapIdx = parseInt(localStorage.getItem("currentMapIdx") || "0");
 if (currentMapIdx >= MAPS.length) currentMapIdx = 0;
@@ -233,6 +233,10 @@ function loadMapConfig(idx) {
     if (lbl) lbl.textContent = cfg.name;
     buildMapSelectorDropdown();
     if (typeof resizeCanvas === "function") setTimeout(resizeCanvas, 50);
+    // Re-subscribe to map-scoped markers and drawings
+    subscribeToMap(cfg.id);
+    // Update arty map image if arty calc is already initialised
+    if (typeof reloadArtyMapImage === "function") reloadArtyMapImage();
 }
 const bounds = [[0, 0], [imageHeight, imageWidth]];
 _mapImageOverlay = L.imageOverlay(MAPS[currentMapIdx].file, bounds).addTo(map);
@@ -612,7 +616,7 @@ async function redoLast() {
     } else if (last.type === "drawing") {
         try {
             const { firestoreId, ...strokeData } = last.stroke;
-            const docRef = await addDoc(drawingsCollection, strokeData);
+            const docRef = await addDrawing(strokeData);
             undoStack.push({ type: "drawing", id: docRef.id });
         } catch (err) { console.error("Redo drawing failed:", err); }
     }
@@ -620,7 +624,7 @@ async function redoLast() {
 // ─── CLEAR MARKERS ────────────────────────────────────────────────────────────
 document.getElementById("clearMarkersBtn").addEventListener("click", async () => {
     if (!confirm("Delete ALL markers? This cannot be undone.")) return;
-    const snapshot = await getDocs(markersCollection);
+    const snapshot = await getDocs(query(markersCollection, where("mapId", "==", MAPS[currentMapIdx].id)));
     const batch    = writeBatch(db);
     snapshot.forEach(d => batch.delete(d.ref));
     await batch.commit();
@@ -628,6 +632,10 @@ document.getElementById("clearMarkersBtn").addEventListener("click", async () =>
         if (undoStack[i].type === "marker") undoStack.splice(i, 1);
     }
 });
+// ─── HELPER: save a drawing tagged to the current map ────────────────────────
+function addDrawing(data) {
+    return addDoc(drawingsCollection, { ...data, mapId: MAPS[currentMapIdx].id });
+}
 // ─── CLEAR DRAWINGS ──────────────────────────────────────────────────────────
 document.getElementById("clearDrawingsBtn").addEventListener("click", async () => {
     if (!confirm("Delete ALL drawings? This cannot be undone.")) return;
@@ -637,7 +645,7 @@ document.getElementById("clearDrawingsBtn").addEventListener("click", async () =
         if (undoStack[i].type === "drawing") undoStack.splice(i, 1);
     }
     try {
-        const snapshot = await getDocs(drawingsCollection);
+        const snapshot = await getDocs(query(drawingsCollection, where("mapId", "==", MAPS[currentMapIdx].id)));
         if (!snapshot.empty) {
             const batch = writeBatch(db);
             snapshot.forEach(d => batch.delete(d.ref));
@@ -709,64 +717,95 @@ function createIcon(type, data = {}, markerId = "") {
         iconAnchor: [70, 67]
     });
 }
-onSnapshot(markersCollection, (snapshot) => {
-    snapshot.docChanges().forEach((change) => {
-        const id   = change.doc.id;
-        const data = change.doc.data();
-        if (change.type === "added") {
-            const marker = L.marker([data.y, data.x], {
-                icon:        createIcon(data.type || "infantry_alive", data, id),
-                interactive: false   // clicks pass through to map; handled via DOM delegation
-            }).addTo(map);
-            displayedMarkers[id] = { marker, data };
-            if (pendingEditMarkerId === id) pendingEditMarkerId = null;
-            if (map3DState)  map3DState.addMarker3D(id, data);
-            if (arty3DState) arty3DState.addMarker3D(id, data);
-        } else if (change.type === "modified") {
-            if (displayedMarkers[id]) {
-                displayedMarkers[id].marker.setIcon(
-                    createIcon(data.type || "infantry_alive", data, id)
-                );
-                displayedMarkers[id].data = data;
-            }
-            if (map3DState)  map3DState.addMarker3D(id, data);   // rebuild 3D object
-            if (arty3DState) arty3DState.addMarker3D(id, data);
-        } else if (change.type === "removed") {
-            if (displayedMarkers[id]) {
-                map.removeLayer(displayedMarkers[id].marker);
-                delete displayedMarkers[id];
-            }
-            if (map3DState)  map3DState.removeMarker3D(id);
-            if (arty3DState) arty3DState.removeMarker3D(id);
-        }
-    });
-    document.getElementById("markerCount").textContent =
-        t("markers", Object.keys(displayedMarkers).length);
-    applyFilter();
-}, (err) => console.error("Markers sync error:", err));
-// ─── FIRESTORE REALTIME — DRAWINGS ───────────────────────────────────────────
-onSnapshot(drawingsCollection, (snapshot) => {
-    snapshot.docChanges().forEach((change) => {
-        const id   = change.doc.id;
-        const data = change.doc.data();
-        if (change.type === "added") {
-            if (!strokes.some(s => s.firestoreId === id)) {
-                strokes.push({ ...data, firestoreId: id });
-            }
-            if (map3DState) map3DState.addStroke3D(id, data);
-        } else if (change.type === "modified") {
-            const idx = strokes.findIndex(s => s.firestoreId === id);
-            if (idx !== -1) strokes[idx] = { ...data, firestoreId: id };
-            if (map3DState) map3DState.addStroke3D(id, data);
-        } else if (change.type === "removed") {
-            strokes = strokes.filter(s => s.firestoreId !== id);
-            if (map3DState) map3DState.removeStroke3D(id);
-        }
-    });
+// ─── FIRESTORE REALTIME — MAP-SCOPED MARKERS & DRAWINGS ─────────────────────
+let _unsubMarkers  = null;
+let _unsubDrawings = null;
+
+function subscribeToMap(mapId) {
+    // Unsubscribe previous listeners
+    if (_unsubMarkers)  { _unsubMarkers();  _unsubMarkers  = null; }
+    if (_unsubDrawings) { _unsubDrawings(); _unsubDrawings = null; }
+
+    // Clear all displayed markers from Leaflet and 3D scenes
+    Object.entries(displayedMarkers).forEach(([, { marker }]) => map.removeLayer(marker));
+    for (const k in displayedMarkers) delete displayedMarkers[k];
+    if (map3DState)  { try { map3DState.clearAllMarkers3D();  } catch (_) {} }
+    if (arty3DState) { try { arty3DState.clearAllMarkers3D(); } catch (_) {} }
+
+    // Clear all drawings
+    strokes = [];
+    if (map3DState) { try { map3DState.clearAllStrokes3D(); } catch (_) {} }
     redrawAll();
-}, (error) => {
-    console.error("Drawings sync error:", error);
-});
+
+    // Subscribe to markers for this map
+    _unsubMarkers = onSnapshot(
+        query(markersCollection, where("mapId", "==", mapId)),
+        (snapshot) => {
+            snapshot.docChanges().forEach((change) => {
+                const id   = change.doc.id;
+                const data = change.doc.data();
+                if (change.type === "added") {
+                    const marker = L.marker([data.y, data.x], {
+                        icon:        createIcon(data.type || "infantry_alive", data, id),
+                        interactive: false
+                    }).addTo(map);
+                    displayedMarkers[id] = { marker, data };
+                    if (pendingEditMarkerId === id) pendingEditMarkerId = null;
+                    if (map3DState)  map3DState.addMarker3D(id, data);
+                    if (arty3DState) arty3DState.addMarker3D(id, data);
+                } else if (change.type === "modified") {
+                    if (displayedMarkers[id]) {
+                        displayedMarkers[id].marker.setIcon(
+                            createIcon(data.type || "infantry_alive", data, id)
+                        );
+                        displayedMarkers[id].data = data;
+                    }
+                    if (map3DState)  map3DState.addMarker3D(id, data);
+                    if (arty3DState) arty3DState.addMarker3D(id, data);
+                } else if (change.type === "removed") {
+                    if (displayedMarkers[id]) {
+                        map.removeLayer(displayedMarkers[id].marker);
+                        delete displayedMarkers[id];
+                    }
+                    if (map3DState)  map3DState.removeMarker3D(id);
+                    if (arty3DState) arty3DState.removeMarker3D(id);
+                }
+            });
+            document.getElementById("markerCount").textContent =
+                t("markers", Object.keys(displayedMarkers).length);
+            applyFilter();
+        },
+        (err) => console.error("Markers sync error:", err)
+    );
+
+    // Subscribe to drawings for this map
+    _unsubDrawings = onSnapshot(
+        query(drawingsCollection, where("mapId", "==", mapId)),
+        (snapshot) => {
+            snapshot.docChanges().forEach((change) => {
+                const id   = change.doc.id;
+                const data = change.doc.data();
+                if (change.type === "added") {
+                    if (!strokes.some(s => s.firestoreId === id)) {
+                        strokes.push({ ...data, firestoreId: id });
+                    }
+                    if (map3DState) map3DState.addStroke3D(id, data);
+                } else if (change.type === "modified") {
+                    const idx = strokes.findIndex(s => s.firestoreId === id);
+                    if (idx !== -1) strokes[idx] = { ...data, firestoreId: id };
+                    if (map3DState) map3DState.addStroke3D(id, data);
+                } else if (change.type === "removed") {
+                    strokes = strokes.filter(s => s.firestoreId !== id);
+                    if (map3DState) map3DState.removeStroke3D(id);
+                }
+            });
+            redrawAll();
+        },
+        (error) => console.error("Drawings sync error:", error)
+    );
+}
+// Initial subscription for the current map
+subscribeToMap(MAPS[currentMapIdx].id);
 // ─── ADD MARKERS — shared handler (called by Leaflet click AND 3D canvas) ────
 async function handleMapClickLatLng(lat, lng) {
     if (drawMode || rulerMode) return;
@@ -778,6 +817,7 @@ async function handleMapClickLatLng(lat, lng) {
         x: lng, y: lat,
         type:    selectedSymbol,
         side:    placingSide,
+        mapId:   MAPS[currentMapIdx].id,
         created: Date.now(),
         date:    dateStr,
         amount:  "",
@@ -1094,17 +1134,35 @@ document.querySelectorAll(".drawToolBtn").forEach((btn) => {
 document.querySelector('[data-tool="pen"]')?.classList.add("active");
 // ─── DRAW MODE TOGGLE ─────────────────────────────────────────────────────────
 const toggleBtn = document.getElementById("toggleDrawMode");
-toggleBtn.addEventListener("click", () => {
-    drawMode = !drawMode;
+function applyDrawMode() {
     if (drawMode && rulerMode) toggleRuler();
     toggleBtn.textContent = drawMode ? "ON" : "OFF";
     toggleBtn.classList.toggle("on", drawMode);
     canvas.classList.toggle("active", drawMode);
     document.getElementById("mapWrapper")?.classList.toggle("draw-mode-3d", drawMode);
     map.dragging[drawMode ? "disable" : "enable"]();
-    map.scrollWheelZoom[drawMode ? "disable" : "enable"]();
+    // Scroll-wheel zoom stays enabled in draw mode so users can zoom while drawing
     document.getElementById("drawModeStatus").textContent = t(drawMode ? "drawOn" : "drawOff");
+}
+toggleBtn.addEventListener("click", () => {
+    drawMode = !drawMode;
+    applyDrawMode();
 });
+// Forward wheel events from canvas to map so zoom works during drawing
+canvas.addEventListener("wheel", (e) => {
+    if (!drawMode) return;
+    map.getContainer().dispatchEvent(new WheelEvent("wheel", {
+        bubbles: true, cancelable: true,
+        deltaX: e.deltaX, deltaY: e.deltaY, deltaZ: e.deltaZ,
+        deltaMode: e.deltaMode,
+        clientX: e.clientX, clientY: e.clientY,
+        ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, altKey: e.altKey
+    }));
+    e.preventDefault();
+}, { passive: false });
+// Start with draw mode on
+drawMode = true;
+applyDrawMode();
 // ─── COLOR SWATCHES ───────────────────────────────────────────────────────────
 document.querySelectorAll(".swatch").forEach((sw) => {
     sw.addEventListener("click", () => {
@@ -1437,7 +1495,7 @@ canvas.addEventListener("mouseup", async (e) => {
         };
         currentStroke = null;
         try {
-            const docRef = await addDoc(drawingsCollection, strokeData);
+            const docRef = await addDrawing(strokeData);
             undoStack.push({ type: "drawing", id: docRef.id });
         } catch (err) {
             console.error("Failed to save drawing:", err);
@@ -1476,7 +1534,7 @@ canvas.addEventListener("mouseup", async (e) => {
                 };
                 redrawAll();
                 try {
-                    const docRef = await addDoc(drawingsCollection, stroke);
+                    const docRef = await addDrawing(stroke);
                     undoStack.push({ type: "drawing", id: docRef.id });
                 } catch (err) {
                     console.error("Failed to save zone:", err);
@@ -1510,7 +1568,7 @@ canvas.addEventListener("mouseup", async (e) => {
             created: Date.now()
         };
         try {
-            const docRef = await addDoc(drawingsCollection, stroke);
+            const docRef = await addDrawing(stroke);
             undoStack.push({ type: "drawing", id: docRef.id });
         } catch (err) {
             console.error("Failed to save drawing:", err);
@@ -1533,7 +1591,7 @@ canvas.addEventListener("mouseleave", async () => {
         currentStroke = null;
         isDrawing = false;
         try {
-            const docRef = await addDoc(drawingsCollection, strokeData);
+            const docRef = await addDrawing(strokeData);
             undoStack.push({ type: "drawing", id: docRef.id });
         } catch (err) {
             console.error("Failed to save drawing:", err);
@@ -1575,7 +1633,7 @@ canvas.addEventListener("mouseleave", async () => {
             created:   Date.now()
         };
         try {
-            const docRef = await addDoc(drawingsCollection, stroke);
+            const docRef = await addDrawing(stroke);
             undoStack.push({ type: "drawing", id: docRef.id });
         } catch (err) {
             console.error("Label save failed:", err);
@@ -1828,7 +1886,7 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
                 _drawStroke3D = null;
                 if (sd.points.length >= 2) {
                     try {
-                        const ref = await addDoc(drawingsCollection, sd);
+                        const ref = await addDrawing(sd);
                         undoStack.push({ type: "drawing", id: ref.id });
                     } catch (err) { console.error("3D drawing save:", err); }
                 }
@@ -1837,7 +1895,7 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
                              ll1: _drawStartLL, ll2: endLL, created: Date.now() };
                 _drawStartLL = null;
                 try {
-                    const ref = await addDoc(drawingsCollection, sd);
+                    const ref = await addDrawing(sd);
                     undoStack.push({ type: "drawing", id: ref.id });
                 } catch (err) { console.error("3D drawing save:", err); }
             }
@@ -2451,6 +2509,8 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
             const userId = getCurrentUser()?.userId || null;
             if (userId) _paintWatermark(oc, W, H, userId, true);
         },
+        clearAllMarkers3D() { Object.keys(markers3D).forEach(removeMarker3D); },
+        clearAllStrokes3D() { Object.keys(strokes3D).forEach(removeStroke3D); },
         refreshWatermark() { draw3DWatermark(); },
         dispose() {
             Object.keys(markers3D).forEach(removeMarker3D);
@@ -2911,6 +2971,7 @@ collapseBtn.addEventListener("click", () => {
             await setDoc(newRef, {
                 x: pt.lng, y: pt.lat,
                 type: selectedSymbol, side: placingSide,
+                mapId: MAPS[currentMapIdx].id,
                 created: Date.now(), date: dateStr,
                 amount: "", info: "", source: "",
                 author: getCallsign()
@@ -5041,11 +5102,33 @@ function triggerArtyCalc() {
     }
 }
 
+let _artyImageOverlay = null;
+
+function reloadArtyMapImage() {
+    if (!artyMapInstance) return;
+    const cfg = MAPS[currentMapIdx];
+    const newBounds = [[0, 0], [cfg.height, cfg.width]];
+    if (_artyImageOverlay) { artyMapInstance.removeLayer(_artyImageOverlay); _artyImageOverlay = null; }
+    _artyImageOverlay = L.imageOverlay(cfg.file, newBounds).addTo(artyMapInstance);
+    artyMapInstance.setMaxBounds(newBounds);
+    artyMapInstance.fitBounds(newBounds);
+    // Clear gun/target markers since their pixel coords are map-specific
+    if (artyGunMarker) { artyGunMarker.remove(); artyGunMarker = null; }
+    if (artyTgtMarker) { artyTgtMarker.remove(); artyTgtMarker = null; }
+    if (artyLine)      { artyLine.remove();      artyLine      = null; }
+    artyGunPx = null; artyTgtPx = null;
+    document.getElementById("artyGunX").value = "";
+    document.getElementById("artyGunY").value = "";
+    document.getElementById("artyTgtX").value = "";
+    document.getElementById("artyTgtY").value = "";
+}
+
 function initArtyMap() {
     const el = document.getElementById("artyMapEl");
     if (!el) return;
     if (artyMapInstance) {
-        // Already created — just resize to the newly visible container
+        // Already created — reload image for current map and resize
+        reloadArtyMapImage();
         setTimeout(() => {
             artyMapInstance.invalidateSize();
             artyMapInstance.fitBounds([[0, 0], [imageHeight, imageWidth]]);
@@ -5057,7 +5140,7 @@ function initArtyMap() {
         zoomControl: true, attributionControl: false
     });
     const artBounds = [[0, 0], [imageHeight, imageWidth]];
-    L.imageOverlay(MAPS[currentMapIdx].file, artBounds).addTo(artyMapInstance);
+    _artyImageOverlay = L.imageOverlay(MAPS[currentMapIdx].file, artBounds).addTo(artyMapInstance);
     artyMapInstance.fitBounds(artBounds);
     // Force a second layout pass after the flex container finishes sizing
     setTimeout(() => {
