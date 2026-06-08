@@ -400,7 +400,7 @@
         <!-- Identity bar — callsign + role, persisted in localStorage -->
         <div class="chat-identity-bar">
           <input id="callsignInput" class="chat-identity-input mono"
-                 placeholder="CALLSIGN" data-i18n-ph="callsign" maxlength="12" autocomplete="off" spellcheck="false"/>
+                 placeholder="CALLSIGN" data-i18n-ph="callsign" maxlength="32" autocomplete="off" spellcheck="false"/>
           <select id="roleSelect" class="chat-role-select mono">
             <option value="owner"     style="color:#f59e0b">★ ADMIN</option>
             <option value="operator"  data-i18n-opt="roleOperator">OPERATOR</option>
@@ -575,7 +575,7 @@
       <div id="loginPanel" class="modal-body">
         <div class="modal-field">
           <label class="modal-label" data-i18n="username">USERNAME</label>
-          <input id="loginUsername" class="modal-input mono" type="text" maxlength="16"
+          <input id="loginUsername" class="modal-input mono" type="text" maxlength="32"
                  autocomplete="off" spellcheck="false"/>
         </div>
         <div class="modal-field">
@@ -595,7 +595,7 @@
       <div id="registerPanel" class="modal-body" style="display:none">
         <div class="modal-field">
           <label class="modal-label" data-i18n="username">USERNAME</label>
-          <input id="regUsername" class="modal-input mono" type="text" maxlength="16"
+          <input id="regUsername" class="modal-input mono" type="text" maxlength="32"
                  autocomplete="off" spellcheck="false"/>
         </div>
         <div class="modal-field">
@@ -680,6 +680,16 @@
               <div class="admin-sub-title">ACCOUNTS</div>
               <div id="adminAccountsList" class="admin-list"></div>
             </div>
+            <div class="admin-sub-section">
+              <div class="admin-sub-title" style="display:flex;align-items:center;justify-content:space-between">
+                🔧 DEBUG
+                <span style="display:flex;gap:4px">
+                  <button class="admin-btn" id="debugRefreshBtn" title="Refresh">↻</button>
+                  <button class="admin-btn" id="debugCopyBtn"    title="Copy to clipboard">⎘</button>
+                </span>
+              </div>
+              <pre id="debugPanelContent" class="debug-pre">Loading…</pre>
+            </div>
           </div>
         </div>
 
@@ -734,7 +744,7 @@
     <div id="authLoginPanel" class="auth-panel">
       <div class="auth-field">
         <label class="auth-label">USERNAME</label>
-        <input id="authLoginUser" class="auth-input mono" type="text" maxlength="16"
+        <input id="authLoginUser" class="auth-input mono" type="text" maxlength="32"
                autocomplete="off" spellcheck="false" placeholder="ENTER USERNAME"/>
       </div>
       <div class="auth-field">
@@ -750,7 +760,7 @@
     <div id="authRegPanel" class="auth-panel" style="display:none">
       <div class="auth-field">
         <label class="auth-label">USERNAME</label>
-        <input id="authRegUser" class="auth-input mono" type="text" maxlength="16"
+        <input id="authRegUser" class="auth-input mono" type="text" maxlength="32"
                autocomplete="off" spellcheck="false" placeholder="CHOOSE USERNAME"/>
       </div>
       <div class="auth-field">
