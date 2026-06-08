@@ -2049,18 +2049,112 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
     function addStroke3D(id, data) {
         removeStroke3D(id);
         if (data.tool === "eraser") return;
-        const verts = _strokeVerts(data);
-        if (!verts || verts.length < 2) return;
-        const g = new THREE.BufferGeometry().setFromPoints(verts);
-        const m = new THREE.LineBasicMaterial({ color: new THREE.Color(data.color || "#ff4444") });
-        const line = new THREE.Line(g, m);
-        scene.add(line);
-        strokes3D[id] = { line, g, m };
+        const color3 = new THREE.Color(data.color || "#ff4444");
+        const objs = [];   // THREE.Object3D to add/remove from scene
+        const disp = [];   // BufferGeometry / Material to dispose
+
+        function addObj(o) { scene.add(o); objs.push(o); }
+
+        if (data.tool === "arrow" && data.ll1 && data.ll2) {
+            // ── Shaft ───────────────────────────────────────────────────────
+            const a = l2t(data.ll1.lat, data.ll1.lng);
+            const b = l2t(data.ll2.lat, data.ll2.lng);
+            const shaftGeo = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(a.x, DRAW_Y, a.z),
+                new THREE.Vector3(b.x, DRAW_Y, b.z)
+            ]);
+            const shaftMat = new THREE.LineBasicMaterial({ color: color3, depthTest: false });
+            const shaft    = new THREE.Line(shaftGeo, shaftMat);
+            shaft.renderOrder = 1;
+            addObj(shaft); disp.push(shaftGeo, shaftMat);
+
+            // ── Arrowhead (filled triangle in XZ plane) ─────────────────────
+            const angle   = Math.atan2(b.z - a.z, b.x - a.x);
+            const headLen = 15;
+            // Build shape in (scene_x, scene_z) as (shape.x, shape.y);
+            // rotation.x = +π/2 maps shape (x,y) → world (x, 0, y)
+            const shape = new THREE.Shape();
+            shape.moveTo(b.x,  b.z);
+            shape.lineTo(b.x - headLen * Math.cos(angle - Math.PI / 6),
+                         b.z - headLen * Math.sin(angle - Math.PI / 6));
+            shape.lineTo(b.x - headLen * Math.cos(angle + Math.PI / 6),
+                         b.z - headLen * Math.sin(angle + Math.PI / 6));
+            shape.closePath();
+            const headGeo  = new THREE.ShapeGeometry(shape);
+            const headMat  = new THREE.MeshBasicMaterial({ color: color3, side: THREE.DoubleSide, depthTest: false });
+            const headMesh = new THREE.Mesh(headGeo, headMat);
+            headMesh.rotation.x  = Math.PI / 2;  // XY shape → XZ plane
+            headMesh.position.y  = DRAW_Y;
+            headMesh.renderOrder = 1;
+            addObj(headMesh); disp.push(headGeo, headMat);
+
+        } else if (data.tool === "zone" && data.ll1 && data.ll2) {
+            const a = l2t(data.ll1.lat, data.ll1.lng);
+            const b = l2t(data.ll2.lat, data.ll2.lng);
+            const xmin = Math.min(a.x, b.x), xmax = Math.max(a.x, b.x);
+            const zmin = Math.min(a.z, b.z), zmax = Math.max(a.z, b.z);
+            const cx   = (xmin + xmax) / 2, cz = (zmin + zmax) / 2;
+            const pw   = xmax - xmin,       ph = zmax - zmin;
+
+            // ── Semi-transparent fill ───────────────────────────────────────
+            const fillGeo  = new THREE.PlaneGeometry(pw, ph);
+            const fillMat  = new THREE.MeshBasicMaterial({
+                color: color3, transparent: true, opacity: 0.18,
+                side: THREE.DoubleSide, depthTest: false
+            });
+            const fillMesh = new THREE.Mesh(fillGeo, fillMat);
+            fillMesh.rotation.x  = -Math.PI / 2;
+            fillMesh.position.set(cx, DRAW_Y, cz);
+            fillMesh.renderOrder = 1;
+            addObj(fillMesh); disp.push(fillGeo, fillMat);
+
+            // ── Dashed border ───────────────────────────────────────────────
+            const borderVerts = [
+                new THREE.Vector3(a.x, DRAW_Y, a.z), new THREE.Vector3(b.x, DRAW_Y, a.z),
+                new THREE.Vector3(b.x, DRAW_Y, b.z), new THREE.Vector3(a.x, DRAW_Y, b.z),
+                new THREE.Vector3(a.x, DRAW_Y, a.z)
+            ];
+            const borderGeo = new THREE.BufferGeometry().setFromPoints(borderVerts);
+            const borderMat = new THREE.LineDashedMaterial({
+                color: color3, dashSize: 6, gapSize: 4, depthTest: false
+            });
+            const border = new THREE.Line(borderGeo, borderMat);
+            border.computeLineDistances();
+            border.renderOrder = 1;
+            addObj(border); disp.push(borderGeo, borderMat);
+
+            // ── Zone name label (CSS2DObject) ───────────────────────────────
+            if (data.zoneName) {
+                const labelDiv = document.createElement("div");
+                labelDiv.style.cssText =
+                    "background:rgba(6,12,22,0.72);color:" + (data.color || "#ff4444") +
+                    ";font:700 11px monospace;padding:2px 6px;border-radius:3px;" +
+                    "pointer-events:none;white-space:nowrap;";
+                labelDiv.textContent = data.zoneName;
+                const labelObj = new CSS2DObject(labelDiv);
+                labelObj.position.set(cx, DRAW_Y + 2, cz);
+                addObj(labelObj);
+            }
+
+        } else {
+            // ── Default: pen / line / rect / circle / label ─────────────────
+            const verts = _strokeVerts(data);
+            if (!verts || verts.length < 2) return;
+            const g = new THREE.BufferGeometry().setFromPoints(verts);
+            const m = new THREE.LineBasicMaterial({ color: color3, depthTest: false });
+            const line = new THREE.Line(g, m);
+            line.renderOrder = 1;
+            addObj(line); disp.push(g, m);
+        }
+
+        strokes3D[id] = { objs, disp };
     }
 
     function removeStroke3D(id) {
         const s = strokes3D[id]; if (!s) return;
-        scene.remove(s.line); s.g.dispose(); s.m.dispose();
+        // Support both old { line, g, m } and new { objs, disp } structures
+        if (s.objs) { s.objs.forEach(o => scene.remove(o)); s.disp.forEach(d => d?.dispose()); }
+        else { scene.remove(s.line); s.g?.dispose(); s.m?.dispose(); }
         delete strokes3D[id];
     }
 
@@ -3927,6 +4021,8 @@ async function enterVezha() {
                     if (!chatMsgCache.find(m => m.id === docId)) {
                         chatMsgCache.push({ id: docId, data });
                     }
+                    // Skip if we already rendered it optimistically in sendChat
+                    if (_chatRenderedIds.has(docId)) { _chatRenderedIds.delete(docId); return; }
                     renderChatMessage(data);
                 } else if (change.type === "removed") {
                     const docId = change.doc.id;
@@ -3974,6 +4070,7 @@ async function exitVezha() {
     vezhaUnsubs.forEach(u => u()); vezhaUnsubs = [];
     if (chatUnsub) { chatUnsub(); chatUnsub = null; }
     chatMsgCache.length = 0;
+    _chatRenderedIds.clear();
     processedSigs.clear();
     Object.keys(peers).forEach(removePeer);
     Object.keys(peerMeta).forEach(k => delete peerMeta[k]);
@@ -4377,19 +4474,30 @@ document.getElementById("roleSelect")?.addEventListener("change", e => {
 });
 enforceOwnerRole();
 
+// Track doc IDs already rendered (optimistic) to skip Firestore echo
+const _chatRenderedIds = new Set();
+
 async function sendChat() {
     const input    = document.getElementById("vezhaChatInput");
     const text     = input.value.trim();
     if (!text || !vezhaActive) return;
     input.value = "";
+    channelDrafts[currentChannel] = "";
     const callsign = getCallsign();
     const role     = getRole();
+    const msgData  = {
+        userId: myPeerId, shortId: myShortId,
+        callsign, role, text, created: Date.now(),
+        channel: currentChannel
+    };
+    // Render immediately (optimistic) — don't wait for Firestore roundtrip
+    renderChatMessage(msgData);
     try {
-        await addDoc(vezha_chat, {
-            userId: myPeerId, shortId: myShortId,
-            callsign, role, text, created: Date.now(),
-            channel: currentChannel
-        });
+        const ref = await addDoc(vezha_chat, msgData);
+        // Mark this doc so the snapshot doesn't render it again
+        _chatRenderedIds.add(ref.id);
+        // Also add to cache so channel-switch re-render includes it
+        chatMsgCache.push({ id: ref.id, data: msgData });
     } catch (err) { console.error("Chat error:", err); }
 }
 
@@ -4912,18 +5020,22 @@ function initArtyMap() {
     window.__artyMarkerSyncInterval = setInterval(syncArtyMarkers, 3000);
 
     // ── Mirror drawings onto arty map via a canvas overlay ───────────────────
-    // We create a Leaflet canvas layer that redraws whenever strokes changes
+    // Canvas is appended directly to the map container (NOT inside a Leaflet pane)
+    // so it doesn't get CSS-transformed during pan/zoom. We listen to "move" for
+    // continuous redraws so drawings stay locked to map coordinates.
     const ArtyDrawLayer = L.Layer.extend({
         onAdd(map) {
             this._map = map;
-            this._canvas = L.DomUtil.create("canvas", "arty-draw-canvas");
-            map.getPanes().overlayPane.appendChild(this._canvas);
-            map.on("viewreset moveend zoomend", this._redraw, this);
+            this._canvas = document.createElement("canvas");
+            this._canvas.className = "arty-draw-canvas";
+            // Insert canvas as a direct child of the Leaflet container div
+            map.getContainer().appendChild(this._canvas);
+            map.on("move zoom viewreset moveend zoomend", this._redraw, this);
             this._redraw();
         },
         onRemove(map) {
             this._canvas.remove();
-            map.off("viewreset moveend zoomend", this._redraw, this);
+            map.off("move zoom viewreset moveend zoomend", this._redraw, this);
         },
         update() { this._redraw(); },
         _redraw() {
@@ -4931,9 +5043,9 @@ function initArtyMap() {
             this._canvas.width  = size.x;
             this._canvas.height = size.y;
             Object.assign(this._canvas.style, {
-                position: "absolute", top: 0, left: 0,
+                position: "absolute", top: "0", left: "0",
                 width: size.x + "px", height: size.y + "px",
-                pointerEvents: "none"
+                pointerEvents: "none", zIndex: "400"
             });
             const gc = this._canvas.getContext("2d");
             gc.clearRect(0, 0, size.x, size.y);
