@@ -1985,6 +1985,10 @@ body:not(.in-vezha) .vezha-rooms-panel { display: none; }
 }
 .map-sel-search:focus { border-color: var(--accent); }
 #mapSelList { overflow-y: auto; flex: 1; }
+#mapSelList::-webkit-scrollbar { width: 6px; }
+#mapSelList::-webkit-scrollbar-track { background: transparent; }
+#mapSelList::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+#mapSelList::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 .map-sel-empty { padding: 10px 12px; font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); }
 .map-sel-opt {
   padding: 8px 12px; font-family: var(--font-mono); font-size: 9px;
