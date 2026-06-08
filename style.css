@@ -394,7 +394,7 @@ button { cursor: pointer; font-family: var(--font-ui); }
 #map { width: 100%; height: 100%; background: #0a0c10; transition: background 0.3s; }
 #drawCanvas {
   position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-  pointer-events: none; z-index: 500;
+  pointer-events: none; z-index: 350;  /* below Leaflet markerPane (600) so markers always on top */
 }
 #drawCanvas.active            { pointer-events: all; cursor: crosshair; }
 #drawCanvas[data-tool="eraser"] { cursor: cell; }
