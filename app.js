@@ -2596,11 +2596,14 @@ function getOrCreatePeer(userId) {
         }
     });
     pc.addEventListener("track", e => {
+        // e.streams[0] can be undefined on the answerer side in Chrome/Edge —
+        // fall back to wrapping the track in a new MediaStream.
+        const stream   = (e.streams && e.streams[0]) || new MediaStream([e.track]);
         const meta     = peerMeta[userId] || {};
         const cs       = meta.callsign || userId.slice(-6).toUpperCase();
         const roleKey  = meta.role || "operator";
         const roleDisp = roleKey === "owner" ? "ADMIN" : roleKey.toUpperCase();
-        addVideoTile(userId, e.streams[0], `${roleDisp} · ${cs}`);
+        addVideoTile(userId, stream, `${roleDisp} · ${cs}`);
     });
     pc.addEventListener("connectionstatechange", () => {
         if (["disconnected", "failed", "closed"].includes(pc.connectionState)) removePeer(userId);
@@ -2660,9 +2663,10 @@ function addVideoTile(id, stream, label) {
     // Remote tiles can be unmuted by clicking them after playback starts.
     video.muted = true;
     video.srcObject = stream;
-    // Explicitly call play() and retry on failure (handles late-arriving tracks)
+    // Call play() immediately (autoplay=true alone can be suppressed by the browser).
+    // Retry every 500 ms in case the track hasn't started flowing yet.
     const tryPlay = () => video.play().catch(() => setTimeout(tryPlay, 500));
-    video.addEventListener("loadedmetadata", tryPlay, { once: true });
+    tryPlay();
     // Allow click-to-unmute on remote tiles
     if (id !== "self") {
         video.title = "Click to unmute";
