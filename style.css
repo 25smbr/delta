@@ -1247,6 +1247,11 @@ body.lang-ua .danger-btn { font-size: 9px; letter-spacing: 0.5px; }
   border-radius: 8px; overflow: hidden;
   border: 1px solid var(--border);
 }
+.arty-right-panel {
+  width: var(--right-w); background: var(--bg-panel); border-left: 1px solid var(--border);
+  display: flex; flex-direction: column; align-items: center;
+  padding: 8px 0; gap: 4px; flex-shrink: 0;
+}
 #artyMapEl {
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
