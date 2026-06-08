@@ -1,5315 +1,2030 @@
-import { initializeApp }
-    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import {
-    getFirestore,
-    collection,
-    addDoc,
-    setDoc,
-    deleteDoc,
-    doc,
-    getDoc,
-    onSnapshot,
-    getDocs,
-    writeBatch,
-    query,
-    where,
-    updateDoc,
-    orderBy,
-    limit,
-    startAfter
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-// ─── FIREBASE ───────────────────────────────────────────────────────────────
-const firebaseConfig = {
-    apiKey:            "AIzaSyDUTJ3Nz8tY7ZN52tY7ZN52h3oA582qpw44wrCwac",
-    authDomain:        "delta-29dec.firebaseapp.com",
-    projectId:         "delta-29dec",
-    storageBucket:     "delta-29dec.firebasestorage.app",
-    messagingSenderId: "441849295640",
-    appId:             "1:441849295640:web:2c2c7c7fb416a514e4646d",
-    measurementId:     "G-8ZCT1SJGGT"
-};
-const app = initializeApp(firebaseConfig);
-const db  = getFirestore(app);
-const markersCollection  = collection(db, "markers");
-const drawingsCollection = collection(db, "drawings");
-
-// ─── i18n (must be before initFilterUI) ──────────────────────────────────────
-const i18n = {
-    en: {
-        filter: "FILTER", unitSymbols: "UNIT SYMBOLS",
-        drawings: "DRAW TOOLS", coordinates: "GO TO COORDINATES",
-        infantry: "INFANTRY", tank: "ARMOR", artillery: "ARTILLERY",
-        helicopter: "HELICOPTER", position: "POSITION",
-        humvee: "HUMVEE", truck: "TRUCK", uav: "UAV",
-        width: "WIDTH", color: "COLOR",
-        clearAll: "CLEAR ALL MARKERS", clearDrawings: "CLEAR DRAWINGS",
-        markers: n => `MARKERS: ${n}`,
-        drawOff: "DRAW: OFF", drawOn: "DRAW: ON",
-        rulerOff: "RULER: OFF", rulerOn: "RULER: ON",
-        coordsLabel: "COORDS",
-        shareScreen: "SHARE SCREEN", stopSharing: "STOP SHARING",
-        noStreams: "NO ACTIVE STREAMS",
-        streamHint: "Click SHARE SCREEN to broadcast your display to all connected operators",
-        operators: n => `OPERATORS: ${n} ONLINE`,
-        unmute: "UNMUTE", mute: "MUTE", deafen: "DEAFEN", undeafen: "UNDEAFEN",
-        comms: "COMMS", typeMessage: "TYPE MESSAGE...", callsign: "CALLSIGN",
-        roleOperator: "OPERATOR", roleCommander: "COMMANDER",
-        roleDrone: "DRONE PILOT", roleCrewman: "CREWMAN",
-        roleIntel: "INTEL",
-        errPassNum: "Password must contain at least 1 number.",
-        errPassSym: "Password must contain at least 1 symbol (!@#$…)",
-        accountTitle: "ACCOUNT",
-        login: "LOGIN", register: "REGISTER",
-        username: "USERNAME", password: "PASSWORD", confirmPassword: "CONFIRM PASSWORD",
-        role: "ROLE",
-        loginBtn: "LOG IN", registerBtn: "CREATE ACCOUNT",
-        logout: "LOG OUT", loggedInAs: "LOGGED IN AS",
-        errPassMatch: "Passwords do not match",
-        errUserExists: "Username already taken",
-        errBadCreds: "Invalid username or password",
-        errFillAll: "Please fill in all fields",
-        errPassLen: "Password must be at least 8 characters",
-        errNetwork: "Network error — please try again",
-        artyCalcTitle: "ARTILLERY CALCULATOR",
-        artyConfig: "CONFIGURATION",
-        artyGun: "GUN", artyProjectile: "PROJECTILE",
-        artyGunPos: "GUN POSITION", artyTgtPos: "TARGET POSITION",
-        artyHeightLabel: "HEIGHT DIFF (m)",
-        artyCalcBtn: "CALCULATE",
-        artyAzimuth: "AZIMUTH", artyDistance: "DISTANCE",
-        artyLowArc: "LOW ARC", artyHighArc: "HIGH ARC", artyTof: "TOF",
-        artyMapHint: "LMB = GUN  ·  RMB = TARGET",
-        artyEnterCoords: "CLICK MAP OR ENTER COORDINATES TO CALCULATE",
-        enemy: "ENEMY", friendly: "FRIENDLY",
-    },
-    ru: {
-        filter: "ФИЛЬТР", unitSymbols: "СИМВОЛЫ ЕДИНИЦ",
-        drawings: "РИСУНКИ", coordinates: "ПЕРЕЙТИ К КООРДИНАТАМ",
-        infantry: "ПЕХОТА", tank: "БРОНЯ", artillery: "АРТИЛЛЕРИЯ",
-        helicopter: "ВЕРТОЛЁТ", position: "ПОЗИЦИЯ",
-        humvee: "ХАМВИ", truck: "ГРУЗОВИК", uav: "БПЛА",
-        width: "ШИРИНА", color: "ЦВЕТ",
-        clearAll: "УДАЛИТЬ ВСЕ МАРКЕРЫ", clearDrawings: "УДАЛИТЬ РИСУНКИ",
-        markers: n => `МАРКЕРЫ: ${n}`,
-        drawOff: "РИСУНОК: ВЫКЛ", drawOn: "РИСУНОК: ВКЛ",
-        rulerOff: "ЛИНЕЙКА: ВЫКЛ", rulerOn: "ЛИНЕЙКА: ВКЛ",
-        coordsLabel: "КООРДИНАТЫ",
-        shareScreen: "ТРАНСЛЯЦИЯ", stopSharing: "СТОП",
-        noStreams: "НЕТ АКТИВНЫХ ТРАНСЛЯЦИЙ",
-        streamHint: "Нажмите ТРАНСЛЯЦИЯ чтобы транслировать экран всем операторам",
-        operators: n => `ОПЕРАТОРОВ: ${n} В СЕТИ`,
-        unmute: "ВКЛ МИК", mute: "ОТКЛ МИК", deafen: "ЗАГЛУШИТЬ", undeafen: "ЗВУК ВКЛ",
-        comms: "СВЯЗЬ", typeMessage: "СООБЩЕНИЕ...", callsign: "ПОЗЫВНОЙ",
-        roleOperator: "ОПЕРАТОР", roleCommander: "КОМАНДИР",
-        roleDrone: "ПИЛОТ БПЛА", roleCrewman: "ЭКИПАЖ",
-        roleIntel: "РАЗВЕДКА",
-        accountTitle: "АККАУНТ",
-        login: "ВОЙТИ", register: "РЕГИСТРАЦИЯ",
-        username: "ЛОГИН", password: "ПАРОЛЬ", confirmPassword: "ПОВТОР ПАРОЛЯ",
-        role: "РОЛЬ",
-        loginBtn: "ВОЙТИ", registerBtn: "СОЗДАТЬ АККАУНТ",
-        logout: "ВЫЙТИ", loggedInAs: "ВЫ ВОШЛИ КАК",
-        errPassMatch: "Пароли не совпадают",
-        errUserExists: "Это имя уже занято",
-        errBadCreds: "Неверный логин или пароль",
-        errFillAll: "Заполните все поля",
-        errPassLen: "Пароль должен содержать минимум 8 символов",
-        errNetwork: "Ошибка сети — попробуйте снова",
-        artyCalcTitle: "АРТКАЛЬКУЛЯТОР",
-        artyConfig: "КОНФИГУРАЦИЯ",
-        artyGun: "ОРУДИЕ", artyProjectile: "СНАРЯД",
-        artyGunPos: "ПОЗИЦИЯ ОРУДИЯ", artyTgtPos: "ПОЗИЦИЯ ЦЕЛИ",
-        artyHeightLabel: "РАЗН. ВЫСОТ (м)",
-        artyCalcBtn: "РАССЧИТАТЬ",
-        artyAzimuth: "АЗИМУТ", artyDistance: "ДАЛЬНОСТЬ",
-        artyLowArc: "НАСТИЛЬНАЯ", artyHighArc: "НАВЕСНАЯ", artyTof: "ВРЕМЯ ПОЛЁТА",
-        artyMapHint: "ЛКМ = ОРУДИЕ  ·  ПКМ = ЦЕЛЬ",
-        artyEnterCoords: "КЛИКНИТЕ НА КАРТУ ИЛИ ВВЕДИТЕ КООРДИНАТЫ",
-        enemy: "ПРОТИВНИК", friendly: "СВОИ",
-    },
-    ua: {
-        filter: "ФІЛЬТР", unitSymbols: "СИМВОЛИ ОДИНИЦЬ",
-        drawings: "МАЛЮНКИ", coordinates: "ПЕРЕЙТИ ДО КООРДИНАТ",
-        infantry: "ПІХОТА", tank: "БРОНЯ", artillery: "АРТИЛЕРІЯ",
-        helicopter: "ВЕРТОЛІТ", position: "ПОЗИЦІЯ",
-        humvee: "ХАМВІ", truck: "ВАНТАЖІВКА", uav: "БПЛА",
-        width: "ШИРИНА", color: "КОЛІР",
-        clearAll: "ВИДАЛИТИ ВСІ МАРКЕРИ", clearDrawings: "ВИДАЛИТИ МАЛЮНКИ",
-        markers: n => `МАРКЕРИ: ${n}`,
-        drawOff: "МАЛЮНОК: ВИМК", drawOn: "МАЛЮНОК: УВ.",
-        rulerOff: "ЛІНІЙКА: ВИМК", rulerOn: "ЛІНІЙКА: УВ.",
-        coordsLabel: "КООРДИНАТИ",
-        shareScreen: "ТРАНСЛЯЦІЯ", stopSharing: "ЗУПИНИТИ",
-        noStreams: "НЕМАЄ АКТИВНИХ ТРАНСЛЯЦІЙ",
-        streamHint: "Натисніть ТРАНСЛЯЦІЯ щоб транслювати екран усім операторам",
-        operators: n => `ОПЕРАТОРІВ: ${n} ОНЛАЙН`,
-        unmute: "УВІМК МІК", mute: "ВИМК МІК", deafen: "ЗАГЛУШИТИ", undeafen: "ЗВУК УВ.",
-        comms: "ЗВ'ЯЗОК", typeMessage: "ПОВІДОМЛЕННЯ...", callsign: "ПОЗИВНИЙ",
-        roleOperator: "ОПЕРАТОР", roleCommander: "КОМАНДИР",
-        roleDrone: "ПІЛОТ БПЛА", roleCrewman: "ЕКІПАЖ",
-        roleIntel: "РОЗВІДКА",
-        accountTitle: "АККАУНТ",
-        login: "УВІЙТИ", register: "РЕЄСТРАЦІЯ",
-        username: "ЛОГІН", password: "ПАРОЛЬ", confirmPassword: "ПІДТВЕРДИТИ ПАРОЛЬ",
-        role: "РОЛЬ",
-        loginBtn: "УВІЙТИ", registerBtn: "СТВОРИТИ АККАУНТ",
-        logout: "ВИЙТИ", loggedInAs: "ВИ УВІЙШЛИ ЯК",
-        errPassMatch: "Паролі не збігаються",
-        errUserExists: "Це ім'я вже зайнято",
-        errBadCreds: "Невірний логін або пароль",
-        errFillAll: "Заповніть усі поля",
-        errPassLen: "Пароль має містити щонайменше 8 символів",
-        errNetwork: "Помилка мережі — спробуйте знову",
-        artyCalcTitle: "АРТКАЛЬКУЛЯТОР",
-        artyConfig: "КОНФІГУРАЦІЯ",
-        artyGun: "ГАРМАТА", artyProjectile: "СНАРЯД",
-        artyGunPos: "ПОЗИЦІЯ ГАРМАТИ", artyTgtPos: "ПОЗИЦІЯ ЦІЛІ",
-        artyHeightLabel: "РІЗН. ВИСОТ (м)",
-        artyCalcBtn: "РОЗРАХУВАТИ",
-        artyAzimuth: "АЗИМУТ", artyDistance: "ДАЛЬНІСТЬ",
-        artyLowArc: "НАСТИЛЬНА", artyHighArc: "НАВІСНА", artyTof: "ЧАС ПОЛЬОТУ",
-        artyMapHint: "ЛКМ = ГАРМАТА  ·  ПКМ = ЦІЛЬ",
-        artyEnterCoords: "НАТИСНІТЬ НА КАРТУ АБО ВВЕДІТЬ КООРДИНАТИ",
-        enemy: "ВОРОГ", friendly: "СВОЇ",
-    }
-};
-let currentLang = localStorage.getItem("vezhaLang") || "en";
-function t(key, ...args) {
-    const v = (i18n[currentLang] || i18n.en)[key];
-    return (typeof v === "function") ? v(...args) : (v !== undefined ? v : key);
-}
-// ─── MAP CONFIGURATIONS ──────────────────────────────────────────────────────
-const MAPS = [
-    { id: "map1", name: "Dustbowl 2", file: "map.png",  width: 1204, height: 1290, ppm: 142/250 },
-    // Add more maps here — e.g.:
-    // { id: "map2", name: "MAP 2", file: "map2.png", width: 2000, height: 2000, ppm: 200/250 },
-];
-let currentMapIdx = parseInt(localStorage.getItem("currentMapIdx") || "0");
-if (currentMapIdx >= MAPS.length) currentMapIdx = 0;
-let imageWidth  = MAPS[currentMapIdx].width;
-let imageHeight = MAPS[currentMapIdx].height;
-let PIXELS_PER_METER_DYNAMIC = MAPS[currentMapIdx].ppm;
-
-// ─── MAP ─────────────────────────────────────────────────────────────────────
-const map = L.map("map", {
-    crs: L.CRS.Simple,
-    minZoom: -3,
-    maxZoom: 2,
-    zoomControl: false,
-    attributionControl: false
-});
-let _mapImageOverlay = null;
-function loadMapConfig(idx) {
-    currentMapIdx = Math.max(0, Math.min(MAPS.length - 1, idx));
-    localStorage.setItem("currentMapIdx", currentMapIdx);
-    const cfg = MAPS[currentMapIdx];
-    imageWidth  = cfg.width;
-    imageHeight = cfg.height;
-    PIXELS_PER_METER_DYNAMIC = cfg.ppm;
-    const b = [[0, 0], [imageHeight, imageWidth]];
-    if (_mapImageOverlay) map.removeLayer(_mapImageOverlay);
-    _mapImageOverlay = L.imageOverlay(cfg.file, b).addTo(map);
-    map.fitBounds(b);
-    map.setMaxBounds(b);
-    map.setView([imageHeight / 2, imageWidth / 2], 0);
-    // Update map selector label
-    const lbl = document.getElementById("mapSelLabel");
-    if (lbl) lbl.textContent = cfg.name;
-    buildMapSelectorDropdown();
-    if (typeof resizeCanvas === "function") setTimeout(resizeCanvas, 50);
-}
-const bounds = [[0, 0], [imageHeight, imageWidth]];
-_mapImageOverlay = L.imageOverlay(MAPS[currentMapIdx].file, bounds).addTo(map);
-map.fitBounds(bounds);
-map.setMaxBounds(bounds);
-map.setView([imageHeight / 2, imageWidth / 2], 0);
-// ─── CLOCK (UTC+2) ──────────────────────────────────────────────────────────
-function updateClock() {
-    const now = new Date();
-    const z = (n) => String(n).padStart(2, "0");
-    const utcPlus2 = new Date(now.getTime() + 7200000);
-    document.getElementById("clock").textContent =
-        `${z(utcPlus2.getUTCHours())}:${z(utcPlus2.getUTCMinutes())}:${z(utcPlus2.getUTCSeconds())}`;
-}
-updateClock();
-setInterval(updateClock, 1000);
-// ─── SYMBOL DEFINITIONS ──────────────────────────────────────────────────────
-const symbolGroups = {
-    infantry:  ["infantry_alive",  "infantry_wounded",  "infantry_dead",      "infantry_unknown"],
-    tank:      ["tank_alive",      "tank_damaged",      "tank_destroyed",     "tank_unknown"],
-    artillery: ["artillery_alive", "artillery_damaged", "artillery_destroyed","artillery_unknown"],
-    helicopter:["helicopter_alive","helicopter_damaged","helicopter_destroyed","helicopter_unknown"],
-    position:  ["position_alive",  "position_wounded",  "position_destroyed", "position_unknown"],
-    humvee:    ["humvee_alive",    "humvee_damaged",    "humvee_destroyed",   "humvee_unknown"],
-    truck:     ["truck_alive",     "truck_damaged",     "truck_destroyed",    "truck_unknown"],
-    uav:       ["uav_alive",       "uav_damaged",       "uav_destroyed",      "uav_unknown"],
-    info:      ["info_note"]   // single-state info marker
-};
-// Status bar color below the NATO diamond. null = no bar (unknown).
-const statusColors = {
-    alive:     "#00cc55",   // green
-    wounded:   "#ffcc00",   // yellow
-    damaged:   "#ff8800",   // orange
-    dead:      "#ff4444",   // red
-    destroyed: "#ff4444",   // red
-    unknown:   null         // no bar
-};
-let selectedSymbol = "infantry_alive";
-// ════════════════════════════════════════════════════════════════════
-// ALL STATE VARIABLES
-// ════════════════════════════════════════════════════════════════════
-const undoStack = [];
-const redoStack = [];
-let isLightTheme = false;
-
-// ─── ROLE CONSTANTS (needed early by updateModalState / applyCurrentUser) ──────
-const ROLE_COLORS = {
-    owner:      "#f59e0b",   // gold — admin
-    operator:   "#4fa3ff",
-    commander:  "#ff6b6b",
-    drone:      "#a78bfa",
-    crewman:    "#fb923c",
-    intel:      "#22d3ee"
-};
-const OWNER_CALLSIGN = "PLAYFRA";
-// ─── DRAWING STATE ───────────────────────────────────────────────────────────
-let drawMode    = false;
-let activeTool  = "pen";
-let penColor    = "#ff4444";
-let penWidth    = 3;
-let isDrawing   = false;
-let startCanvasX = 0, startCanvasY = 0;
-let startMapLL   = null;
-// strokes is the live local copy, synced from Firestore via incremental updates
-let strokes       = [];
-let currentStroke = null;
-let map3DState    = null;   // active 3D instance for the monitor map
-let arty3DState   = null;   // active 3D instance for the arty calculator
-let selBox          = null;   // { x1,y1,x2,y2 } for ctrl+lmb selection
-let _selBoxActive   = false;
-let _selBoxConsumed = false;  // blocks Leaflet click after selection completes
-// ─── RULER STATE ─────────────────────────────────────────────────────────────
-// FIX #5: scale calibrated to correct image dimensions
-// The scale constant remains the same (142px = 250m at zoom 0) — keep original calibration
-// PIXELS_PER_METER is now dynamic — use PIXELS_PER_METER_DYNAMIC (set from MAPS config)
-// The const alias below allows all existing code that references PIXELS_PER_METER to keep working.
-// For live ruler calculations, pixelsToMeters() uses PIXELS_PER_METER_DYNAMIC directly.
-const PIXELS_PER_METER = 142 / 250; // fallback / arty default
-// Calibration correction factor (measured vs. real-world ground truth)
-const DIST_CORRECTION = 1.01346;
-let rulerMode   = false;
-let rulerPoints = [];
-// ════════════════════════════════════════════════════════════════════
-// SVG BUILDER  (NATO APP-6 hostile diamond)
-// ════════════════════════════════════════════════════════════════════
-// Diamond sits in 46×46 space; status bar adds 11 px below → total height 57.
-// The diamond occupies y = 3..43 (centre 23,23).
-// X-cross lines connect midpoints of adjacent sides:
-//   (13,13)↔(33,33)  and  (33,13)↔(13,33)
-let _svgId = 0;
-function symbolSVG(type = "infantry_alive") {
-    const parts    = type.split("_");
-    const status   = parts[parts.length - 1];
-    const unit     = parts.slice(0, -1).join("_");
-    const barColor = statusColors[status] ?? null;   // null → unknown, no bar
-    const d        = "#111";   // designator / stroke color
-    const cid      = `sc${++_svgId}`;
-
-    // ── NATO unit designators ─────────────────────────────────────────
-    // Diamond interior: top(23,3) right(43,23) bottom(23,43) left(3,23)
-    let interior = "";
-    switch (unit) {
-        // ─ Infantry: two horizontal bars ─────────────────────────────
-        case "infantry":
-            interior = `
-              <line x1="11" y1="19" x2="35" y2="19" stroke="${d}" stroke-width="3" stroke-linecap="round"/>
-              <line x1="11" y1="27" x2="35" y2="27" stroke="${d}" stroke-width="3" stroke-linecap="round"/>`;
-            break;
-
-        // ─ Armor / Tank: filled ellipse ───────────────────────────────
-        case "tank":
-            interior = `<ellipse cx="23" cy="23" rx="11" ry="6.5" fill="${d}"/>`;
-            break;
-
-        // ─ Artillery: pill (stadium) + centre dot ─────────────────────
-        // ref: user picture 1
-        case "artillery":
-            interior = `
-              <rect x="9" y="17" width="28" height="12" rx="6"
-                    fill="none" stroke="${d}" stroke-width="2.5"/>
-              <circle cx="23" cy="23" r="4.5" fill="${d}"/>`;
-            break;
-
-        // ─ Helicopter: bowtie (two inward-pointing filled triangles) ──
-        // ref: user picture 2
-        case "helicopter":
-            interior = `
-              <path d="M10 14 L23 23 L10 32 Z" fill="${d}"/>
-              <path d="M36 14 L23 23 L36 32 Z" fill="${d}"/>`;
-            break;
-
-        // ─ Observation / position: small filled diamond ───────────────
-        case "position":
-            interior = `<path d="M23 13 L32 23 L23 33 L14 23 Z" fill="${d}"/>`;
-            break;
-
-        // ─ Humvee: 3 fan lines from top apex (picture 3 style) ────────
-        case "humvee":
-            interior = `
-              <line x1="23" y1="4" x2="10" y2="39" stroke="${d}" stroke-width="2.5" stroke-linecap="round"/>
-              <line x1="23" y1="4" x2="23" y2="43" stroke="${d}" stroke-width="2.5" stroke-linecap="round"/>
-              <line x1="23" y1="4" x2="36" y2="39" stroke="${d}" stroke-width="2.5" stroke-linecap="round"/>`;
-            break;
-
-        // ─ Truck: 4 fan lines from top apex (picture 3 style, denser) ─
-        case "truck":
-            interior = `
-              <line x1="23" y1="4" x2="6"  y2="32" stroke="${d}" stroke-width="2.5" stroke-linecap="round"/>
-              <line x1="23" y1="4" x2="16" y2="42" stroke="${d}" stroke-width="2.5" stroke-linecap="round"/>
-              <line x1="23" y1="4" x2="30" y2="42" stroke="${d}" stroke-width="2.5" stroke-linecap="round"/>
-              <line x1="23" y1="4" x2="40" y2="32" stroke="${d}" stroke-width="2.5" stroke-linecap="round"/>`;
-            break;
-
-        // ─ UAV: swept-wing V chevron (top-down view) ─────────────────
-        case "uav":
-            interior = `<path d="M4 10 L23 34 L42 10 L38 10 L23 26 L8 10 Z" fill="${d}"/>`;
-            break;
-        case "info":
-            // Special rendering — return a NATO-style info marker (blue circle with "i")
-            return `<svg xmlns="http://www.w3.org/2000/svg" width="46" height="57" viewBox="0 0 46 57">
-              <circle cx="23" cy="23" r="19" fill="#3b82f6" fill-opacity="0.9"/>
-              <circle cx="23" cy="23" r="19" fill="none" stroke="${d}" stroke-width="2"/>
-              <text x="23" y="30" text-anchor="middle" font-family="serif" font-size="22"
-                    font-weight="700" fill="#fff">i</text>
-            </svg>`;
-    }
-
-    // ── Status bar sits below the diamond (y 47–54) ──────────────────
-    const bar = barColor
-        ? `<rect x="5" y="47" width="36" height="7" fill="${barColor}" rx="1.5"/>`
-        : "";
-
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="46" height="57" viewBox="0 0 46 57">
-      <defs>
-        <clipPath id="${cid}">
-          <path d="M23 3 L43 23 L23 43 L3 23 Z"/>
-        </clipPath>
-      </defs>
-      <!-- NATO hostile frame: plain red fill + black outline, NO background X -->
-      <path d="M23 3 L43 23 L23 43 L3 23 Z" fill="#e3716a" fill-opacity="0.9"/>
-      <path d="M23 3 L43 23 L23 43 L3 23 Z"
-            fill="none" stroke="${d}" stroke-width="2.5" stroke-linejoin="round"/>
-      <!-- Unit type designator (clipped to diamond) -->
-      <g clip-path="url(#${cid})">${interior}</g>
-      <!-- Status bar -->
-      ${bar}
-    </svg>`;
-}
-// ════════════════════════════════════════════════════════════════════
-// SVG BUILDER — NATO APP-6 FRIENDLY (blue rectangle frame)
-// ════════════════════════════════════════════════════════════════════
-function symbolSVGFriendly(type = "infantry_alive") {
-    const parts    = type.split("_");
-    const status   = parts[parts.length - 1];
-    const unit     = parts.slice(0, -1).join("_");
-    const barColor = statusColors[status] ?? null;
-    const d        = "#111";
-    const fill     = "#88c4f0";   // NATO friendly light-blue
-
-    let interior = "";
-    switch (unit) {
-        // ─ Infantry: X cross ─────────────────────────────────────────
-        case "infantry":
-            interior = `
-              <line x1="9" y1="9" x2="37" y2="37" stroke="${d}" stroke-width="2" stroke-linecap="round"/>
-              <line x1="37" y1="9" x2="9" y2="37" stroke="${d}" stroke-width="2" stroke-linecap="round"/>`;
-            break;
-        // ─ Armor: rounded-rect outline ───────────────────────────────
-        case "tank":
-            interior = `<rect x="10" y="16" width="26" height="14" rx="5" stroke="${d}" stroke-width="2" fill="none"/>`;
-            break;
-        // ─ Artillery: pill + centre dot ──────────────────────────────
-        case "artillery":
-            interior = `
-              <rect x="10" y="16" width="26" height="14" rx="7" stroke="${d}" stroke-width="2" fill="none"/>
-              <circle cx="23" cy="23" r="4" fill="${d}"/>`;
-            break;
-        // ─ Helicopter: bowtie ─────────────────────────────────────────
-        case "helicopter":
-            interior = `
-              <path d="M9 13 L23 23 L9 33 Z" fill="${d}"/>
-              <path d="M37 13 L23 23 L37 33 Z" fill="${d}"/>`;
-            break;
-        // ─ Humvee: tent/triangle with centre divider (NATO wheeled) ──
-        case "humvee":
-            interior = `
-              <polyline points="7,37 23,9 39,37" stroke="${d}" stroke-width="2.5" stroke-linejoin="round" fill="none" stroke-linecap="round"/>
-              <line x1="23" y1="9" x2="23" y2="37" stroke="${d}" stroke-width="2.5" stroke-linecap="round"/>`;
-            break;
-        // ─ Truck: 4 fan lines from apex (denser transport) ────────────
-        case "truck":
-            interior = `
-              <line x1="23" y1="9" x2="8"  y2="37" stroke="${d}" stroke-width="2" stroke-linecap="round"/>
-              <line x1="23" y1="9" x2="16" y2="37" stroke="${d}" stroke-width="2" stroke-linecap="round"/>
-              <line x1="23" y1="9" x2="30" y2="37" stroke="${d}" stroke-width="2" stroke-linecap="round"/>
-              <line x1="23" y1="9" x2="38" y2="37" stroke="${d}" stroke-width="2" stroke-linecap="round"/>`;
-            break;
-        // ─ UAV: swept-wing V chevron ──────────────────────────────────
-        case "uav":
-            interior = `<path d="M4 12 L23 34 L42 12 L38 12 L23 28 L8 12 Z" fill="${d}"/>`;
-            break;
-        // ─ Position: small diamond ────────────────────────────────────
-        case "position":
-            interior = `<path d="M23 14 L32 23 L23 32 L14 23 Z" fill="${d}"/>`;
-            break;
-        // ─ Info: same circle style regardless of side ─────────────────
-        case "info":
-            return `<svg xmlns="http://www.w3.org/2000/svg" width="46" height="57" viewBox="0 0 46 57">
-              <circle cx="23" cy="23" r="19" fill="#3b82f6" fill-opacity="0.9"/>
-              <circle cx="23" cy="23" r="19" fill="none" stroke="${d}" stroke-width="2"/>
-              <text x="23" y="30" text-anchor="middle" font-family="serif" font-size="22"
-                    font-weight="700" fill="#fff">i</text>
-            </svg>`;
-    }
-
-    const bar = barColor
-        ? `<rect x="5" y="47" width="36" height="7" fill="${barColor}" rx="1.5"/>`
-        : "";
-
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="46" height="57" viewBox="0 0 46 57">
-      <!-- NATO friendly frame: blue rectangle -->
-      <rect x="3" y="3" width="40" height="40" fill="${fill}" stroke="${d}" stroke-width="2"/>
-      <!-- Unit designator -->
-      ${interior}
-      <!-- Status bar -->
-      ${bar}
-    </svg>`;
-}
-// ─── SYMBOL PANEL (enemy / friendly toggle) ───────────────────────────────────
-let placingSide = "enemy";   // "enemy" | "friendly"
-
-function rebuildSymbolPanel() {
-    const isFriendly = placingSide === "friendly";
-    Object.entries(symbolGroups).forEach(([group, types]) => {
-        const row = document.getElementById(`row-${group}`);
-        if (!row) return;
-        row.innerHTML = "";
-        types.forEach((type) => {
-            const btn = document.createElement("button");
-            btn.className    = "symbolBtn";
-            btn.dataset.type = type;
-            btn.title        = type.replace(/_/g, " ").toUpperCase();
-            btn.innerHTML    = isFriendly ? symbolSVGFriendly(type) : symbolSVG(type);
-            btn.addEventListener("click", () => {
-                selectedSymbol = type;
-                document.querySelectorAll(".symbolBtn").forEach(b => b.classList.remove("active"));
-                btn.classList.add("active");
-            });
-            row.appendChild(btn);
-        });
-    });
-    // Restore active state for currently selected symbol
-    let matched = false;
-    document.querySelectorAll(".symbolBtn").forEach(b => {
-        b.classList.remove("active");
-        if (b.dataset.type === selectedSymbol) { b.classList.add("active"); matched = true; }
-    });
-    if (!matched) document.querySelector(".symbolBtn")?.classList.add("active");
-}
-rebuildSymbolPanel();
-
-// ─── GROUP INFO TOOLTIPS ──────────────────────────────────────────────────────
-{
-    const tip = document.getElementById("groupInfoTooltip");
-    document.querySelectorAll(".group-info-btn").forEach(btn => {
-        btn.addEventListener("mouseenter", e => {
-            tip.textContent = btn.dataset.tip;
-            tip.style.display = "block";
-        });
-        btn.addEventListener("mousemove", e => {
-            let x = e.clientX + 12, y = e.clientY + 8;
-            if (x + 210 > window.innerWidth)  x = e.clientX - 218;
-            if (y + 80  > window.innerHeight) y = e.clientY - 88;
-            tip.style.left = x + "px";
-            tip.style.top  = y + "px";
-        });
-        btn.addEventListener("mouseleave", () => { tip.style.display = "none"; });
-        // Mobile: tap to toggle tooltip
-        btn.addEventListener("click", e => {
-            e.stopPropagation();
-            const showing = tip.style.display === "block";
-            tip.style.display = showing ? "none" : "block";
-            if (!showing) {
-                tip.textContent = btn.dataset.tip;
-                const r = btn.getBoundingClientRect();
-                tip.style.left = (r.right + 6) + "px";
-                tip.style.top  = r.top + "px";
-            }
-        });
-    });
-    document.addEventListener("click", () => { tip.style.display = "none"; });
-}
-
-// Side-toggle buttons
-document.querySelectorAll(".side-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-        placingSide = btn.dataset.side;
-        document.querySelectorAll(".side-btn").forEach(b => b.classList.remove("active"));
-        btn.classList.add("active");
-        rebuildSymbolPanel();
-    });
-});
-// ─── MAP CONTROLS ─────────────────────────────────────────────────────────────
-document.getElementById("zoomInBtn").addEventListener("click",  () => map.zoomIn());
-document.getElementById("zoomOutBtn").addEventListener("click", () => map.zoomOut());
-document.getElementById("fitBtn").addEventListener("click",     () => map.fitBounds(bounds));
-document.getElementById("undoBtn").addEventListener("click", undoLast);
-async function undoLast() {
-    if (undoStack.length === 0) return;
-    const last = undoStack.pop();
-    if (last.type === "marker") {
-        // Use cached data if available; fall back to Firestore only if not
-        if (last.data) {
-            redoStack.push({ type: "marker", data: last.data });
-            await deleteDoc(doc(db, "markers", last.id));
-        } else {
-            const snap = await getDoc(doc(db, "markers", last.id));
-            if (snap.exists()) redoStack.push({ type: "marker", data: snap.data() });
-            await deleteDoc(doc(db, "markers", last.id));
-        }
-    } else if (last.type === "drawing") {
-        const stroke = strokes.find(s => s.firestoreId === last.id);
-        if (stroke) redoStack.push({ type: "drawing", stroke: { ...stroke } });
-        strokes = strokes.filter(s => s.firestoreId !== last.id);
-        redrawAll();
-        try { await deleteDoc(doc(db, "drawings", last.id)); }
-        catch (err) { console.error("Undo drawing delete failed:", err); }
-    }
-}
-async function redoLast() {
-    if (redoStack.length === 0) return;
-    const last = redoStack.pop();
-    if (last.type === "marker") {
-        const newRef = doc(markersCollection);
-        await setDoc(newRef, last.data);
-        undoStack.push({ type: "marker", id: newRef.id });
-    } else if (last.type === "drawing") {
-        try {
-            const { firestoreId, ...strokeData } = last.stroke;
-            const docRef = await addDoc(drawingsCollection, strokeData);
-            undoStack.push({ type: "drawing", id: docRef.id });
-        } catch (err) { console.error("Redo drawing failed:", err); }
-    }
-}
-// ─── CLEAR MARKERS ────────────────────────────────────────────────────────────
-document.getElementById("clearMarkersBtn").addEventListener("click", async () => {
-    if (!confirm("Delete ALL markers? This cannot be undone.")) return;
-    const snapshot = await getDocs(markersCollection);
-    const batch    = writeBatch(db);
-    snapshot.forEach(d => batch.delete(d.ref));
-    await batch.commit();
-    for (let i = undoStack.length - 1; i >= 0; i--) {
-        if (undoStack[i].type === "marker") undoStack.splice(i, 1);
-    }
-});
-// ─── CLEAR DRAWINGS ──────────────────────────────────────────────────────────
-document.getElementById("clearDrawingsBtn").addEventListener("click", async () => {
-    if (!confirm("Delete ALL drawings? This cannot be undone.")) return;
-    strokes = [];
-    redrawAll();
-    for (let i = undoStack.length - 1; i >= 0; i--) {
-        if (undoStack[i].type === "drawing") undoStack.splice(i, 1);
-    }
-    try {
-        const snapshot = await getDocs(drawingsCollection);
-        if (!snapshot.empty) {
-            const batch = writeBatch(db);
-            snapshot.forEach(d => batch.delete(d.ref));
-            await batch.commit();
-        }
-    } catch (err) {
-        console.error("Failed to clear drawings from Firestore:", err);
-    }
-});
-// ─── FILTER ───────────────────────────────────────────────────────────────────
-const hiddenUnits = new Set();   // unit type strings that are currently hidden
-
-function applyFilter() {
-    Object.entries(displayedMarkers).forEach(([, {marker, data}]) => {
-        const unit = (data.type || "infantry_alive").split("_").slice(0, -1).join("_");
-        const el   = marker.getElement();
-        if (el) el.style.display = hiddenUnits.has(unit) ? "none" : "";
-    });
-}
-
-// Populate filter chips (called once after page load)
-function initFilterUI() {
-    const container = document.getElementById("filterChips");
-    if (!container) return;
-    Object.keys(symbolGroups).forEach(unit => {
-        const chip = document.createElement("button");
-        chip.className      = "filter-chip active";
-        chip.dataset.unit   = unit;
-        chip.textContent    = unit.toUpperCase(); // applyLang() will translate on load
-        chip.addEventListener("click", () => {
-            if (hiddenUnits.has(unit)) {
-                hiddenUnits.delete(unit);
-                chip.classList.add("active");
-            } else {
-                hiddenUnits.add(unit);
-                chip.classList.remove("active");
-            }
-            applyFilter();
-        });
-        container.appendChild(chip);
-    });
-}
-initFilterUI();
-
-// ─── FIRESTORE REALTIME — MARKERS ────────────────────────────────────────────
-const displayedMarkers = {};        // id → { marker, data }
-let pendingEditMarkerId = null;     // auto-open popup for freshly placed marker
-
-function createIcon(type, data = {}, markerId = "") {
-    const svg    = (data.side === "friendly") ? symbolSVGFriendly(type) : symbolSVG(type);
-    const date   = escHtml(data.date   || "");
-    const amount = escHtml(String(data.amount || ""));
-    const info   = escHtml(data.info   || "");
-    const source = escHtml(data.source || "");
-    const author = escHtml(data.author || "");
-    // data-mid is used by the DOM-delegation handler below for click/contextmenu
-    const html = `<div class="mkr-wrap" data-mid="${escHtml(markerId)}">
-      <div class="ml ml-tl">${date}</div>
-      <div class="ml ml-tc">${amount}</div>
-      <div class="ml ml-tr">${info}</div>
-      <div class="mkr-icon">${svg}</div>
-      <div class="ml ml-bl">${author}</div>
-      <div class="ml ml-br">${source}</div>
-    </div>`;
-    return L.divIcon({
-        html,
-        className:  "mkr-outer",   // pointer-events:none set in CSS
-        iconSize:   [140, 140],
-        iconAnchor: [70, 67]
-    });
-}
-onSnapshot(markersCollection, (snapshot) => {
-    snapshot.docChanges().forEach((change) => {
-        const id   = change.doc.id;
-        const data = change.doc.data();
-        if (change.type === "added") {
-            const marker = L.marker([data.y, data.x], {
-                icon:        createIcon(data.type || "infantry_alive", data, id),
-                interactive: false   // clicks pass through to map; handled via DOM delegation
-            }).addTo(map);
-            displayedMarkers[id] = { marker, data };
-            if (pendingEditMarkerId === id) pendingEditMarkerId = null;
-            if (map3DState)  map3DState.addMarker3D(id, data);
-            if (arty3DState) arty3DState.addMarker3D(id, data);
-        } else if (change.type === "modified") {
-            if (displayedMarkers[id]) {
-                displayedMarkers[id].marker.setIcon(
-                    createIcon(data.type || "infantry_alive", data, id)
-                );
-                displayedMarkers[id].data = data;
-            }
-            if (map3DState)  map3DState.addMarker3D(id, data);   // rebuild 3D object
-            if (arty3DState) arty3DState.addMarker3D(id, data);
-        } else if (change.type === "removed") {
-            if (displayedMarkers[id]) {
-                map.removeLayer(displayedMarkers[id].marker);
-                delete displayedMarkers[id];
-            }
-            if (map3DState)  map3DState.removeMarker3D(id);
-            if (arty3DState) arty3DState.removeMarker3D(id);
-        }
-    });
-    document.getElementById("markerCount").textContent =
-        t("markers", Object.keys(displayedMarkers).length);
-    applyFilter();
-}, (err) => console.error("Markers sync error:", err));
-// ─── FIRESTORE REALTIME — DRAWINGS ───────────────────────────────────────────
-onSnapshot(drawingsCollection, (snapshot) => {
-    snapshot.docChanges().forEach((change) => {
-        const id   = change.doc.id;
-        const data = change.doc.data();
-        if (change.type === "added") {
-            if (!strokes.some(s => s.firestoreId === id)) {
-                strokes.push({ ...data, firestoreId: id });
-            }
-            if (map3DState) map3DState.addStroke3D(id, data);
-        } else if (change.type === "modified") {
-            const idx = strokes.findIndex(s => s.firestoreId === id);
-            if (idx !== -1) strokes[idx] = { ...data, firestoreId: id };
-            if (map3DState) map3DState.addStroke3D(id, data);
-        } else if (change.type === "removed") {
-            strokes = strokes.filter(s => s.firestoreId !== id);
-            if (map3DState) map3DState.removeStroke3D(id);
-        }
-    });
-    redrawAll();
-}, (error) => {
-    console.error("Drawings sync error:", error);
-});
-// ─── ADD MARKERS — shared handler (called by Leaflet click AND 3D canvas) ────
-async function handleMapClickLatLng(lat, lng) {
-    if (drawMode || rulerMode) return;
-    const now  = new Date(Date.now() + 2 * 3600 * 1000);
-    const p    = n => String(n).padStart(2, "0");
-    const dateStr = `${p(now.getUTCDate())}/${p(now.getUTCMonth()+1)}/${String(now.getUTCFullYear()).slice(-2)} ${p(now.getUTCHours())}:${p(now.getUTCMinutes())}:${p(now.getUTCSeconds())}`;
-    const newRef  = doc(markersCollection);
-    const mkrData = {
-        x: lng, y: lat,
-        type:    selectedSymbol,
-        side:    placingSide,
-        created: Date.now(),
-        date:    dateStr,
-        amount:  "",
-        info:    "",
-        source:  "",
-        author:  getCallsign()
-    };
-    pendingEditMarkerId = newRef.id;
-    await setDoc(newRef, mkrData);
-    undoStack.push({ type: "marker", id: newRef.id, data: mkrData });
-}
-
-// ─── ADD MARKERS — LMB (mobile: long-tap, see below) ─────────────────────────
-map.on("click", async (e) => {
-    // Block click if a Ctrl+selection was just completed
-    if (_selBoxConsumed) { _selBoxConsumed = false; return; }
-    if (e.latlng.lng < 0 || e.latlng.lng > imageWidth ||
-        e.latlng.lat < 0 || e.latlng.lat > imageHeight) return;
-    await handleMapClickLatLng(e.latlng.lat, e.latlng.lng);
-});
-
-// ─── MARKER CLICK / CONTEXTMENU — DOM DELEGATION ─────────────────────────────
-// Markers use interactive:false so their 140×140 div is transparent to pointer
-// events except the .mkr-icon element (pointer-events:auto in CSS).
-// We delegate from the map container so clicking outside the icon still places
-// a new marker, and clicking the icon opens the edit popup.
-// Capture phase (true) so our handler fires BEFORE Leaflet's internal listeners
-// on the same element — stopPropagation then prevents the map click/contextmenu
-// handlers from firing when the user clicked the marker icon.
-document.getElementById("map").addEventListener("click", e => {
-    const iconEl = e.target.closest(".mkr-icon");
-    if (!iconEl) return;
-    const wrap = iconEl.closest("[data-mid]");
-    if (!wrap) return;
-    const id = wrap.dataset.mid;
-    if (id && displayedMarkers[id]) {
-        openMarkerEditPopup(id, displayedMarkers[id].marker, displayedMarkers[id].data);
-    }
-    // Stop the event in capture phase so Leaflet never sees it → no new marker placed
-    e.stopPropagation();
-}, true);  // ← capture phase
-document.getElementById("map").addEventListener("contextmenu", async e => {
-    const iconEl = e.target.closest(".mkr-icon");
-    if (!iconEl) return;
-    const wrap = iconEl.closest("[data-mid]");
-    if (!wrap) return;
-    const id = wrap.dataset.mid;
-    if (id && displayedMarkers[id]) {
-        e.preventDefault();
-        // Stop propagation in capture phase so the coord popup never shows
-        e.stopPropagation();
-        if (await showConfirm("DELETE THIS MARKER?")) {
-            await deleteDoc(doc(db, "markers", id));
-            const idx = undoStack.findIndex(u => u.type === "marker" && u.id === id);
-            if (idx !== -1) undoStack.splice(idx, 1);
-        }
-    }
-}, true);  // ← capture phase
-
-// ─── MARKER EDIT POPUP ───────────────────────────────────────────────────────
-// Uses a standalone L.popup (not bound to marker) so it can be reopened anytime.
-function openMarkerEditPopup(markerId, markerLeaflet, data) {
-    const isInfo = (data.type || "").startsWith("info");
-    const popupContent = isInfo ? `
-      <div class="mep-popup">
-        <div class="mep-row">
-          <span class="mep-label">DATE</span>
-          <span class="mep-date">${escHtml(data.date || "")}</span>
-        </div>
-        <div class="mep-row">
-          <span class="mep-label">BY</span>
-          <span class="mep-date">${escHtml(data.author || "—")}</span>
-        </div>
-        <div class="mep-row">
-          <label class="mep-label" for="mep-inf">INFO</label>
-          <input class="mep-inp" id="mep-inf" type="text"
-                 value="${escHtml(data.info || "")}" placeholder="Enter information…"/>
-        </div>
-        <button class="mep-save" id="mep-save">SAVE</button>
-      </div>` : `
-      <div class="mep-popup">
-        <div class="mep-row">
-          <span class="mep-label">DATE</span>
-          <span class="mep-date">${escHtml(data.date || "")}</span>
-        </div>
-        <div class="mep-row">
-          <span class="mep-label">BY</span>
-          <span class="mep-date">${escHtml(data.author || "—")}</span>
-        </div>
-        <div class="mep-row">
-          <label class="mep-label" for="mep-amt">AMT</label>
-          <input class="mep-inp" id="mep-amt" type="text"
-                 value="${escHtml(String(data.amount || ""))}"/>
-        </div>
-        <div class="mep-row">
-          <label class="mep-label" for="mep-inf">INFO</label>
-          <input class="mep-inp" id="mep-inf" type="text"
-                 value="${escHtml(data.info || "")}"/>
-        </div>
-        <div class="mep-row">
-          <label class="mep-label" for="mep-src">SRC</label>
-          <input class="mep-inp" id="mep-src" type="text"
-                 value="${escHtml(data.source || "")}"/>
-        </div>
-        <button class="mep-save" id="mep-save">SAVE</button>
-      </div>`;
-
-    // In 3D mode Leaflet popups are hidden under the canvas — use a fixed panel instead
-    if (map3DState) {
-        _show3DMarkerPanel(markerId, isInfo, data);
-        return;
-    }
-
-    // Close any previously opened popup, then open a fresh standalone one
-    map.closePopup();
-    const popup = L.popup({ className: "mep-outer", maxWidth: 230, minWidth: 200, autoPan: true, offset: L.point(160, 40) })
-        .setLatLng(markerLeaflet.getLatLng())
-        .setContent(popupContent)
-        .openOn(map);
-
-    // Wait one animation frame for Leaflet to insert the DOM, then wire the button
-    requestAnimationFrame(() => {
-        document.getElementById("mep-save")?.addEventListener("click", async () => {
-            const amt = document.getElementById("mep-amt")?.value ?? "";
-            const inf = document.getElementById("mep-inf")?.value ?? "";
-            const src = document.getElementById("mep-src")?.value ?? "";
-            const update = isInfo ? { info: inf } : { amount: amt, info: inf, source: src };
-            await updateDoc(doc(db, "markers", markerId), update);
-            map.closePopup();
-        });
-    });
-}
-
-// ── Fixed-position marker editor for 3D mode ─────────────────────────────────
-function _show3DMarkerPanel(markerId, isInfo, data) {
-    document.getElementById("_mep3d")?.remove();
-    const panel = document.createElement("div");
-    panel.id = "_mep3d";
-    panel.className = "mep-popup mep-popup-3d";
-    const amtRow = isInfo ? "" : `
-      <div class="mep-row">
-        <label class="mep-label" for="mep3d-amt">AMT</label>
-        <input class="mep-inp" id="mep3d-amt" type="text" value="${escHtml(String(data.amount||""))}"/>
-      </div>`;
-    const srcRow = isInfo ? "" : `
-      <div class="mep-row">
-        <label class="mep-label" for="mep3d-src">SRC</label>
-        <input class="mep-inp" id="mep3d-src" type="text" value="${escHtml(data.source||"")}"/>
-      </div>`;
-    panel.innerHTML = `
-      <button class="mep-close3d" id="_mep3dX">✕</button>
-      <div class="mep-row">
-        <span class="mep-label">DATE</span>
-        <span class="mep-date">${escHtml(data.date||"")}</span>
-      </div>
-      <div class="mep-row">
-        <span class="mep-label">BY</span>
-        <span class="mep-date">${escHtml(data.author||"—")}</span>
-      </div>
-      ${amtRow}
-      <div class="mep-row">
-        <label class="mep-label" for="mep3d-inf">INFO</label>
-        <input class="mep-inp" id="mep3d-inf" type="text" value="${escHtml(data.info||"")}"
-               placeholder="${isInfo ? "Enter information…" : ""}"/>
-      </div>
-      ${srcRow}
-      <button class="mep-save" id="_mep3dSave">SAVE</button>`;
-    document.body.appendChild(panel);
-
-    const close = () => panel.remove();
-    document.getElementById("_mep3dX").addEventListener("click", close);
-    document.getElementById("_mep3dSave").addEventListener("click", async () => {
-        const amt = document.getElementById("mep3d-amt")?.value ?? "";
-        const inf = document.getElementById("mep3d-inf")?.value ?? "";
-        const src = document.getElementById("mep3d-src")?.value ?? "";
-        const update = isInfo ? { info: inf } : { amount: amt, info: inf, source: src };
-        await updateDoc(doc(db, "markers", markerId), update);
-        close();
-    });
-    // Click outside to close
-    setTimeout(() => {
-        const onOut = (e) => { if (!panel.contains(e.target)) { close(); document.removeEventListener("pointerdown", onOut, true); } };
-        document.addEventListener("pointerdown", onOut, true);
-    }, 150);
-}
-// ─── RIGHT-CLICK COORDINATE POPUP ────────────────────────────────────────────
-const coordPopup = document.getElementById("coordPopup");
-const popupBoth  = document.getElementById("popupBoth");
-map.on("contextmenu", (e) => {
-    if (drawMode || rulerMode) return;
-    e.originalEvent.preventDefault();
-    const x = parseFloat(e.latlng.lng.toFixed(4));
-    const y = parseFloat(e.latlng.lat.toFixed(4));
-    popupBoth.textContent = `X: ${x.toFixed(4)}, Y: ${y.toFixed(4)}`;
-    const wrapper = document.getElementById("mapWrapper");
-    const wRect   = wrapper.getBoundingClientRect();
-    const eX      = e.originalEvent.clientX - wRect.left;
-    const eY      = e.originalEvent.clientY - wRect.top;
-    let left = eX + 8;
-    let top  = eY + 8;
-    const popW = 220, popH = 80;
-    if (left + popW > wrapper.clientWidth)  left = eX - popW - 8;
-    if (top  + popH > wrapper.clientHeight) top  = eY - popH - 8;
-    coordPopup.style.left    = left + "px";
-    coordPopup.style.top     = top  + "px";
-    coordPopup.style.display = "block";
-});
-document.getElementById("coordPopupClose").addEventListener("click", () => {
-    coordPopup.style.display = "none";
-});
-map.on("click", () => { coordPopup.style.display = "none"; });
-function copyToClipboard(text, btn) {
-    navigator.clipboard.writeText(text).then(() => {
-        const orig = btn.innerHTML;
-        btn.innerHTML = "✓";
-        btn.style.color = "#44ff88";
-        setTimeout(() => { btn.innerHTML = orig; btn.style.color = ""; }, 1200);
-    });
-}
-document.getElementById("copyBoth").addEventListener("click", () => copyToClipboard(popupBoth.textContent, document.getElementById("copyBoth")));
-// ─── COORDINATE SEARCH ────────────────────────────────────────────────────────
-const coordSearchInput = document.getElementById("coordSearchInput");
-const coordSearchBtn   = document.getElementById("coordSearchBtn");
-const coordSearchError = document.getElementById("coordSearchError");
-function goToCoords() {
-    const val = coordSearchInput.value.trim();
-    coordSearchError.textContent = "";
-    const clean = val.replace(/[XxYy:\s]/g, " ").trim();
-    const parts = clean.split(/[\s,]+/).filter(Boolean);
-    if (parts.length < 2) {
-        coordSearchError.textContent = "Need X and Y values.";
-        return;
-    }
-    const upperVal = val.toUpperCase();
-    const xIdx = upperVal.indexOf("X");
-    const yIdx = upperVal.indexOf("Y");
-    let x, y;
-    if (xIdx !== -1 && yIdx !== -1) {
-        if (xIdx < yIdx) {
-            x = parseFloat(parts[0]);
-            y = parseFloat(parts[1]);
-        } else {
-            y = parseFloat(parts[0]);
-            x = parseFloat(parts[1]);
-        }
-    } else {
-        x = parseFloat(parts[0]);
-        y = parseFloat(parts[1]);
-    }
-    if (isNaN(y) || isNaN(x)) {
-        coordSearchError.textContent = "Invalid numbers.";
-        return;
-    }
-    if (x < 0 || x > imageWidth || y < 0 || y > imageHeight) {
-        coordSearchError.textContent = "Coordinates out of bounds.";
-        return;
-    }
-    map.setView([y, x], 1);
-    const flash = L.circleMarker([y, x], {
-        radius: 12, color: "#4fa3ff", weight: 2,
-        fillColor: "rgba(79,163,255,0.2)", fillOpacity: 1
-    }).addTo(map);
-    setTimeout(() => map.removeLayer(flash), 2000);
-    if (map3DState) map3DState.flyTo(y, x);
-}
-coordSearchBtn.addEventListener("click", goToCoords);
-coordSearchInput.addEventListener("keydown", (e) => { if (e.key === "Enter") goToCoords(); });
-// ════════════════════════════════════════════════════════════════════
-// DRAWING SYSTEM
-// ════════════════════════════════════════════════════════════════════
-const canvas = document.getElementById("drawCanvas");
-const ctx    = canvas.getContext("2d");
-// ─── CANVAS SIZING ───────────────────────────────────────────────────────────
-function resizeCanvas() {
-    const wrapper = document.getElementById("mapWrapper");
-    canvas.width  = wrapper.clientWidth;
-    canvas.height = wrapper.clientHeight;
-    redrawAll();
-}
-resizeCanvas();
-window.addEventListener("resize", resizeCanvas);
-map.on("resize", resizeCanvas);
-map.on("move zoom moveend zoomend", redrawAll);
-// ─── COORDINATE HELPERS ──────────────────────────────────────────────────────
-// FIX #4: ruler/canvas offset when panel collapsed.
-// map.latLngToContainerPoint returns pixel coords relative to the map container element,
-// which IS the mapWrapper div. The canvas is also sized to mapWrapper, so these already
-// match — no correction needed there. The bug was that ruler mousemove used
-// e.latlng (from map event) which is already correct, and llToCanvas uses
-// map.latLngToContainerPoint which is relative to the map container. This should be
-// consistent. However, if the panel collapses AFTER map init, the map container resizes
-// and Leaflet needs to be told. We call map.invalidateSize() on panel transition.
-function llToCanvas(lat, lng) {
-    const pt = map.latLngToContainerPoint(L.latLng(lat, lng));
-    return [pt.x, pt.y];
-}
-function canvasToLL(x, y) {
-    return map.containerPointToLatLng(L.point(x, y));
-}
-// ─── POINT FORMAT HELPER ─────────────────────────────────────────────────────
-function getPointCoords(pt) {
-    if (Array.isArray(pt)) return { lat: pt[0], lng: pt[1] };
-    return pt;
-}
-// ─── TOOL SELECTION ───────────────────────────────────────────────────────────
-document.querySelectorAll(".drawToolBtn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-        activeTool = btn.dataset.tool;
-        document.querySelectorAll(".drawToolBtn").forEach(b => b.classList.remove("active"));
-        btn.classList.add("active");
-        canvas.dataset.tool = activeTool;
-    });
-});
-document.querySelector('[data-tool="pen"]')?.classList.add("active");
-// ─── DRAW MODE TOGGLE ─────────────────────────────────────────────────────────
-const toggleBtn = document.getElementById("toggleDrawMode");
-toggleBtn.addEventListener("click", () => {
-    drawMode = !drawMode;
-    if (drawMode && rulerMode) toggleRuler();
-    toggleBtn.textContent = drawMode ? "ON" : "OFF";
-    toggleBtn.classList.toggle("on", drawMode);
-    canvas.classList.toggle("active", drawMode);
-    document.getElementById("mapWrapper")?.classList.toggle("draw-mode-3d", drawMode);
-    map.dragging[drawMode ? "disable" : "enable"]();
-    map.scrollWheelZoom[drawMode ? "disable" : "enable"]();
-    document.getElementById("drawModeStatus").textContent = t(drawMode ? "drawOn" : "drawOff");
-});
-// ─── COLOR SWATCHES ───────────────────────────────────────────────────────────
-document.querySelectorAll(".swatch").forEach((sw) => {
-    sw.addEventListener("click", () => {
-        penColor = sw.dataset.color;
-        document.querySelectorAll(".swatch").forEach(s => s.classList.remove("active"));
-        sw.classList.add("active");
-    });
-});
-// ─── PEN WIDTH SLIDER ─────────────────────────────────────────────────────────
-const widthSlider = document.getElementById("penWidth");
-const widthVal    = document.getElementById("penWidthVal");
-widthSlider.addEventListener("input", () => {
-    penWidth = parseInt(widthSlider.value);
-    widthVal.textContent = penWidth;
-});
-// ─── REDRAW ALL STROKES ───────────────────────────────────────────────────────
-function redrawAll() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    strokes.forEach(s => drawStroke(s));
-    if (currentStroke) drawStroke(currentStroke);
-    if (rulerMode && rulerPoints.length > 0) drawRulerOverlay();
-    if (window.__artyRedrawHook) window.__artyRedrawHook();
-    // Draw selection box if active
-    if (selBox) drawSelectionBox(ctx, selBox.x1, selBox.y1, selBox.x2, selBox.y2);
-}
-function drawStroke(s) {
-    ctx.save();
-    ctx.strokeStyle = s.color;
-    ctx.lineWidth   = s.width;
-    ctx.lineCap     = "round";
-    ctx.lineJoin    = "round";
-    if (s.tool === "pen") {
-        ctx.beginPath();
-        s.points.forEach((pt, i) => {
-            const { lat, lng } = getPointCoords(pt);
-            const [cx, cy] = llToCanvas(lat, lng);
-            i === 0 ? ctx.moveTo(cx, cy) : ctx.lineTo(cx, cy);
-        });
-        ctx.stroke();
-    } else if (s.tool === "line") {
-        const [x1, y1] = llToCanvas(s.ll1.lat, s.ll1.lng);
-        const [x2, y2] = llToCanvas(s.ll2.lat, s.ll2.lng);
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.stroke();
-    } else if (s.tool === "arrow") {
-        const [x1, y1] = llToCanvas(s.ll1.lat, s.ll1.lng);
-        const [x2, y2] = llToCanvas(s.ll2.lat, s.ll2.lng);
-        drawArrow(ctx, x1, y1, x2, y2, s.color, s.width);
-    } else if (s.tool === "circle") {
-        const [x1, y1] = llToCanvas(s.ll1.lat, s.ll1.lng);
-        const [x2, y2] = llToCanvas(s.ll2.lat, s.ll2.lng);
-        const rx = Math.abs(x2 - x1) / 2;
-        const ry = Math.abs(y2 - y1) / 2;
-        const cx = x1 + (x2 - x1) / 2;
-        const cy = y1 + (y2 - y1) / 2;
-        ctx.beginPath();
-        ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-        ctx.stroke();
-    } else if (s.tool === "rect") {
-        const [x1, y1] = llToCanvas(s.ll1.lat, s.ll1.lng);
-        const [x2, y2] = llToCanvas(s.ll2.lat, s.ll2.lng);
-        ctx.beginPath();
-        ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-    } else if (s.tool === "eraser") {
-        ctx.save();
-        ctx.globalCompositeOperation = "destination-out";
-        ctx.lineWidth = s.width * 5;
-        ctx.beginPath();
-        s.points.forEach((pt, i) => {
-            const { lat, lng } = getPointCoords(pt);
-            const [cx, cy] = llToCanvas(lat, lng);
-            i === 0 ? ctx.moveTo(cx, cy) : ctx.lineTo(cx, cy);
-        });
-        ctx.stroke();
-        ctx.restore();
-    } else if (s.tool === "label") {
-        const [cx, cy] = llToCanvas(s.ll1.lat, s.ll1.lng);
-        const fs = Math.max(10, Math.min(s.width * 4, 32));
-        ctx.font = `700 ${fs}px 'Share Tech Mono', monospace`;
-        ctx.fillStyle = s.color;
-        // subtle shadow for readability on any background
-        ctx.shadowColor = "rgba(0,0,0,0.8)";
-        ctx.shadowBlur  = 4;
-        ctx.fillText(s.labelText || "", cx, cy);
-        ctx.shadowBlur = 0;
-    } else if (s.tool === "zone") {
-        const [x1, y1] = llToCanvas(s.ll1.lat, s.ll1.lng);
-        const [x2, y2] = llToCanvas(s.ll2.lat, s.ll2.lng);
-        const rx = Math.min(x1, x2), ry = Math.min(y1, y2);
-        const rw = Math.abs(x2 - x1), rh = Math.abs(y2 - y1);
-        // Filled semi-transparent rect
-        ctx.globalAlpha = 0.18;
-        ctx.fillStyle = s.color;
-        ctx.fillRect(rx, ry, rw, rh);
-        ctx.globalAlpha = 1;
-        // Dashed border
-        ctx.strokeStyle = s.color;
-        ctx.lineWidth = Math.max(1, s.width || 2);
-        ctx.setLineDash([6, 4]);
-        ctx.strokeRect(rx, ry, rw, rh);
-        ctx.setLineDash([]);
-        // Name label centered
-        if (s.zoneName) {
-            const cx2 = rx + rw / 2, cy2 = ry + rh / 2;
-            const fs2 = Math.max(10, Math.min(rh * 0.18, 22));
-            ctx.font = `700 ${fs2}px 'Share Tech Mono', monospace`;
-            ctx.textAlign = "center"; ctx.textBaseline = "middle";
-            const tw = ctx.measureText(s.zoneName).width;
-            ctx.fillStyle = "rgba(6,12,22,0.72)";
-            ctx.fillRect(cx2 - tw / 2 - 6, cy2 - fs2 / 2 - 3, tw + 12, fs2 + 6);
-            ctx.fillStyle = s.color;
-            ctx.fillText(s.zoneName, cx2, cy2);
-            ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-        }
-    }
-    ctx.restore();
-}
-function drawArrow(ctx, x1, y1, x2, y2, color, width) {
-    const headLen = Math.max(12, width * 4);
-    const angle   = Math.atan2(y2 - y1, x2 - x1);
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(x2, y2);
-    ctx.lineTo(
-        x2 - headLen * Math.cos(angle - Math.PI / 6),
-        y2 - headLen * Math.sin(angle - Math.PI / 6)
-    );
-    ctx.lineTo(
-        x2 - headLen * Math.cos(angle + Math.PI / 6),
-        y2 - headLen * Math.sin(angle + Math.PI / 6)
-    );
-    ctx.closePath();
-    ctx.fillStyle = color;
-    ctx.fill();
-}
-// ─── SHAPE PREVIEW ───────────────────────────────────────────────────────────
-function drawPreview(curX, curY) {
-    redrawAll();
-    ctx.save();
-    ctx.strokeStyle = penColor;
-    ctx.fillStyle   = penColor;
-    ctx.lineWidth   = penWidth;
-    ctx.lineCap     = "round";
-    ctx.lineJoin    = "round";
-    if (activeTool === "line") {
-        ctx.beginPath();
-        ctx.moveTo(startCanvasX, startCanvasY);
-        ctx.lineTo(curX, curY);
-        ctx.stroke();
-    } else if (activeTool === "arrow") {
-        drawArrow(ctx, startCanvasX, startCanvasY, curX, curY, penColor, penWidth);
-    } else if (activeTool === "circle") {
-        const rx = Math.abs(curX - startCanvasX) / 2;
-        const ry = Math.abs(curY - startCanvasY) / 2;
-        const cx = startCanvasX + (curX - startCanvasX) / 2;
-        const cy = startCanvasY + (curY - startCanvasY) / 2;
-        ctx.beginPath();
-        ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-        ctx.stroke();
-    } else if (activeTool === "rect") {
-        ctx.beginPath();
-        ctx.strokeRect(startCanvasX, startCanvasY, curX - startCanvasX, curY - startCanvasY);
-    } else if (activeTool === "zone") {
-        const rw = curX - startCanvasX, rh = curY - startCanvasY;
-        ctx.globalAlpha = 0.15;
-        ctx.fillStyle = penColor;
-        ctx.fillRect(startCanvasX, startCanvasY, rw, rh);
-        ctx.globalAlpha = 1;
-        ctx.setLineDash([6, 4]);
-        ctx.strokeRect(startCanvasX, startCanvasY, rw, rh);
-        ctx.setLineDash([]);
-    }
-    ctx.restore();
-}
-// ─── MOUSE EVENTS ────────────────────────────────────────────────────────────
-// ─── CTRL+LMB SELECTION BOX ──────────────────────────────────────────────────
-function drawSelectionBox(ctx, x1, y1, x2, y2) {
-    const rx = Math.min(x1,x2), ry = Math.min(y1,y2);
-    const rw = Math.abs(x2-x1), rh = Math.abs(y2-y1);
-    ctx.save();
-    ctx.globalAlpha = 0.15;
-    ctx.fillStyle = "#4fa3ff";
-    ctx.fillRect(rx, ry, rw, rh);
-    ctx.globalAlpha = 1;
-    ctx.strokeStyle = "#4fa3ff";
-    ctx.lineWidth = 1;
-    ctx.setLineDash([4, 3]);
-    ctx.strokeRect(rx, ry, rw, rh);
-    ctx.setLineDash([]);
-    ctx.restore();
-}
-
-canvas.addEventListener("mousedown", (e) => {
-    // Ctrl+LMB: selection box (works regardless of drawMode)
-    if (e.ctrlKey && e.button === 0) {
-        e.preventDefault();
-        e.stopPropagation();
-        _selBoxActive = true;
-        _selBoxConsumed = false;
-        const rect = canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left, y = e.clientY - rect.top;
-        selBox = { x1: x, y1: y, x2: x, y2: y };
-        return;
-    }
-    if (!drawMode) return;
-    isDrawing = true;
-    const { offsetX: x, offsetY: y } = e;
-    startCanvasX = x;
-    startCanvasY = y;
-    startMapLL   = canvasToLL(x, y);
-    if (activeTool === "pen" || activeTool === "eraser") {
-        const ll = canvasToLL(x, y);
-        currentStroke = {
-            tool:   activeTool,
-            color:  penColor,
-            width:  penWidth,
-            points: [{ lat: ll.lat, lng: ll.lng }]
-        };
-    }
-});
-// Document-level handlers for selection box (work even outside canvas)
-document.addEventListener("mousemove", (e) => {
-    if (!_selBoxActive || !selBox) return;
-    const rect = canvas.getBoundingClientRect();
-    selBox.x2 = e.clientX - rect.left;
-    selBox.y2 = e.clientY - rect.top;
-    redrawAll();
-});
-
-canvas.addEventListener("mousemove", (e) => {
-    if (_selBoxActive) return; // handled by document listener
-    if (!drawMode || !isDrawing) return;
-    const { offsetX: x, offsetY: y } = e;
-    if (activeTool === "pen" || activeTool === "eraser") {
-        const ll = canvasToLL(x, y);
-        currentStroke.points.push({ lat: ll.lat, lng: ll.lng });
-        redrawAll();
-    } else {
-        drawPreview(x, y);
-    }
-});
-// Document-level mouseup handles selection box completion
-document.addEventListener("mouseup", async (e) => {
-    if (!_selBoxActive || !selBox) return;
-    _selBoxActive = false;
-    _selBoxConsumed = true;
-    _drawCanvas?.classList.remove("ctrl-select");
-    if (!drawMode) map.dragging.enable();
-
-    const { x1, y1, x2, y2 } = selBox;
-    const rx1 = Math.min(x1, x2), ry1 = Math.min(y1, y2);
-    const rx2 = Math.max(x1, x2), ry2 = Math.max(y1, y2);
-    selBox = null;
-    redrawAll();
-
-    if (rx2 - rx1 < 8 || ry2 - ry1 < 8) return; // tiny accidental box
-
-    // Find markers inside box
-    const selectedIds = Object.entries(displayedMarkers).filter(([, { marker }]) => {
-        const pt = map.latLngToContainerPoint(marker.getLatLng());
-        const mapRect = document.getElementById("map").getBoundingClientRect();
-        const canvasRect = canvas.getBoundingClientRect();
-        const cx = pt.x + (mapRect.left - canvasRect.left);
-        const cy = pt.y + (mapRect.top  - canvasRect.top);
-        return cx >= rx1 && cx <= rx2 && cy >= ry1 && cy <= ry2;
-    }).map(([id]) => id);
-
-    // Find strokes inside box
-    const selectedStrokes = strokes.filter(s => {
-        if (!s.points?.length) return false;
-        return s.points.some(({ lat, lng }) => {
-            const [cx, cy] = llToCanvas(lat, lng);
-            return cx >= rx1 && cx <= rx2 && cy >= ry1 && cy <= ry2;
-        });
-    });
-
-    const totalCount = selectedIds.length + selectedStrokes.length;
-    if (totalCount === 0) return;
-
-    const ok = await showConfirm(`Delete ${totalCount} selected item${totalCount > 1 ? "s" : ""}?`, "DELETE");
-    if (!ok) return;
-
-    for (const id of selectedIds) {
-        try { await deleteDoc(doc(db, "markers", id)); } catch (_) {}
-    }
-    for (const s of selectedStrokes) {
-        if (s.id) try { await deleteDoc(doc(db, "drawings", s.id)); } catch (_) {}
-    }
-});
-
-canvas.addEventListener("mouseup", async (e) => {
-    if (_selBoxActive) return; // handled by document listener
-    if (!drawMode || !isDrawing) return;
-    isDrawing = false;
-    const { offsetX: x, offsetY: y } = e;
-    if (activeTool === "pen" || activeTool === "eraser") {
-        const strokeData = {
-            tool:    currentStroke.tool,
-            color:   currentStroke.color,
-            width:   currentStroke.width,
-            points:  currentStroke.points,
-            created: Date.now()
-        };
-        currentStroke = null;
-        try {
-            const docRef = await addDoc(drawingsCollection, strokeData);
-            undoStack.push({ type: "drawing", id: docRef.id });
-        } catch (err) {
-            console.error("Failed to save drawing:", err);
-            const localId = "_local_" + Date.now() + "_" + Math.random();
-            strokes.push({ ...strokeData, firestoreId: localId });
-            undoStack.push({ type: "drawing", id: localId });
-            redrawAll();
-        }
-    } else if (activeTool === "zone") {
-        const endLL = canvasToLL(x, y);
-        // Show zone name input at center of drawn zone
-        const cxPx = (startCanvasX + x) / 2;
-        const cyPx = (startCanvasY + y) / 2;
-        const zWrap = document.getElementById("zoneNameWrap");
-        const zField = document.getElementById("zoneNameField");
-        if (zWrap && zField) {
-            zWrap.style.display = "block";
-            zWrap.style.left = (cxPx - 60) + "px";
-            zWrap.style.top  = (cyPx - 16) + "px";
-            zField.value = ""; zField.focus();
-            const commitZone = async () => {
-                zWrap.style.display = "none";
-                const stroke = {
-                    tool:     "zone",
-                    color:    penColor,
-                    width:    penWidth,
-                    ll1:      { lat: startMapLL.lat, lng: startMapLL.lng },
-                    ll2:      { lat: endLL.lat,      lng: endLL.lng },
-                    zoneName: (zField.value.trim().toUpperCase() || "AOI"),
-                    created:  Date.now()
-                };
-                redrawAll();
-                try {
-                    const docRef = await addDoc(drawingsCollection, stroke);
-                    undoStack.push({ type: "drawing", id: docRef.id });
-                } catch (err) {
-                    console.error("Failed to save zone:", err);
-                    const localId = "_local_" + Date.now() + "_" + Math.random();
-                    strokes.push({ ...stroke, firestoreId: localId });
-                    undoStack.push({ type: "drawing", id: localId });
-                    redrawAll();
-                }
-            };
-            const onKey = (e) => {
-                if (e.key === "Enter") { zField.removeEventListener("keydown", onKey); zField.removeEventListener("blur", commitZone); commitZone(); }
-                if (e.key === "Escape") { zWrap.style.display = "none"; zField.removeEventListener("keydown", onKey); zField.removeEventListener("blur", commitZone); redrawAll(); }
-            };
-            zField.addEventListener("keydown", onKey);
-            zField.addEventListener("blur", commitZone, { once: true });
-        }
-    } else {
-        const endLL = canvasToLL(x, y);
-        const stroke = {
-            tool:  activeTool,
-            color: penColor,
-            width: penWidth,
-            ll1:   { lat: startMapLL.lat, lng: startMapLL.lng },
-            ll2:   { lat: endLL.lat,      lng: endLL.lng },
-            created: Date.now()
-        };
-        try {
-            const docRef = await addDoc(drawingsCollection, stroke);
-            undoStack.push({ type: "drawing", id: docRef.id });
-        } catch (err) {
-            console.error("Failed to save drawing:", err);
-            const localId = "_local_" + Date.now() + "_" + Math.random();
-            strokes.push({ ...stroke, firestoreId: localId });
-            undoStack.push({ type: "drawing", id: localId });
-            redrawAll();
-        }
-    }
-});
-canvas.addEventListener("mouseleave", async () => {
-    if (isDrawing && currentStroke) {
-        const strokeData = {
-            tool:    currentStroke.tool,
-            color:   currentStroke.color,
-            width:   currentStroke.width,
-            points:  currentStroke.points,
-            created: Date.now()
-        };
-        currentStroke = null;
-        isDrawing = false;
-        try {
-            const docRef = await addDoc(drawingsCollection, strokeData);
-            undoStack.push({ type: "drawing", id: docRef.id });
-        } catch (err) {
-            console.error("Failed to save drawing:", err);
-            const localId = "_local_" + Date.now() + "_" + Math.random();
-            strokes.push({ ...strokeData, firestoreId: localId });
-            undoStack.push({ type: "drawing", id: localId });
-            redrawAll();
-        }
-    }
-});
-// ─── LABEL TOOL — click to place floating input, Enter to commit ─────────────
-{
-    const labelWrap  = document.getElementById("labelInputWrap");
-    const labelField = document.getElementById("labelInputField");
-    let   labelLL    = null;   // map latlng where the label will be anchored
-
-    canvas.addEventListener("click", (e) => {
-        if (!drawMode || activeTool !== "label") return;
-        const { offsetX: x, offsetY: y } = e;
-        labelLL = canvasToLL(x, y);
-        // Position the floating input near the click point
-        labelWrap.style.left = (x + 4) + "px";
-        labelWrap.style.top  = (y - 20) + "px";
-        labelField.value = "";
-        labelWrap.style.display = "block";
-        labelField.focus();
-    });
-
-    async function commitLabel() {
-        const text = labelField.value.trim();
-        labelWrap.style.display = "none";
-        if (!text || !labelLL) return;
-        const stroke = {
-            tool:      "label",
-            labelText: text,
-            color:     penColor,
-            width:     penWidth,
-            ll1:       { lat: labelLL.lat, lng: labelLL.lng },
-            created:   Date.now()
-        };
-        try {
-            const docRef = await addDoc(drawingsCollection, stroke);
-            undoStack.push({ type: "drawing", id: docRef.id });
-        } catch (err) {
-            console.error("Label save failed:", err);
-            strokes.push({ ...stroke, firestoreId: "_local_" + Date.now() });
-            redrawAll();
-        }
-    }
-
-    labelField.addEventListener("keydown", (e) => {
-        if (e.key === "Enter")  { e.preventDefault(); commitLabel(); }
-        if (e.key === "Escape") { labelWrap.style.display = "none"; }
-    });
-    labelField.addEventListener("blur", () => {
-        // Small delay so click-to-commit doesn't race
-        setTimeout(() => { if (labelWrap.style.display !== "none") commitLabel(); }, 150);
-    });
-}
-// ─── TOUCH SUPPORT ───────────────────────────────────────────────────────────
-function getTouchPos(e) {
-    const rect = canvas.getBoundingClientRect();
-    const t = e.touches[0];
-    return {
-        offsetX: t.clientX - rect.left,
-        offsetY: t.clientY - rect.top
-    };
-}
-canvas.addEventListener("touchstart", (e) => {
-    if (!drawMode) return;
-    e.preventDefault();
-    canvas.dispatchEvent(new MouseEvent("mousedown", getTouchPos(e)));
-}, { passive: false });
-canvas.addEventListener("touchmove", (e) => {
-    if (!drawMode) return;
-    e.preventDefault();
-    canvas.dispatchEvent(new MouseEvent("mousemove", getTouchPos(e)));
-}, { passive: false });
-canvas.addEventListener("touchend", (e) => {
-    if (!drawMode) return;
-    e.preventDefault();
-    canvas.dispatchEvent(new MouseEvent("mouseup", {
-        offsetX: startCanvasX, offsetY: startCanvasY
-    }));
-}, { passive: false });
-// ════════════════════════════════════════════════════════════════════
-// RULER SYSTEM
-// Scale: 142 pixels = 250 meters (at zoom 0)
-// ════════════════════════════════════════════════════════════════════
-const rulerBtn     = document.getElementById("rulerBtn");
-const rulerTooltip = document.getElementById("rulerTooltip");
-const rulerStatus  = document.getElementById("rulerStatus");
-const rulerReadout = document.getElementById("rulerReadout");
-function toggleRuler() {
-    rulerMode = !rulerMode;
-    if (rulerMode && drawMode) {
-        drawMode = false;
-        document.getElementById("toggleDrawMode").textContent = "OFF";
-        document.getElementById("toggleDrawMode").classList.remove("on");
-        canvas.classList.remove("active");
-        map.dragging.enable();
-        map.scrollWheelZoom.enable();
-        document.getElementById("drawModeStatus").textContent = t("drawOff");
-    }
-    rulerBtn.classList.toggle("active", rulerMode);
-    rulerStatus.textContent = t(rulerMode ? "rulerOn" : "rulerOff");
-    if (!rulerMode) {
-        rulerPoints = [];
-        rulerTooltip.style.display = "none";
-        rulerReadout.textContent   = "";
-        redrawAll();
-        map3DState?.clearRuler3D();
-        arty3DState?.clearRuler3D();
-    }
-}
-rulerBtn.addEventListener("click", toggleRuler);
-
-
-// ─── 3D VIEW ──────────────────────────────────────────────────────────────────
-// Uses Three.js (loaded on demand) to render the map as a flat textured plane.
-// Controls: scroll = zoom, middle-drag = orbit, right-drag = pan.
-
-// map3DState and arty3DState declared at top of file
-
-async function create3DScene(container, { withMarkers = false, isArty = false } = {}) {
-    const THREE = await import("three");
-    const { OrbitControls } = await import("three/addons/controls/OrbitControls.js");
-    const { CSS2DRenderer, CSS2DObject } = await import("three/addons/renderers/CSS2DRenderer.js");
-
-    const W = container.clientWidth  || 800;
-    const H = container.clientHeight || 600;
-
-    // ── Renderer ──────────────────────────────────────────────────────────────
-    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(W, H);
-    const canvas = renderer.domElement;
-    canvas.className = "view-3d-canvas";
-    container.appendChild(canvas);
-
-    // ── CSS2D label overlay (for marker text labels in 3D) ─────────────────────
-    const labelRenderer = new CSS2DRenderer();
-    labelRenderer.setSize(W, H);
-    labelRenderer.domElement.style.cssText =
-        "position:absolute;top:0;left:0;pointer-events:none;overflow:hidden;z-index:521;";
-
-    // ── Watermark overlay canvas ──────────────────────────────────────────────
-    const wmCanvas = document.createElement("canvas");
-    wmCanvas.style.cssText = "position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:522;";
-    wmCanvas.width  = W;
-    wmCanvas.height = H;
-    container.appendChild(wmCanvas);
-    function draw3DWatermark() {
-        const userId = getCurrentUser()?.userId || null;
-        if (!userId) { wmCanvas.getContext("2d").clearRect(0,0,wmCanvas.width,wmCanvas.height); return; }
-        _paintWatermark(wmCanvas.getContext("2d"), wmCanvas.width, wmCanvas.height, userId);
-    }
-    draw3DWatermark();
-
-    // ── Scene / camera ────────────────────────────────────────────────────────
-    const scene  = new THREE.Scene();
-    scene.background = new THREE.Color(0x060c16);
-    const camera = new THREE.PerspectiveCamera(50, W / H, 1, 8000);
-    camera.position.set(0, 900, 650);
-
-    // ── Map plane ─────────────────────────────────────────────────────────────
-    const PW = imageWidth;    // 1204
-    const PH = imageHeight;   // 1290
-    const texture = await new Promise((res, rej) =>
-        new THREE.TextureLoader().load(MAPS[currentMapIdx].file, res, undefined, rej)
-    );
-    if (THREE.SRGBColorSpace) texture.colorSpace = THREE.SRGBColorSpace;
-
-    const geo  = new THREE.PlaneGeometry(PW, PH);
-    const mat  = new THREE.MeshBasicMaterial({ map: texture });
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.rotation.x = -Math.PI / 2;
-    scene.add(mesh);
-
-    const borderGeo = new THREE.EdgesGeometry(geo);
-    const borderMat = new THREE.LineBasicMaterial({ color: 0x4fa3ff, transparent: true, opacity: 0.35 });
-    const border = new THREE.LineSegments(borderGeo, borderMat);
-    border.rotation.x = -Math.PI / 2;
-    border.position.y = 1;
-    scene.add(border);
-
-    // ── OrbitControls ─────────────────────────────────────────────────────────
-    const controls = new OrbitControls(camera, canvas);
-    controls.enableDamping      = true;
-    controls.dampingFactor      = 0.06;
-    controls.screenSpacePanning = true;
-    controls.minDistance        = 60;
-    controls.maxDistance        = 4000;
-    controls.maxPolarAngle      = Math.PI / 2 - 0.01;
-    controls.mouseButtons = {
-        LEFT:   THREE.MOUSE.PAN,
-        MIDDLE: THREE.MOUSE.ROTATE,
-        RIGHT:  THREE.MOUSE.DOLLY
-    };
-    controls.target.set(0, 0, 0);
-    controls.update();
-
-    // Attach label renderer after OrbitControls so it doesn't capture events
-    container.appendChild(labelRenderer.domElement);
-
-    // ── Render loop ───────────────────────────────────────────────────────────
-    let animId;
-    const animate = () => {
-        animId = requestAnimationFrame(animate);
-        controls.update();
-        renderer.render(scene, camera);
-        labelRenderer.render(scene, camera);
-    };
-    animate();
-
-    // ── Resize observer ───────────────────────────────────────────────────────
-    const ro = new ResizeObserver(() => {
-        const w = container.clientWidth, h = container.clientHeight;
-        if (!w || !h) return;
-        camera.aspect = w / h;
-        camera.updateProjectionMatrix();
-        renderer.setSize(w, h);
-        labelRenderer.setSize(w, h);
-    });
-    ro.observe(container);
-
-    // ── Coordinate helpers ────────────────────────────────────────────────────
-    // Leaflet (lat=y, lng=x) ↔ Three.js world XZ
-    function l2t(lat, lng) { return { x: lng - PW / 2, z: PH / 2 - lat }; }
-
-    // ── Raycaster ─────────────────────────────────────────────────────────────
-    const raycaster  = new THREE.Raycaster();
-    const _mouseNDC  = new THREE.Vector2();
-    function getHitOnPlane(clientX, clientY) {
-        const r = canvas.getBoundingClientRect();
-        _mouseNDC.set(
-            ((clientX - r.left) / r.width)  *  2 - 1,
-            -((clientY - r.top)  / r.height) *  2 + 1
-        );
-        raycaster.setFromCamera(_mouseNDC, camera);
-        const hits = raycaster.intersectObject(mesh);
-        return hits.length ? hits[0].point : null;
-    }
-
-    // ── Pointer interaction (capture phase — runs before OrbitControls) ────────
-    let _ptrStart  = null;   // for click-to-place-marker detection
-    let _draw3D    = false;
-    let _drawStroke3D = null;
-    let _drawStartLL  = null;
-
-    canvas.addEventListener("pointerdown", (e) => {
-        if (e.button !== 0) return;
-        if (drawMode) {
-            e.stopPropagation();   // block OrbitControls while drawing
-            _draw3D = true;
-            const pt = getHitOnPlane(e.clientX, e.clientY);
-            if (!pt) return;
-            const ll = { lat: PH / 2 - pt.z, lng: pt.x + PW / 2 };
-            _drawStartLL = ll;
-            if (activeTool === "pen" || activeTool === "eraser") {
-                _drawStroke3D = { tool: activeTool, color: penColor, width: penWidth, points: [ll] };
-            }
-        } else {
-            _ptrStart = { x: e.clientX, y: e.clientY };
-        }
-    }, true);
-
-    canvas.addEventListener("pointermove", (e) => {
-        if (!_draw3D || !drawMode) return;
-        e.stopPropagation();
-        const pt = getHitOnPlane(e.clientX, e.clientY);
-        if (!pt) return;
-        const ll = { lat: PH / 2 - pt.z, lng: pt.x + PW / 2 };
-        if (_drawStroke3D) {
-            _drawStroke3D.points.push(ll);
-            _updatePreview3D(_drawStroke3D.points);
-        }
-    }, true);
-
-    canvas.addEventListener("pointerup", async (e) => {
-        if (e.button !== 0) return;
-        if (drawMode && _draw3D) {
-            e.stopPropagation();
-            _draw3D = false;
-            const pt = getHitOnPlane(e.clientX, e.clientY);
-            const endLL = pt ? { lat: PH / 2 - pt.z, lng: pt.x + PW / 2 } : _drawStartLL;
-            _clearPreview3D();
-            if (_drawStroke3D) {
-                const sd = { tool: _drawStroke3D.tool, color: _drawStroke3D.color,
-                             width: _drawStroke3D.width, points: _drawStroke3D.points,
-                             created: Date.now() };
-                _drawStroke3D = null;
-                if (sd.points.length >= 2) {
-                    try {
-                        const ref = await addDoc(drawingsCollection, sd);
-                        undoStack.push({ type: "drawing", id: ref.id });
-                    } catch (err) { console.error("3D drawing save:", err); }
-                }
-            } else if (_drawStartLL && endLL) {
-                const sd = { tool: activeTool, color: penColor, width: penWidth,
-                             ll1: _drawStartLL, ll2: endLL, created: Date.now() };
-                _drawStartLL = null;
-                try {
-                    const ref = await addDoc(drawingsCollection, sd);
-                    undoStack.push({ type: "drawing", id: ref.id });
-                } catch (err) { console.error("3D drawing save:", err); }
-            }
-            _drawStartLL = null;
-        } else if (!drawMode && rulerMode && _ptrStart) {
-            // Ruler in 3D: click to place ruler points
-            const dx = e.clientX - _ptrStart.x, dy = e.clientY - _ptrStart.y;
-            _ptrStart = null;
-            if (Math.hypot(dx, dy) < 5) {
-                const pt = getHitOnPlane(e.clientX, e.clientY);
-                if (pt) {
-                    const lat = PH / 2 - pt.z, lng = pt.x + PW / 2;
-                    rulerPoints.push(L.latLng(lat, lng));
-                    if (rulerPoints.length >= 2) {
-                        const last = rulerPoints[rulerPoints.length - 1];
-                        const prev = rulerPoints[rulerPoints.length - 2];
-                        // Compute TOTAL ruler distance (all segments), using direct px→m conversion
-                        // (bypasses map zoom scaling since 3D coords are already in zoom-0 pixels)
-                        let totalM = 0;
-                        for (let ri = 1; ri < rulerPoints.length; ri++) {
-                            const a = rulerPoints[ri - 1], b = rulerPoints[ri];
-                            const rawPx = Math.hypot(b.lat - a.lat, b.lng - a.lng);
-                            totalM += (rawPx / PIXELS_PER_METER_DYNAMIC) * DIST_CORRECTION;
-                        }
-                        const distStr = formatDistance(totalM);
-                        if (rulerReadout) rulerReadout.textContent = `TOTAL: ${distStr}`;
-                        if (rulerTooltip) {
-                            rulerTooltip.style.display = "block";
-                            rulerTooltip.style.left = e.clientX + "px";
-                            rulerTooltip.style.top  = (e.clientY - 28) + "px";
-                            rulerTooltip.textContent = distStr;
-                        }
-                        // Draw ruler line in 3D
-                        update3DRuler();
-                    }
-                }
-            }
-        } else if (!drawMode && !rulerMode && _ptrStart) {
-            const dx = e.clientX - _ptrStart.x, dy = e.clientY - _ptrStart.y;
-            _ptrStart = null;
-            if (Math.hypot(dx, dy) < 5) {
-                if (isArty) {
-                    // LMB in arty 3D → place gun
-                    const pt = getHitOnPlane(e.clientX, e.clientY);
-                    if (pt) {
-                        const lat = PH / 2 - pt.z, lng = pt.x + PW / 2;
-                        artyGunPx = { lat, lng };
-                        const sx = Math.round(lng * ARTY_PX_TO_STUD);
-                        const sy = Math.round(lat * ARTY_PX_TO_STUD);
-                        const gxi = document.getElementById("artyGunX"); if (gxi) gxi.value = sx;
-                        const gyi = document.getElementById("artyGunY"); if (gyi) gyi.value = sy;
-                        addSimple("_gun", lat, lng, "G", "#4ade80");
-                        triggerArtyCalc();
-                    }
-                } else {
-                    // Check sprite (marker icon) hit first — opens edit popup
-                    const hitId = hitSprite(e.clientX, e.clientY);
-                    if (hitId && displayedMarkers[hitId]) {
-                        openMarkerEditPopup(hitId, displayedMarkers[hitId].marker, displayedMarkers[hitId].data);
-                    } else {
-                        const pt = getHitOnPlane(e.clientX, e.clientY);
-                        if (pt) {
-                            const lat = PH / 2 - pt.z, lng = pt.x + PW / 2;
-                            if (lat >= 0 && lat <= PH && lng >= 0 && lng <= PW) {
-                                await handleMapClickLatLng(lat, lng);
-                            }
-                        }
-                    }
-                }
-            }
-        } else {
-            _ptrStart = null;
-        }
-    }, true);
-
-    // ── RMB click on sprite → delete marker (monitor) / set target (arty) ───────
-    let _rmbStart = null;
-    canvas.addEventListener("pointerdown", (e) => {
-        if (e.button === 2) _rmbStart = { x: e.clientX, y: e.clientY };
-    }, true);
-    canvas.addEventListener("pointerup", async (e) => {
-        if (e.button !== 2 || !_rmbStart) return;
-        const dx = e.clientX - _rmbStart.x, dy = e.clientY - _rmbStart.y;
-        _rmbStart = null;
-        if (Math.hypot(dx, dy) >= 5) return;
-        if (isArty) {
-            // RMB in arty 3D → place target
-            const pt = getHitOnPlane(e.clientX, e.clientY);
-            if (!pt) return;
-            const lat = PH / 2 - pt.z, lng = pt.x + PW / 2;
-            e.preventDefault(); e.stopPropagation();
-            artyTgtPx = { lat, lng };
-            const sx = Math.round(lng * ARTY_PX_TO_STUD);
-            const sy = Math.round(lat * ARTY_PX_TO_STUD);
-            const txi = document.getElementById("artyTgtX"); if (txi) txi.value = sx;
-            const tyi = document.getElementById("artyTgtY"); if (tyi) tyi.value = sy;
-            addSimple("_tgt", lat, lng, "T", "#f87171");
-            triggerArtyCalc();
-            return;
-        }
-        const hitId = hitSprite(e.clientX, e.clientY);
-        if (!hitId || !displayedMarkers[hitId]) return;
-        e.preventDefault(); e.stopPropagation();
-        if (await showConfirm("DELETE THIS MARKER?")) {
-            await deleteDoc(doc(db, "markers", hitId));
-            const idx = undoStack.findIndex(u => u.type === "marker" && u.id === hitId);
-            if (idx !== -1) undoStack.splice(idx, 1);
-        }
-    }, true);
-
-    // ── Live pen-stroke preview ────────────────────────────────────────────────
-    let _previewLine = null;
-    function _updatePreview3D(points) {
-        _clearPreview3D();
-        if (points.length < 2) return;
-        const verts = points.map(p => { const { x, z } = l2t(p.lat, p.lng); return new THREE.Vector3(x, 1.5, z); });
-        const g = new THREE.BufferGeometry().setFromPoints(verts);
-        const m = new THREE.LineBasicMaterial({ color: new THREE.Color(penColor), transparent: true, opacity: 0.9 });
-        _previewLine = new THREE.Line(g, m);
-        scene.add(_previewLine);
-    }
-    function _clearPreview3D() {
-        if (!_previewLine) return;
-        scene.remove(_previewLine);
-        _previewLine.geometry.dispose();
-        _previewLine.material.dispose();
-        _previewLine = null;
-    }
-
-    // ── 3D Markers ─────────────────────────────────────────────────────────────
-    const markers3D  = {};
-    const spriteToId = new Map();   // reverse lookup: Sprite → markerId
-
-    function svgToTex(svgStr) {
-        return new Promise(resolve => {
-            const SX = 2, CW = 46 * SX, CH = 57 * SX;
-            const cv = document.createElement("canvas");
-            cv.width = CW; cv.height = CH;
-            const ctx = cv.getContext("2d");
-            const url = URL.createObjectURL(new Blob([svgStr], { type: "image/svg+xml" }));
-            const img = new Image(CW, CH);
-            const done = () => {
-                URL.revokeObjectURL(url);
-                const t = new THREE.CanvasTexture(cv);
-                if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
-                t.needsUpdate = true;
-                resolve(t);
-            };
-            img.onload = () => { ctx.drawImage(img, 0, 0, CW, CH); done(); };
-            img.onerror = () => {
-                ctx.fillStyle = "#e3716a";
-                ctx.beginPath();
-                ctx.moveTo(CW/2,4); ctx.lineTo(CW-4,CH/2); ctx.lineTo(CW/2,CH-4); ctx.lineTo(4,CH/2);
-                ctx.closePath(); ctx.fill();
-                done();
-            };
-            img.src = url;
-        });
-    }
-
-    async function addMarker3D(id, data) {
-        removeMarker3D(id);
-        if (!withMarkers) return;
-        const { x: mx, z: mz } = l2t(data.y, data.x);
-        const POLE = 65;
-        const pts = new Float32Array([mx, 2, mz, mx, POLE, mz]);
-        const lineGeo = new THREE.BufferGeometry();
-        lineGeo.setAttribute("position", new THREE.BufferAttribute(pts, 3));
-        const lineMat = new THREE.LineBasicMaterial({ color: 0xbcccdd, transparent: true, opacity: 0.85 });
-        const line = new THREE.Line(lineGeo, lineMat);
-        scene.add(line);
-        markers3D[id] = { line, lineGeo, lineMat };
-
-        const type = data.type || "infantry_alive";
-        const svgStr = (data.side === "friendly") ? symbolSVGFriendly(type) : symbolSVG(type);
-        const tex = await svgToTex(svgStr);
-        if (!markers3D[id]) { tex.dispose(); return; }
-
-        const spriteMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
-        const sprite = new THREE.Sprite(spriteMat);
-        sprite.renderOrder = 1;  // placed markers render above G/T markers
-        sprite.position.set(mx, POLE + 24, mz);
-        sprite.scale.set(42, 52, 1);
-        scene.add(sprite);
-        spriteToId.set(sprite, id);
-
-        // ── CSS2D label (same floating boxes as 2D mode) ───────────────────
-        const labelDiv = document.createElement("div");
-        labelDiv.style.cssText = "position:relative;width:140px;height:140px;pointer-events:none;";
-        const esc = s => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-        labelDiv.innerHTML =
-            `<div class="ml ml-tl">${esc(data.date)}</div>` +
-            `<div class="ml ml-tc">${esc(data.amount)}</div>` +
-            `<div class="ml ml-tr">${esc(data.info)}</div>` +
-            `<div class="ml ml-bl">${esc(data.author)}</div>` +
-            `<div class="ml ml-br">${esc(data.source)}</div>`;
-        const labelObj = new CSS2DObject(labelDiv);
-        labelObj.position.set(mx, POLE + 24, mz);
-        scene.add(labelObj);
-
-        Object.assign(markers3D[id], { sprite, tex, spriteMat, labelObj, labelDiv });
-    }
-
-    function removeMarker3D(id) {
-        const m = markers3D[id]; if (!m) return;
-        scene.remove(m.line);   m.lineGeo?.dispose(); m.lineMat?.dispose();
-        if (m.sprite) { spriteToId.delete(m.sprite); scene.remove(m.sprite); m.tex?.dispose(); m.spriteMat?.dispose(); }
-        if (m.labelObj) { scene.remove(m.labelObj); m.labelDiv?.remove(); }
-        delete markers3D[id];
-    }
-
-    // ── Raycast sprites → marker hit (returns markerId or null) ───────────────
-    function hitSprite(clientX, clientY) {
-        const r = canvas.getBoundingClientRect();
-        _mouseNDC.set(
-            ((clientX - r.left) / r.width)  *  2 - 1,
-            -((clientY - r.top)  / r.height) *  2 + 1
-        );
-        raycaster.setFromCamera(_mouseNDC, camera);
-        const sprites = [...spriteToId.keys()];
-        if (!sprites.length) return null;
-        const hits = raycaster.intersectObjects(sprites);
-        if (!hits.length) return null;
-        return spriteToId.get(hits[0].object) || null;
-    }
-
-    // ── 3D Drawings ────────────────────────────────────────────────────────────
-    const strokes3D = {};   // firestoreId → { line, geo, mat }
-    const DRAW_Y = 1.5;     // height above plane
-
-    function _strokeVerts(data) {
-        if (data.points?.length >= 2) {
-            return data.points.map(p => { const { x, z } = l2t(p.lat, p.lng); return new THREE.Vector3(x, DRAW_Y, z); });
-        }
-        if (data.ll1 && data.ll2) {
-            const a = l2t(data.ll1.lat, data.ll1.lng);
-            const b = l2t(data.ll2.lat, data.ll2.lng);
-            if (data.tool === "circle") {
-                const cx = (a.x+b.x)/2, cz = (a.z+b.z)/2;
-                const rx = Math.abs(b.x-a.x)/2, rz = Math.abs(b.z-a.z)/2;
-                return Array.from({ length: 65 }, (_, i) => {
-                    const t = (i / 64) * Math.PI * 2;
-                    return new THREE.Vector3(cx + rx * Math.cos(t), DRAW_Y, cz + rz * Math.sin(t));
-                });
-            }
-            if (data.tool === "rect" || data.tool === "zone") {
-                return [
-                    new THREE.Vector3(a.x, DRAW_Y, a.z), new THREE.Vector3(b.x, DRAW_Y, a.z),
-                    new THREE.Vector3(b.x, DRAW_Y, b.z), new THREE.Vector3(a.x, DRAW_Y, b.z),
-                    new THREE.Vector3(a.x, DRAW_Y, a.z)
-                ];
-            }
-            return [new THREE.Vector3(a.x, DRAW_Y, a.z), new THREE.Vector3(b.x, DRAW_Y, b.z)];
-        }
-        return null;
-    }
-
-    function addStroke3D(id, data) {
-        removeStroke3D(id);
-        if (data.tool === "eraser") return;
-        const verts = _strokeVerts(data);
-        if (!verts || verts.length < 2) return;
-        const g = new THREE.BufferGeometry().setFromPoints(verts);
-        const m = new THREE.LineBasicMaterial({ color: new THREE.Color(data.color || "#ff4444") });
-        const line = new THREE.Line(g, m);
-        scene.add(line);
-        strokes3D[id] = { line, g, m };
-    }
-
-    function removeStroke3D(id) {
-        const s = strokes3D[id]; if (!s) return;
-        scene.remove(s.line); s.g.dispose(); s.m.dispose();
-        delete strokes3D[id];
-    }
-
-    // ── Fly-to animation (for coordinate search) ─────────────────────────────
-    function flyTo(lat, lng) {
-        const { x, z } = l2t(lat, lng);
-        const from = controls.target.clone();
-        const to   = new THREE.Vector3(x, 0, z);
-        const t0   = performance.now();
-        const dur  = 600;
-        (function step() {
-            const t = Math.min((performance.now() - t0) / dur, 1);
-            const e = t < .5 ? 2*t*t : -1 + (4 - 2*t)*t;
-            controls.target.lerpVectors(from, to, e);
-            controls.update();
-            if (t < 1) requestAnimationFrame(step);
-        })();
-    }
-
-    // ── Simple colored circle sprite (used for G/T arty markers) ──────────────
-    async function addSimple(id, lat, lng, label, hexColor) {
-        if (markers3D[id]) removeMarker3D(id);
-        const { x: mx, z: mz } = l2t(lat, lng);
-
-        // Pole line: ground to sprite
-        const GT_POLE = 55;
-        const poleGeo = new THREE.BufferGeometry();
-        poleGeo.setAttribute("position", new THREE.BufferAttribute(
-            new Float32Array([mx, 2, mz, mx, GT_POLE, mz]), 3));
-        const poleMat = new THREE.LineBasicMaterial({ color: 0x000000, opacity: 0.8, transparent: true });
-        const poleObj = new THREE.Line(poleGeo, poleMat);
-        scene.add(poleObj);
-
-        const cv = document.createElement("canvas"); cv.width = 64; cv.height = 64;
-        const tc = cv.getContext("2d");
-        tc.beginPath(); tc.arc(32, 32, 28, 0, Math.PI * 2);
-        tc.fillStyle = hexColor; tc.fill();
-        tc.strokeStyle = "rgba(0,0,0,0.8)"; tc.lineWidth = 4; tc.stroke();
-        tc.font = "bold 24px monospace"; tc.fillStyle = "#111";
-        tc.textAlign = "center"; tc.textBaseline = "middle";
-        tc.fillText(label, 32, 33);
-        const tex = new THREE.CanvasTexture(cv);
-        if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
-        const spriteMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
-        const sprite = new THREE.Sprite(spriteMat);
-        sprite.renderOrder = 0;  // G/T render below placed markers
-        sprite.position.set(mx, GT_POLE + 18, mz);
-        sprite.scale.set(38, 38, 1);
-        scene.add(sprite);
-        // Store poleGeo/poleMat as lineGeo/lineMat so removeMarker3D disposes them
-        markers3D[id] = { sprite, spriteMat, tex, line: poleObj, lineGeo: poleGeo, lineMat: poleMat };
-    }
-
-    // ── 3D Ruler ─────────────────────────────────────────────────────────────
-    let _rulerLine3D = null;
-
-    function update3DRuler() {
-        if (_rulerLine3D) { scene.remove(_rulerLine3D); _rulerLine3D.geometry.dispose(); _rulerLine3D.material.dispose(); _rulerLine3D = null; }
-        if (rulerPoints.length < 2) return;
-        const positions = [];
-        rulerPoints.forEach(pt => {
-            // rulerPoints can be {lat,lng} plain objects OR L.latLng instances
-            const lat = pt.lat, lng = pt.lng;
-            const { x, z } = l2t(lat, lng);
-            positions.push(x, DRAW_Y + 0.5, z);  // hug terrain like 2D
-        });
-        const geo = new THREE.BufferGeometry();
-        geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-        // Match 2D ruler style: yellow dashed
-        const mat = new THREE.LineDashedMaterial({
-            color: 0xffcc00, dashSize: 8, gapSize: 5,
-            transparent: true, opacity: 0.95, depthTest: false
-        });
-        _rulerLine3D = new THREE.Line(geo, mat);
-        _rulerLine3D.computeLineDistances();  // required for dashed lines
-        _rulerLine3D.renderOrder = 2;
-        scene.add(_rulerLine3D);
-    }
-
-    function clearRuler3D() {
-        if (_rulerLine3D) { scene.remove(_rulerLine3D); _rulerLine3D.geometry.dispose(); _rulerLine3D.material.dispose(); _rulerLine3D = null; }
-    }
-
-    // ── Ballistic trajectory ──────────────────────────────────────────────────
-    let _trajLine = null;
-    let _trajAnimId = null;
-    let _trajDot = null;
-
-    function updateTrajectory(calc) {
-        // Remove old trajectory
-        if (_trajLine) { scene.remove(_trajLine); _trajLine.geometry.dispose(); _trajLine.material.dispose(); _trajLine = null; }
-        if (_trajDot)  { scene.remove(_trajDot);  _trajDot.geometry.dispose();  _trajDot.material.dispose();  _trajDot  = null; }
-        if (_trajAnimId) { cancelAnimationFrame(_trajAnimId); _trajAnimId = null; }
-
-        if (!calc || calc.gLat == null || calc.tLat == null) return;
-
-        const { distM, v, elevDeg, tof, gLat, gLng, tLat, tLng, heightM = 0 } = calc;
-        const g = l2t(gLat, gLng);
-        const tgt = l2t(tLat, tLng);
-
-        // Build arc points using projectile kinematics
-        const N = 80;
-        const elevRad = elevDeg * Math.PI / 180;
-        // Visual parabola: start and end at ground (Y=2), peak height proportional to elevation
-        // distIn3D = horizontal distance in world units (pixels)
-        const distIn3D = Math.hypot(tgt.x - g.x, tgt.z - g.z);
-        // Visual max height: scales with elevation angle, capped for aesthetics
-        const H_visual = Math.max(20, distIn3D * Math.tan(elevRad) * 0.35);
-        const positions = [];
-
-        for (let i = 0; i <= N; i++) {
-            const progress = i / N;
-            // Interpolate X/Z from gun to target along the ground
-            const wx = g.x + (tgt.x - g.x) * progress;
-            const wz = g.z + (tgt.z - g.z) * progress;
-            // Parabolic height: 0 at start, peak at midpoint, 0 at end
-            const wy = 2 + 4 * H_visual * progress * (1 - progress);
-            positions.push(wx, wy, wz);
-        }
-
-        const geo = new THREE.BufferGeometry();
-        geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-        const mat = new THREE.LineBasicMaterial({ color: 0xfbbf24, transparent: true, opacity: 0.75, depthTest: false });
-        _trajLine = new THREE.Line(geo, mat);
-        _trajLine.renderOrder = 2;
-        scene.add(_trajLine);
-
-        // Animated dot along arc
-        const dotGeo = new THREE.SphereGeometry(4, 8, 8);
-        const dotMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24, depthTest: false });
-        _trajDot = new THREE.Mesh(dotGeo, dotMat);
-        _trajDot.renderOrder = 3;
-        scene.add(_trajDot);
-
-        let startTime = null;
-        const ANIM_DURATION = Math.max(1500, tof * 800); // ms
-
-        function animStep(ts) {
-            if (!startTime) startTime = ts;
-            const elapsed = ts - startTime;
-            const progress = (elapsed % ANIM_DURATION) / ANIM_DURATION;
-            const idx = Math.min(Math.floor(progress * N), N) * 3;
-            _trajDot.position.set(positions[idx], positions[idx + 1], positions[idx + 2]);
-            _trajAnimId = requestAnimationFrame(animStep);
-        }
-        _trajAnimId = requestAnimationFrame(animStep);
-    }
-
-    // ── Expose ────────────────────────────────────────────────────────────────
-    return {
-        addMarker3D,
-        removeMarker3D,
-        addSimple,
-        addStroke3D,
-        removeStroke3D,
-        flyTo,
-        updateTrajectory,
-        update3DRuler,
-        clearRuler3D,
-        /** Render one frame, draw onto oc at W×H, including projected marker labels */
-        drawCapture(oc, W, H) {
-            renderer.render(scene, camera);
-            oc.drawImage(renderer.domElement, 0, 0, W, H);
-            if (!withMarkers) return;
-            oc.save();
-            oc.font = "bold 9px 'Share Tech Mono',monospace";
-            oc.textBaseline = "middle";
-            Object.entries(markers3D).forEach(([id, m]) => {
-                if (!m.sprite) return;
-                const data = displayedMarkers[id]?.data;
-                if (!data) return;
-                const ndc = m.sprite.position.clone().project(camera);
-                if (ndc.z > 1) return; // behind camera
-                const sx = (ndc.x *  0.5 + 0.5) * W;
-                const sy = (ndc.y * -0.5 + 0.5) * H;
-                const rows = [
-                    { t: data.date   || "",         x: sx - 23, y: sy - 24, a: "right"  },
-                    { t: String(data.amount || ""), x: sx,      y: sy - 28, a: "center" },
-                    { t: data.info   || "",         x: sx + 23, y: sy - 24, a: "left"   },
-                    { t: data.author || "",         x: sx - 23, y: sy + 36, a: "right"  },
-                    { t: data.source || "",         x: sx + 23, y: sy + 36, a: "left"   },
-                ];
-                rows.forEach(({ t, x, y, a }) => {
-                    if (!t) return;
-                    oc.textAlign = a;
-                    const tw = oc.measureText(t).width;
-                    const bx = a === "right" ? x - tw - 8 : a === "center" ? x - tw / 2 - 4 : x;
-                    oc.fillStyle = "rgba(6,12,22,0.85)";
-                    oc.fillRect(bx - 2, y - 8, tw + 12, 15);
-                    oc.strokeStyle = "rgba(160,185,220,0.35)";
-                    oc.lineWidth = 0.5;
-                    oc.strokeRect(bx - 2, y - 8, tw + 12, 15);
-                    oc.fillStyle = "#d8e4f0";
-                    oc.fillText(t, x, y);
-                });
-            });
-            oc.restore();
-            // Paint watermark on top of the exported frame
-            const userId = getCurrentUser()?.userId || null;
-            if (userId) _paintWatermark(oc, W, H, userId, true);
-        },
-        refreshWatermark() { draw3DWatermark(); },
-        dispose() {
-            Object.keys(markers3D).forEach(removeMarker3D);
-            Object.keys(strokes3D).forEach(removeStroke3D);
-            spriteToId.clear();
-            _clearPreview3D();
-            cancelAnimationFrame(animId);
-            if (_trajAnimId) cancelAnimationFrame(_trajAnimId);
-            if (_trajLine)   { scene.remove(_trajLine); _trajLine.geometry.dispose(); _trajLine.material.dispose(); }
-            if (_trajDot)    { scene.remove(_trajDot);  _trajDot.geometry.dispose();  _trajDot.material.dispose();  }
-            if (_rulerLine3D){ scene.remove(_rulerLine3D); _rulerLine3D.geometry.dispose(); _rulerLine3D.material.dispose(); }
-            ro.disconnect();
-            controls.dispose();
-            texture.dispose(); mat.dispose(); geo.dispose();
-            borderGeo.dispose(); borderMat.dispose();
-            renderer.dispose();
-            canvas.remove();
-            labelRenderer.domElement.remove();
-            wmCanvas.remove();
-        }
-    };
-}
-
-// ── Monitor map 2D/3D toggle (single button) ──────────────────────────────────
-document.getElementById("mapDimToggle")?.addEventListener("click", async () => {
-    const btn = document.getElementById("mapDimToggle");
-    if (map3DState) {
-        // Switch to 2D
-        map3DState.dispose(); map3DState = null;
-        btn.textContent = "3D";
-        btn.title = "Switch to 3D view";
-        btn.classList.remove("active");
-        map.invalidateSize({ animate: false });
-        resizeCanvas();
-        drawWatermarkCanvas(getCurrentUser()?.userId || null);
-    } else {
-        // Switch to 3D
-        btn.disabled = true; btn.textContent = "…";
-        try {
-            map3DState = await create3DScene(document.getElementById("mapWrapper"), { withMarkers: true });
-            btn.textContent = "2D";
-            btn.title = "Switch to 2D view";
-            btn.classList.add("active");
-            Object.entries(displayedMarkers).forEach(([id, { data }]) => map3DState.addMarker3D(id, data));
-            strokes.forEach(s => { if (s.firestoreId) map3DState.addStroke3D(s.firestoreId, s); });
-        } catch (e) {
-            console.error("3D init error:", e);
-            btn.textContent = "3D";
-        }
-        btn.disabled = false;
-    }
-});
-
-// ── Arty calculator 2D/3D toggle (single button) ──────────────────────────────
-document.getElementById("artyDimToggle")?.addEventListener("click", async () => {
-    const btn = document.getElementById("artyDimToggle");
-    if (arty3DState) {
-        // Switch to 2D
-        arty3DState.dispose(); arty3DState = null;
-        btn.textContent = "3D";
-        btn.title = "Switch to 3D view";
-        btn.classList.remove("active");
-        if (artyMapInstance) artyMapInstance.invalidateSize({ animate: false });
-    } else {
-        // Switch to 3D
-        btn.disabled = true; btn.textContent = "…";
-        try {
-            arty3DState = await create3DScene(document.querySelector(".arty-map-wrap"), { withMarkers: true, isArty: true });
-            // Sync existing displayedMarkers into arty 3D
-            Object.entries(displayedMarkers).forEach(([id, { data }]) => arty3DState.addMarker3D(id, data));
-            // Sync existing strokes/drawings
-            strokes.forEach(s => { if (s.firestoreId) arty3DState.addStroke3D(s.firestoreId, s); });
-            // Sync G/T positions if already placed
-            if (artyGunPx) arty3DState.addSimple("_gun", artyGunPx.lat, artyGunPx.lng, "G", "#4ade80");
-            if (artyTgtPx) arty3DState.addSimple("_tgt", artyTgtPx.lat, artyTgtPx.lng, "T", "#f87171");
-            if (lastArtyCalc) arty3DState.updateTrajectory(lastArtyCalc);
-            btn.textContent = "2D";
-            btn.title = "Switch to 2D view";
-            btn.classList.add("active");
-        } catch (e) {
-            console.error("3D arty init error:", e);
-            btn.textContent = "3D";
-        }
-        btn.disabled = false;
-    }
-});
-
-// Clean up 3D scenes when navigating away
-function cleanup3D() {
-    if (map3DState) {
-        map3DState.dispose(); map3DState = null;
-        const b = document.getElementById("mapDimToggle");
-        if (b) { b.textContent = "3D"; b.title = "Switch to 3D view"; b.classList.remove("active"); }
-        map.invalidateSize({ animate: false }); resizeCanvas();
-    }
-    if (arty3DState) {
-        arty3DState.dispose(); arty3DState = null;
-        const b = document.getElementById("artyDimToggle");
-        if (b) { b.textContent = "3D"; b.title = "Switch to 3D view"; b.classList.remove("active"); }
-        if (artyMapInstance) artyMapInstance.invalidateSize({ animate: false });
-    }
-}
-
-// ─── MAP EXPORT (PNG) ─────────────────────────────────────────────────────────
-document.getElementById("exportBtn")?.addEventListener("click", async () => {
-    const now = new Date();
-    const ts  = `DELTA MONITOR  ${now.toISOString().slice(0,16).replace("T"," ")} UTC`;
-    const fname = `delta_monitor_${now.toISOString().slice(0,19).replace(/:/g,"-")}.png`;
-    const exportUserId = getCurrentUser()?.userId || null;
-
-    function finishExport(out) {
-        const oc = out.getContext("2d");
-        const W = out.width, H = out.height;
-        if (exportUserId) _paintWatermark(oc, W, H, exportUserId, true);
-        oc.font = "bold 11px 'Share Tech Mono', monospace";
-        oc.fillStyle = "rgba(90,150,220,0.9)";
-        oc.shadowColor = "rgba(0,0,0,0.8)"; oc.shadowBlur = 3;
-        oc.fillText(ts, 10, H - 10);
-        oc.shadowBlur = 0;
-        const link = document.createElement("a");
-        link.download = fname; link.href = out.toDataURL("image/png"); link.click();
-    }
-
-    if (map3DState) {
-        // ── 3D export: WebGL frame + projected marker labels ─────────────────
-        const wrapper = document.getElementById("mapWrapper");
-        const W = wrapper.clientWidth || 800, H = wrapper.clientHeight || 600;
-        const out = document.createElement("canvas");
-        out.width = W; out.height = H;
-        map3DState.drawCapture(out.getContext("2d"), W, H);
-        finishExport(out);
-        return;
-    }
-
-    // ── 2D export: map.png + drawings + marker icons ──────────────────────────
-    const mapEl = document.getElementById("map");
-    const W = mapEl.clientWidth || 800, H = mapEl.clientHeight || 600;
-    const out = document.createElement("canvas");
-    out.width = W; out.height = H;
-    const oc = out.getContext("2d");
-
-    // 1. Draw base map
-    await new Promise(res => {
-        const baseImg = new Image();
-        baseImg.crossOrigin = "anonymous";
-        baseImg.onload = () => {
-            try {
-                const tl = map.latLngToContainerPoint([imageHeight, 0]);
-                const br = map.latLngToContainerPoint([0, imageWidth]);
-                oc.drawImage(baseImg, tl.x, tl.y, br.x - tl.x, br.y - tl.y);
-            } catch (_) { oc.drawImage(baseImg, 0, 0, W, H); }
-            res();
-        };
-        baseImg.onerror = () => res();
-        baseImg.src = MAPS[currentMapIdx].file;
-    });
-
-    // 2. Draw strokes overlay
-    const drawCanvas = document.getElementById("drawCanvas");
-    if (drawCanvas) oc.drawImage(drawCanvas, 0, 0);
-
-    // 3. Draw each marker SVG at its map screen position + data labels
-    //    iconAnchor=[70,67] − mkr-icon offset=[47,44] → net offset [23,23]
-    await Promise.all(Object.entries(displayedMarkers).map(([, { marker, data }]) =>
-        new Promise(res => {
-            const pt  = map.latLngToContainerPoint(marker.getLatLng());
-            const sx = pt.x, sy = pt.y;
-            const svg = data.side === "friendly"
-                ? symbolSVGFriendly(data.type || "infantry_alive")
-                : symbolSVG(data.type || "infantry_alive");
-            // Use data: URL instead of blob URL — avoids cross-origin canvas taint issues
-            const img = new Image(46, 57);
-            img.onload  = () => {
-                oc.drawImage(img, sx - 23, sy - 23, 46, 57);
-
-                // Draw marker label boxes (mirrors CSS .ml layout)
-                const labels = [
-                    { text: data.date,   x: sx - 25, y: sy - 30, align: "right"  },
-                    { text: data.amount, x: sx,       y: sy - 34, align: "center" },
-                    { text: data.info,   x: sx + 25,  y: sy - 30, align: "left"   },
-                    { text: data.author, x: sx - 25,  y: sy + 40, align: "right"  },
-                    { text: data.source, x: sx + 25,  y: sy + 40, align: "left"   },
-                ];
-                oc.save();
-                oc.font = "bold 9px monospace";
-                labels.forEach(({ text, x, y, align }) => {
-                    if (!text) return;
-                    const str = String(text);
-                    oc.textAlign = align;
-                    oc.textBaseline = "middle";
-                    const metrics = oc.measureText(str);
-                    const tw = metrics.width + 6;
-                    const th = 12;
-                    const bx = align === "right" ? x - tw : align === "center" ? x - tw / 2 : x;
-                    oc.fillStyle = "rgba(12,15,20,0.82)";
-                    oc.fillRect(bx, y - th / 2, tw, th);
-                    oc.strokeStyle = "rgba(150,180,220,0.35)";
-                    oc.lineWidth = 0.5;
-                    oc.strokeRect(bx, y - th / 2, tw, th);
-                    oc.fillStyle = "#c8d8ee";
-                    oc.fillText(str, x, y);
-                });
-                oc.restore();
-                res();
-            };
-            img.onerror = () => res();
-            img.src = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
-        })
-    ));
-
-    // 4. Draw ruler if active
-    if (rulerMode && rulerPoints.length >= 2) {
-        oc.save();
-        oc.strokeStyle = "#22d3ee";
-        oc.lineWidth = 2;
-        oc.setLineDash([6, 4]);
-        oc.beginPath();
-        rulerPoints.forEach((ll, i) => {
-            const pt = map.latLngToContainerPoint(ll);
-            i === 0 ? oc.moveTo(pt.x, pt.y) : oc.lineTo(pt.x, pt.y);
-            // Circle at each point
-            oc.save();
-            oc.beginPath(); oc.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
-            oc.fillStyle = "#22d3ee"; oc.fill(); oc.restore();
-        });
-        oc.stroke();
-        // Distance label at midpoint between last two points
-        const last = rulerPoints[rulerPoints.length - 1];
-        const prev = rulerPoints[rulerPoints.length - 2];
-        const distPx = Math.hypot(last.lat - prev.lat, last.lng - prev.lng);
-        const distM  = pixelsToMeters(distPx);
-        const settings = JSON.parse(localStorage.getItem("deltaSettings") || "{}");
-        const distStr  = settings.rulerUnits === "km" ? (distM / 1000).toFixed(2) + " km" : Math.round(distM) + " m";
-        const lpt = map.latLngToContainerPoint(last);
-        const ppt = map.latLngToContainerPoint(prev);
-        const mx  = (lpt.x + ppt.x) / 2, my = (lpt.y + ppt.y) / 2;
-        oc.setLineDash([]);
-        oc.font = "bold 10px monospace";
-        const tw = oc.measureText(distStr).width + 8;
-        oc.fillStyle = "rgba(12,15,20,0.82)";
-        oc.fillRect(mx - tw / 2, my - 9, tw, 16);
-        oc.fillStyle = "#22d3ee";
-        oc.textAlign = "center"; oc.textBaseline = "middle";
-        oc.fillText(distStr, mx, my);
-        oc.restore();
-    }
-
-    finishExport(out);
-});
-function mapDistancePixels(ll1, ll2) {
-    const p1 = map.latLngToContainerPoint(ll1);
-    const p2 = map.latLngToContainerPoint(ll2);
-    return Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
-}
-function pixelsToMeters(pixelDist) {
-    const zoom  = map.getZoom();
-    const scale = Math.pow(2, zoom);
-    const pxAt0 = pixelDist / scale;
-    return (pxAt0 / PIXELS_PER_METER_DYNAMIC) * DIST_CORRECTION;
-}
-function rulerTotalMeters() {
-    let total = 0;
-    for (let i = 1; i < rulerPoints.length; i++) {
-        const px = mapDistancePixels(
-            L.latLng(rulerPoints[i-1].lat, rulerPoints[i-1].lng),
-            L.latLng(rulerPoints[i].lat,   rulerPoints[i].lng)
-        );
-        total += pixelsToMeters(px);
-    }
-    return total;
-}
-function formatDistance(meters) {
-    if (meters >= 1000) {
-        return `${(meters / 1000).toFixed(2)} km  (${Math.round(meters)} m)`;
-    }
-    return `${Math.round(meters)} m`;
-}
-map.on("click", (e) => {
-    if (!rulerMode) return;
-    rulerPoints.push({ lat: e.latlng.lat, lng: e.latlng.lng });
-    redrawAll();
-    updateRulerReadout(e.latlng);
-});
-map.on("dblclick", (e) => {
-    if (!rulerMode) return;
-    L.DomEvent.stop(e);
-    if (rulerPoints.length > 1) {
-        const m = rulerTotalMeters();
-        rulerReadout.textContent = `TOTAL: ${formatDistance(m)}`;
-    }
-    rulerPoints = [];
-    redrawAll();
-    rulerTooltip.style.display = "none";
-});
-// FIX #4: ruler mousemove — use map.latLngToContainerPoint for canvas coords,
-// which is relative to the map container (= mapWrapper). The rulerTooltip is also
-// inside mapWrapper, so positioning via containerPoint is correct regardless of
-// whether the left panel is open or collapsed.
-map.on("mousemove", (e) => {
-    if (!rulerMode || rulerPoints.length === 0) return;
-    redrawAll();
-    const last = rulerPoints[rulerPoints.length - 1];
-    const [lx, ly] = llToCanvas(last.lat, last.lng);
-    // cur is in map-container-relative coords (same space as canvas)
-    const cur = map.latLngToContainerPoint(e.latlng);
-    ctx.save();
-    ctx.strokeStyle = "#ffcc00";
-    ctx.lineWidth   = 1.5;
-    ctx.setLineDash([5, 4]);
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(lx, ly);
-    ctx.lineTo(cur.x, cur.y);
-    ctx.stroke();
-    ctx.restore();
-    const pxDist = Math.sqrt((cur.x - lx) ** 2 + (cur.y - ly) ** 2);
-    const meters = pixelsToMeters(pxDist);
-    rulerTooltip.textContent   = formatDistance(meters);
-    rulerTooltip.style.display = "block";
-    rulerTooltip.style.left    = (cur.x + 12) + "px";
-    rulerTooltip.style.top     = (cur.y - 24) + "px";
-});
-function updateRulerReadout(latlng) {
-    if (rulerPoints.length < 2) {
-        rulerReadout.textContent = "Click to add points — double-click to finish";
-        return;
-    }
-    const m = rulerTotalMeters();
-    rulerReadout.textContent = `TOTAL: ${formatDistance(m)}`;
-}
-function drawRulerOverlay() {
-    if (rulerPoints.length === 0) return;
-    ctx.save();
-    ctx.strokeStyle = "#ffcc00";
-    ctx.fillStyle   = "#ffcc00";
-    ctx.lineWidth   = 2;
-    ctx.lineCap     = "round";
-    ctx.lineJoin    = "round";
-    if (rulerPoints.length > 1) {
-        ctx.beginPath();
-        rulerPoints.forEach((pt, i) => {
-            const [cx, cy] = llToCanvas(pt.lat, pt.lng);
-            i === 0 ? ctx.moveTo(cx, cy) : ctx.lineTo(cx, cy);
-        });
-        ctx.stroke();
-    }
-    rulerPoints.forEach((pt, i) => {
-        const [cx, cy] = llToCanvas(pt.lat, pt.lng);
-        ctx.beginPath();
-        ctx.arc(cx, cy, 4, 0, Math.PI * 2);
-        ctx.fill();
-        if (i > 0) {
-            let cumPx = 0;
-            for (let j = 1; j <= i; j++) {
-                cumPx += mapDistancePixels(
-                    L.latLng(rulerPoints[j-1].lat, rulerPoints[j-1].lng),
-                    L.latLng(rulerPoints[j].lat,   rulerPoints[j].lng)
-                );
-            }
-            const meters = pixelsToMeters(cumPx);
-            const label  = formatDistance(meters);
-            ctx.font      = "bold 11px 'Share Tech Mono', monospace";
-            ctx.textAlign = "left";
-            ctx.fillStyle = "rgba(0,0,0,0.6)";
-            ctx.fillText(label, cx + 8, cy - 5);
-            ctx.fillStyle = "#ffcc00";
-            ctx.fillText(label, cx + 7, cy - 6);
-        }
-    });
-    ctx.restore();
-}
-// ─── LEFT PANEL COLLAPSE ─────────────────────────────────────────────────────
-const collapseBtn  = document.getElementById("collapseLeftBtn");
-const leftPanel    = document.getElementById("leftPanel");
-let panelCollapsed = false;
-
-function isMobileLayout() { return window.innerWidth <= 600; }
-
-collapseBtn.addEventListener("click", () => {
-    if (isMobileLayout()) {
-        // Mobile: toggle overlay open/close
-        leftPanel.classList.toggle("mobile-open");
-    } else {
-        // Desktop: normal collapse
-        panelCollapsed = !panelCollapsed;
-        leftPanel.classList.toggle("collapsed", panelCollapsed);
-        collapseBtn.classList.toggle("flipped", panelCollapsed);
-        saveUserState();
-    }
-    // FIX #4: tell Leaflet the map container changed size so all coordinate
-    // transforms (latLngToContainerPoint etc.) recalculate correctly.
-    setTimeout(() => {
-        map.invalidateSize({ animate: false });
-        resizeCanvas();
-        redrawAll();
-    }, 260);
-});
-// ─── MOBILE SWIPE TO OPEN LEFT PANEL ─────────────────────────────────────────
-{
-    let swipeStartX = 0, swipeStartY = 0;
-    const SWIPE_THRESHOLD = 50;   // px to the right = open
-    const CLOSE_THRESHOLD = 40;   // px to the left  = close
-
-    document.addEventListener("touchstart", e => {
-        if (!isMobileLayout()) return;
-        swipeStartX = e.touches[0].clientX;
-        swipeStartY = e.touches[0].clientY;
-    }, { passive: true });
-
-    document.addEventListener("touchend", e => {
-        if (!isMobileLayout()) return;
-        const dx = e.changedTouches[0].clientX - swipeStartX;
-        const dy = e.changedTouches[0].clientY - swipeStartY;
-        if (Math.abs(dy) > Math.abs(dx)) return;  // vertical swipe — ignore
-        const isOpen = leftPanel.classList.contains("mobile-open");
-        // Swipe right from left edge → open
-        if (dx > SWIPE_THRESHOLD && swipeStartX < 60 && !isOpen) {
-            leftPanel.classList.add("mobile-open");
-            setTimeout(() => { map.invalidateSize({ animate: false }); }, 260);
-        }
-        // Swipe left anywhere when panel is open → close
-        if (dx < -CLOSE_THRESHOLD && isOpen) {
-            leftPanel.classList.remove("mobile-open");
-            setTimeout(() => { map.invalidateSize({ animate: false }); }, 260);
-        }
-    }, { passive: true });
-}
-// ─── MOBILE LONG-TAP TO PLACE MARKER ─────────────────────────────────────────
-{
-    let longTapTimer   = null;
-    let longTapMoved   = false;
-    const LONG_TAP_MS  = 600;
-
-    // Prevent native "select all" on long-press via CSS in JS
-    document.body.style.webkitUserSelect = "none";
-    document.body.style.userSelect       = "none";
-
-    const mapEl = document.getElementById("map");
-    mapEl.addEventListener("touchstart", e => {
-        if (drawMode || rulerMode) return;
-        if (e.touches.length !== 1) return;
-        longTapMoved = false;
-        const touch = e.touches[0];
-        longTapTimer = setTimeout(async () => {
-            if (longTapMoved) return;
-            // Convert touch position to Leaflet latlng
-            const rect = mapEl.getBoundingClientRect();
-            const pt   = map.containerPointToLatLng(
-                L.point(touch.clientX - rect.left, touch.clientY - rect.top)
-            );
-            if (pt.lng < 0 || pt.lng > imageWidth || pt.lat < 0 || pt.lat > imageHeight) return;
-            // Haptic feedback if available
-            if (navigator.vibrate) navigator.vibrate(30);
-            const now    = new Date(Date.now() + 2 * 3600 * 1000);
-            const pad    = n => String(n).padStart(2, "0");
-            const dateStr = `${pad(now.getUTCDate())}/${pad(now.getUTCMonth()+1)}/${String(now.getUTCFullYear()).slice(-2)} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())}`;
-            const newRef = doc(markersCollection);
-            await setDoc(newRef, {
-                x: pt.lng, y: pt.lat,
-                type: selectedSymbol, side: placingSide,
-                created: Date.now(), date: dateStr,
-                amount: "", info: "", source: "",
-                author: getCallsign()
-            });
-            undoStack.push({ type: "marker", id: newRef.id });
-        }, LONG_TAP_MS);
-    }, { passive: true });
-
-    mapEl.addEventListener("touchmove",  () => { longTapMoved = true; clearTimeout(longTapTimer); }, { passive: true });
-    mapEl.addEventListener("touchend",   () => clearTimeout(longTapTimer), { passive: true });
-    mapEl.addEventListener("touchcancel",() => clearTimeout(longTapTimer), { passive: true });
-}
-// ─── PER-SECTION COLLAPSE ────────────────────────────────────────────────────
-document.querySelectorAll(".section-collapse-btn").forEach((btn) => {
-    const targetId = btn.dataset.target;
-    const body = document.getElementById(targetId);
-    if (!body) return;
-    btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const isCollapsed = body.classList.toggle("collapsed");
-        btn.classList.toggle("collapsed", isCollapsed);
-        // If the symbols section is being expanded/collapsed, allow the
-        // scrollable area to relayout
-        if (targetId === "symbols-body") {
-            // Force a reflow so the flex layout recalculates
-            requestAnimationFrame(() => resizeCanvas());
-        }
-    });
-});
-// ════════════════════════════════════════════════════════════════════
-// VEZHA — LIVE STREAMING SYSTEM
-// ════════════════════════════════════════════════════════════════════
-const vezha_sessions  = collection(db, "vezha_sessions");
-const vezha_signals   = collection(db, "vezha_signals");
-const vezha_chat      = collection(db, "vezha_chat");
-const vezha_rooms_col = collection(db, "vezha_rooms");
-let roomsData     = {};   // roomId → { id, name, order }
-let sessionsCache = {};   // userId → { callsign, role, room, docId, userId }
-let myCurrentRoom  = null; // own current room ID
-let currentChannel = "general"; // active chat channel: "general" | "room_1" … "room_10"
-const channelDrafts = {}; // draft text per channel, preserved across switches
-const chatMsgCache  = []; // local cache of all received chat messages { id, data }
-
-const myPeerId   = "peer_" + Math.random().toString(36).substr(2, 9);
-const myShortId  = myPeerId.slice(-6).toUpperCase();
-let vezhaActive    = false;
-// ─── i18n helpers (object + t() declared near top of file) ───────────────────
-function applyLang() {
-    document.querySelectorAll("[data-i18n]").forEach(el => {
-        const v = t(el.dataset.i18n);
-        if (v) el.textContent = v;
-    });
-    document.querySelectorAll("[data-i18n-ph]").forEach(el => {
-        const v = t(el.dataset.i18nPh);
-        if (v) el.placeholder = v;
-    });
-    document.querySelectorAll("[data-i18n-opt]").forEach(el => {
-        const v = t(el.dataset.i18nOpt);
-        if (v) el.textContent = v;
-    });
-    document.querySelectorAll("[data-i18n-title]").forEach(el => {
-        const v = t(el.dataset.i18nTitle);
-        if (v) el.title = v;
-    });
-    document.querySelectorAll(".lang-btn").forEach(btn => {
-        btn.classList.toggle("active", btn.dataset.lang === currentLang);
-    });
-    // Refresh filter chip labels
-    document.querySelectorAll(".filter-chip[data-unit]").forEach(chip => {
-        chip.textContent = t(chip.dataset.unit);
-    });
-    // Refresh dynamic status bar
-    const mc = document.getElementById("markerCount");
-    if (mc) mc.textContent = t("markers", Object.keys(displayedMarkers || {}).length);
-    const drawSt = document.getElementById("drawModeStatus");
-    if (drawSt) drawSt.textContent = t(typeof drawMode !== "undefined" && drawMode ? "drawOn" : "drawOff");
-    const rulerSt = document.getElementById("rulerStatus");
-    if (rulerSt) rulerSt.textContent = t(typeof rulerMode !== "undefined" && rulerMode ? "rulerOn" : "rulerOff");
-    // Sync body class for font-size compensation
-    document.body.classList.remove("lang-en", "lang-ru", "lang-ua");
-    document.body.classList.add("lang-" + currentLang);
-    updateMicBtn();
-    updateDeafenBtn();
-}
-document.querySelectorAll(".lang-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-        currentLang = btn.dataset.lang;
-        localStorage.setItem("vezhaLang", currentLang);
-        applyLang();
-    });
-});
-
-// ─── MIC / DEAFEN ─────────────────────────────────────────────────────────────
-let micStream    = null;
-let isMicMuted   = true;   // start muted
-let isDeafened   = false;  // start not deafened
-
-async function initMic() {
-    try {
-        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        micStream.getAudioTracks().forEach(t => { t.enabled = false; }); // start muted
-        // Add to any already-existing peer connections
-        Object.values(peers).forEach(({ pc }) => {
-            micStream.getAudioTracks().forEach(track => {
-                try { pc.addTrack(track, micStream); } catch (_) {}
-            });
-        });
-    } catch (e) { console.warn("Mic unavailable:", e); }
-    updateMicBtn();
-}
-
-function stopMic() {
-    if (micStream) { micStream.getTracks().forEach(tr => tr.stop()); micStream = null; }
-    isMicMuted = true; isDeafened = false;
-    updateMicBtn(); updateDeafenBtn();
-}
-
-function toggleMic() {
-    isMicMuted = !isMicMuted;
-    if (micStream) micStream.getAudioTracks().forEach(tr => { tr.enabled = !isMicMuted; });
-    updateMicBtn();
-}
-
-function toggleDeafen() {
-    isDeafened = !isDeafened;
-    document.querySelectorAll(".vezha-tile:not(.vezha-tile-self) video").forEach(v => {
-        v.muted = isDeafened;
-    });
-    updateDeafenBtn();
-}
-
-function updateMicBtn() {
-    const btn = document.getElementById("micBtn");
-    const lbl = document.getElementById("micLabel");
-    if (!btn || !lbl) return;
-    if (isMicMuted) {
-        btn.classList.add("vezha-danger-btn");
-        btn.title = t("unmute") + " microphone";
-        lbl.textContent = t("unmute");
-    } else {
-        btn.classList.remove("vezha-danger-btn");
-        btn.title = t("mute") + " microphone";
-        lbl.textContent = t("mute");
-    }
-}
-
-function updateDeafenBtn() {
-    const btn = document.getElementById("deafenBtn");
-    const lbl = document.getElementById("deafenLabel");
-    if (!btn || !lbl) return;
-    if (isDeafened) {
-        btn.classList.add("vezha-danger-btn");
-        btn.title = t("undeafen");
-        lbl.textContent = t("undeafen");
-    } else {
-        btn.classList.remove("vezha-danger-btn");
-        btn.title = t("deafen");
-        lbl.textContent = t("deafen");
-    }
-}
-
-document.getElementById("micBtn")?.addEventListener("click", toggleMic);
-document.getElementById("deafenBtn")?.addEventListener("click", toggleDeafen);
-
-// ─── USER ID GENERATION ────────────────────────────────────────────────────────
-function generateUserId() {
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    let id = "";
-    for (let i = 0; i < 6; i++) id += chars[Math.floor(Math.random() * chars.length)];
-    return id;
-}
-
-// ─── USER STATE PERSISTENCE (per account, stored in localStorage) ──────────────
-function saveUserState() {
-    const user = getCurrentUser();
-    if (!user) return;
-    const state = {
-        theme:               document.body.classList.contains("light-theme") ? "light" : "dark",
-        leftPanelCollapsed:  document.getElementById("leftPanel")?.classList.contains("collapsed") || false,
-        monitorChatCollapsed:document.getElementById("monitorChat")?.classList.contains("collapsed") || false,
-    };
-    localStorage.setItem(`deltaState_${user.username}`, JSON.stringify(state));
-}
-
-function restoreUserState(username) {
-    try {
-        const raw = localStorage.getItem(`deltaState_${username}`);
-        if (!raw) return;
-        const state = JSON.parse(raw);
-        // Theme
-        if (state.theme === "light" && !isLightTheme) {
-            isLightTheme = true;
-            document.body.classList.add("light-theme");
-            document.getElementById("themeToggleBtn")?.classList.add("active");
-            const logoImg = document.querySelector(".brand-shield img");
-            if (logoImg) logoImg.src = "logo_light.png";
-            const themeIcon = document.getElementById("themeIcon");
-            if (themeIcon) themeIcon.innerHTML = `<path d="M13 9a5 5 0 1 1-5.93-4.93A7 7 0 0 0 13 9z" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
-        }
-        // Left panel
-        if (state.leftPanelCollapsed) {
-            const lp = document.getElementById("leftPanel");
-            const cb = document.getElementById("collapseLeftBtn");
-            if (lp) { lp.classList.add("collapsed"); panelCollapsed = true; }
-            if (cb) cb.classList.add("flipped");
-            setTimeout(() => { map.invalidateSize({ animate: false }); resizeCanvas(); redrawAll(); }, 50);
-        }
-        // Monitor chat — intentionally NOT restoring collapsed state: always open on load
-    } catch (_) {}
-}
-
-// ─── WATERMARK ─────────────────────────────────────────────────────────────────
-// Core watermark painter — called once dimensions are known.
-// skipClear: pass true when painting ON TOP of existing content (e.g. export canvas).
-function _paintWatermark(ctx, W, H, userId, skipClear = false) {
-    if (!skipClear) ctx.clearRect(0, 0, W, H);
-    ctx.save();
-    ctx.globalAlpha = 0.11;   // 11% — clearly visible, not distracting
-    ctx.fillStyle   = document.body.classList.contains("light-theme") ? "#1a2050" : "#9ab4ff";
-    ctx.font        = "bold 14px 'Share Tech Mono', monospace";
-    ctx.textBaseline = "middle";
-    ctx.translate(W / 2, H / 2);
-    ctx.rotate(-30 * Math.PI / 180);
-    // ~6 IDs per row: colStep = W/6 clamped to sensible range
-    const colStep = 190, rowStep = 60;
-    const span = Math.max(W, H) * 1.8;
-    const cols = Math.ceil(span / colStep) + 2;
-    const rows = Math.ceil(span / rowStep) + 2;
-    for (let r = -rows; r <= rows; r++) {
-        for (let c = -cols; c <= cols; c++) {
-            ctx.fillText(userId, c * colStep + (r % 2 === 0 ? 0 : colStep / 2), r * rowStep);
-        }
-    }
-    ctx.restore();
-}
-
-function drawWatermarkCanvas(userId) {
-    // Also refresh 3D watermarks if active
-    map3DState?.refreshWatermark();
-    arty3DState?.refreshWatermark();
-    const canvas = document.getElementById("watermarkCanvas");
-    if (!canvas) return;
-    const draw = () => {
-        // getBoundingClientRect forces a layout flush — always returns real pixels
-        const rect = canvas.getBoundingClientRect();
-        const W = rect.width  || canvas.parentElement?.getBoundingClientRect().width  || 800;
-        const H = rect.height || canvas.parentElement?.getBoundingClientRect().height || 600;
-        canvas.width  = W;
-        canvas.height = H;
-        if (!userId) return;
-        _paintWatermark(canvas.getContext("2d"), W, H, userId);
-    };
-    // Defer one frame so the flex layout has resolved before we measure
-    requestAnimationFrame(draw);
-    // Always refresh arty canvas too — drawArtyWatermark is a no-op if not visible
-    drawArtyWatermark(userId);
-}
-
-function drawArtyWatermark(userId) {
-    const canvas = document.getElementById("artyWatermarkCanvas");
-    if (!canvas) return;
-    const draw = () => {
-        const rect = canvas.getBoundingClientRect();
-        const W = rect.width  || canvas.parentElement?.getBoundingClientRect().width  || 800;
-        const H = rect.height || canvas.parentElement?.getBoundingClientRect().height || 600;
-        canvas.width  = W;
-        canvas.height = H;
-        if (!userId) return;
-        _paintWatermark(canvas.getContext("2d"), W, H, userId);
-    };
-    requestAnimationFrame(draw);
-}
-
-function drawTileWatermark(canvas, userId) {
-    if (!canvas || !userId) return;
-    const draw = () => {
-        const rect = canvas.getBoundingClientRect();
-        const W = canvas.width  = rect.width  || canvas.parentElement?.clientWidth  || 640;
-        const H = canvas.height = rect.height || canvas.parentElement?.clientHeight || 360;
-        _paintWatermark(canvas.getContext("2d"), W, H, userId);
-    };
-    requestAnimationFrame(draw);
-}
-
-// Redraw watermark on map resize
-map.on("resize", () => { drawWatermarkCanvas(getCurrentUser()?.userId || null); });
-
-// ─── PRESENCE ──────────────────────────────────────────────────────────────────
-const presenceCollection = collection(db, "presence");
-let presenceInterval = null;
-
-async function updatePresence() {
-    const user = getCurrentUser();
-    if (!user) return;
-    try {
-        await setDoc(doc(db, "presence", user.username), {
-            username: user.username,
-            role:     user.role,
-            userId:   user.userId || "",
-            lastSeen: Date.now()
-        });
-    } catch (_) {}
-}
-
-async function clearPresence() {
-    const user = getCurrentUser();
-    if (!user) return;
-    try { await deleteDoc(doc(db, "presence", user.username)); } catch (_) {}
-}
-
-// ─── AUTH SCREEN HELPERS ────────────────────────────────────────────────────────
-function showAuthScreen() {
-    const el = document.getElementById("authScreen");
-    if (el) el.style.display = "flex";
-    showAuthPanel("login");
-}
-function hideAuthScreen() {
-    const el = document.getElementById("authScreen");
-    if (el) el.style.display = "none";
-}
-function showAuthPanel(panel) {
-    document.getElementById("authLoginPanel").style.display   = panel === "login"   ? "flex" : "none";
-    document.getElementById("authRegPanel").style.display     = panel === "register" ? "flex" : "none";
-    document.getElementById("authPendingPanel").style.display = panel === "pending"  ? "flex" : "none";
-    document.getElementById("authTabLogin").classList.toggle("active",    panel === "login");
-    document.getElementById("authTabRegister").classList.toggle("active", panel === "register");
-}
-
-// ─── ADMIN PANEL LOGIC ─────────────────────────────────────────────────────────
-let adminUnsubs = [];
-
-function stopAdminListeners() {
-    adminUnsubs.forEach(u => u());
-    adminUnsubs = [];
-}
-
-function startAdminListeners() {
-    stopAdminListeners();
-    const accountsCol = collection(db, "accounts");
-    const presenceCol = collection(db, "presence");
-
-    // Track online users
-    let onlineUsers = new Set();
-
-    const unsubPresence = onSnapshot(presenceCol, snap => {
-        const now = Date.now();
-        onlineUsers = new Set(
-            snap.docs
-                .filter(d => (now - (d.data().lastSeen || 0)) < 90000)
-                .map(d => d.id)
-        );
-        renderAccountsList();
-    });
-
-    // All accounts
-    let allAccounts = [];
-    const unsubAccounts = onSnapshot(accountsCol, snap => {
-        allAccounts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        renderPendingList();
-        renderAccountsList();
-    });
-
-    function renderPendingList() {
-        const el = document.getElementById("adminPendingList");
-        if (!el) return;
-        const pending = allAccounts.filter(a => a.status === "pending");
-        if (pending.length === 0) {
-            el.innerHTML = `<span class="admin-empty">No pending requests</span>`;
-            return;
-        }
-        el.innerHTML = "";
-        pending.forEach(acct => {
-            const row = document.createElement("div");
-            row.className = "admin-row";
-            row.innerHTML = `
-              <span class="admin-row-name">${escHtml(acct.username)}</span>
-              <span class="admin-row-role">${escHtml((acct.role||"operator").toUpperCase())}</span>
-              <button class="admin-btn admin-btn-approve" data-id="${escHtml(acct.username)}">✓ APPROVE</button>
-              <button class="admin-btn admin-btn-deny"    data-id="${escHtml(acct.username)}">✕ DENY</button>`;
-            row.querySelector(".admin-btn-approve").addEventListener("click", async () => {
-                await updateDoc(doc(db, "accounts", acct.username), { status: "approved" });
-            });
-            row.querySelector(".admin-btn-deny").addEventListener("click", async () => {
-                if (confirm(`Deny and delete account "${acct.username}"?`)) {
-                    await deleteDoc(doc(db, "accounts", acct.username));
-                }
-            });
-            el.appendChild(row);
-        });
-    }
-
-    const CHANGEABLE_ROLES = ["operator","commander","drone","crewman","intel"];
-    function renderAccountsList() {
-        const el = document.getElementById("adminAccountsList");
-        if (!el) return;
-        const approved = allAccounts.filter(a => a.status !== "pending");
-        el.innerHTML = "";
-        approved.sort((a, b) => a.username.localeCompare(b.username)).forEach(acct => {
-            const online    = onlineUsers.has(acct.username);
-            const isOwner   = acct.role === "owner" || acct.username === OWNER_CALLSIGN;
-            const roleLabel = isOwner ? "ADMIN" : (acct.role || "operator").toUpperCase();
-            const row = document.createElement("div");
-            row.className = "admin-row";
-            if (isOwner) {
-                row.innerHTML = `
-                  <span class="presence-dot ${online ? "online" : "offline"}"></span>
-                  <span class="admin-row-name">${escHtml(acct.username)}</span>
-                  <span class="admin-row-role">${roleLabel}</span>`;
-            } else {
-                const opts = CHANGEABLE_ROLES.map(r =>
-                    `<option value="${r}" ${acct.role===r?"selected":""}>${r.toUpperCase()}</option>`
-                ).join("");
-                row.innerHTML = `
-                  <span class="presence-dot ${online ? "online" : "offline"}"></span>
-                  <span class="admin-row-name">${escHtml(acct.username)}</span>
-                  <select class="admin-role-select" data-user="${escHtml(acct.username)}">${opts}</select>`;
-                row.querySelector(".admin-role-select").addEventListener("change", async (e) => {
-                    await updateDoc(doc(db, "accounts", acct.username), { role: e.target.value });
-                });
-            }
-            el.appendChild(row);
-        });
-    }
-
-    function renderDebugPanel() {
-        const el = document.getElementById("debugPanelContent");
-        if (!el) return;
-        const u = getCurrentUser();
-        const lines = [
-            `── USER ──────────────────────────`,
-            `Username : ${u?.username || "—"}`,
-            `Role     : ${u?.role || "—"}`,
-            `Callsign : ${u?.callsign || "—"}`,
-            `UserId   : ${u?.userId || "—"}`,
-            `── APP STATE ─────────────────────`,
-            `Markers  : ${Object.keys(displayedMarkers).length}`,
-            `Strokes  : ${strokes.length}`,
-            `3D active: ${!!map3DState}`,
-            `Arty 3D  : ${!!arty3DState}`,
-            `Vezha    : ${typeof vezhaActive !== "undefined" ? vezhaActive : "—"}`,
-            `── FIREBASE ──────────────────────`,
-            `Accounts : ${allAccounts.length}`,
-            `Online   : ${onlineUsers.size}`,
-            `── RUNTIME ───────────────────────`,
-            `UA       : ${navigator.userAgent.slice(0,60)}`,
-            `Time     : ${new Date().toISOString()}`,
-        ];
-        el.textContent = lines.join("\n");
-    }
-
-    adminUnsubs.push(unsubPresence, unsubAccounts);
-
-    // Debug panel refresh
-    document.getElementById("debugRefreshBtn")?.addEventListener("click", renderDebugPanel);
-    document.getElementById("debugCopyBtn")?.addEventListener("click", () => {
-        const txt = document.getElementById("debugPanelContent")?.textContent || "";
-        navigator.clipboard?.writeText(txt).catch(() => {});
-    });
-    renderDebugPanel();
-}
-
-// ─── ACCOUNT MODAL — AUTH (Firestore-backed, cross-device) ───────────────────
-// Accounts live in Firestore "accounts/{USERNAME}" so any device can log in.
-// Current session is cached in localStorage for instant page-load restore.
-
-function getCurrentUser() {
-    try { return JSON.parse(localStorage.getItem("deltaCurrentUser") || "null"); } catch { return null; }
-}
-function hashPass(pw) { return btoa(encodeURIComponent(pw)); }
-
-function applyCurrentUser(user) {
-    if (user) {
-        localStorage.setItem("deltaCurrentUser", JSON.stringify(user));
-        const callsign = user.callsign || user.username;
-        localStorage.setItem("vezhaCallsign", callsign);
-        localStorage.setItem("vezhaRole", user.role);
-        const callEl = document.getElementById("callsignInput");
-        if (callEl) callEl.value = callsign;
-        const roleEl = document.getElementById("roleSelect");
-        if (roleEl) roleEl.value = user.role;
-        enforceOwnerRole();  // lock/unlock owner role dropdown
-        // Restore UI state saved for this account
-        restoreUserState(user.username);
-        // Draw the ID watermark on the map
-        drawWatermarkCanvas(user.userId || null);
-        // Start presence heartbeat
-        updatePresence();
-        if (presenceInterval) clearInterval(presenceInterval);
-        presenceInterval = setInterval(updatePresence, 30000);
-        // Start admin listeners if admin
-        if (user.role === "owner") startAdminListeners();
-        hideAuthScreen();
-    } else {
-        // Logout: clear presence, stop heartbeat, stop admin listeners
-        clearPresence();
-        if (presenceInterval) { clearInterval(presenceInterval); presenceInterval = null; }
-        stopAdminListeners();
-        localStorage.removeItem("deltaCurrentUser");
-        drawWatermarkCanvas(null);
-        showAuthScreen();
-    }
-    updateModalState();
-}
-
-function updateModalState() {
-    const user = getCurrentUser();
-    const loginPanel    = document.getElementById("loginPanel");
-    const registerPanel = document.getElementById("registerPanel");
-    const loggedInPanel = document.getElementById("loggedInPanel");
-    const tabs          = document.querySelector(".modal-tabs");
-    if (user) {
-        loginPanel?.style && (loginPanel.style.display = "none");
-        registerPanel?.style && (registerPanel.style.display = "none");
-        loggedInPanel?.style && (loggedInPanel.style.display = "flex");
-        if (tabs) tabs.style.display = "none";
-        const nameEl = document.getElementById("loggedInName");
-        if (nameEl) nameEl.textContent = user.username;
-        const roleLabel = user.role === "owner" ? "ADMIN" : (user.role || "OPERATOR").toUpperCase();
-        const roleEl = document.getElementById("loggedInRole");
-        if (roleEl) roleEl.textContent = roleLabel;
-        const prev = document.getElementById("accountRolePreview");
-        if (prev) prev.style.background = ROLE_COLORS[user.role] || ROLE_COLORS.operator;
-        const idEl = document.getElementById("loggedInId");
-        if (idEl) idEl.textContent = user.userId || "——";
-        // Pre-fill settings callsign field
-        const csInp = document.getElementById("settingsCallsign");
-        if (csInp) csInp.value = user.callsign || user.username;
-        // Show/hide admin panel
-        const adminWrap = document.getElementById("adminPanelWrap");
-        if (adminWrap) adminWrap.style.display = user.role === "owner" ? "block" : "none";
-    } else {
-        loginPanel?.style && (loginPanel.style.display = "flex");
-        registerPanel?.style && (registerPanel.style.display = "none");
-        loggedInPanel?.style && (loggedInPanel.style.display = "none");
-        if (tabs) tabs.style.display = "flex";
-        document.getElementById("tabLogin")?.classList.add("active");
-        document.getElementById("tabRegister")?.classList.remove("active");
-    }
-}
-
-// Tab switching
-document.getElementById("tabLogin")?.addEventListener("click", () => {
-    document.getElementById("loginPanel").style.display = "flex";
-    document.getElementById("registerPanel").style.display = "none";
-    document.getElementById("tabLogin").classList.add("active");
-    document.getElementById("tabRegister").classList.remove("active");
-    document.getElementById("loginError").textContent = "";
-});
-document.getElementById("tabRegister")?.addEventListener("click", () => {
-    document.getElementById("loginPanel").style.display = "none";
-    document.getElementById("registerPanel").style.display = "flex";
-    document.getElementById("tabRegister").classList.add("active");
-    document.getElementById("tabLogin").classList.remove("active");
-    document.getElementById("regError").textContent = "";
-});
-
-// Helper: disable/enable a button + show spinner text while async op runs
-function setAuthBusy(btnId, busy) {
-    const btn = document.getElementById(btnId);
-    if (!btn) return;
-    btn.disabled = busy;
-    btn.style.opacity = busy ? "0.6" : "";
-}
-
-// Shared login logic (used by modal loginBtn AND auth screen authLoginBtn)
-async function doLogin(username, pw, errEl, busyBtnId) {
-    errEl.textContent = "";
-    if (!username || !pw) { errEl.textContent = t("errFillAll"); return; }
-    setAuthBusy(busyBtnId, true);
-    try {
-        const snap = await getDoc(doc(db, "accounts", username));
-        if (!snap.exists() || snap.data().passHash !== hashPass(pw)) {
-            errEl.textContent = t("errBadCreds");
-            setAuthBusy(busyBtnId, false);
-            return;
-        }
-        const acct = snap.data();
-        // PLAYFRA bypass: always allowed regardless of status field
-        if (username !== OWNER_CALLSIGN && acct.status === "pending") {
-            errEl.textContent = "Your account is awaiting admin approval.";
-            setAuthBusy(busyBtnId, false);
-            return;
-        }
-        const resolvedRole   = (username === OWNER_CALLSIGN) ? "owner" : acct.role;
-        // Ensure the account has a userId; generate and save if missing.
-        // The updateDoc is best-effort — if rules block it (e.g. read-only accounts
-        // collection) we still log the user in with a locally-generated ID.
-        let userId = acct.userId;
-        if (!userId) {
-            userId = generateUserId();
-            try { await updateDoc(doc(db, "accounts", username), { userId }); } catch (_) {}
-        }
-        applyCurrentUser({
-            username, role: resolvedRole,
-            callsign: acct.callsign || username,
-            userId
-        });
-    } catch (e) {
-        console.error("Login error:", e);
-        errEl.textContent = t("errNetwork");
-    }
-    setAuthBusy(busyBtnId, false);
-}
-
-// Shared register logic (used by modal registerBtn AND auth screen authRegBtn)
-async function doRegister(username, pw, confirm, role, errEl, busyBtnId, onPending) {
-    errEl.textContent = "";
-    if (!username || !pw || !confirm) { errEl.textContent = t("errFillAll"); return; }
-    if (pw.length < 8)        { errEl.textContent = t("errPassLen"); return; }
-    if (!/[0-9]/.test(pw))    { errEl.textContent = t("errPassNum"); return; }
-    if (!/[^a-zA-Z0-9]/.test(pw)) { errEl.textContent = t("errPassSym"); return; }
-    if (pw !== confirm)        { errEl.textContent = t("errPassMatch"); return; }
-    setAuthBusy(busyBtnId, true);
-    try {
-        const ref  = doc(db, "accounts", username);
-        const snap = await getDoc(ref);
-        if (snap.exists()) { errEl.textContent = t("errUserExists"); setAuthBusy(busyBtnId, false); return; }
-        const userId = generateUserId();
-        const isOwner = (username === OWNER_CALLSIGN);
-        await setDoc(ref, {
-            username, passHash: hashPass(pw),
-            role:     isOwner ? "owner" : role,
-            status:   isOwner ? "approved" : "pending",
-            userId,   callsign: username
-        });
-        if (isOwner) {
-            applyCurrentUser({ username, role: "owner", callsign: username, userId });
-        } else {
-            onPending();
-        }
-    } catch (e) {
-        console.error("Register error:", e);
-        errEl.textContent = t("errNetwork");
-    }
-    setAuthBusy(busyBtnId, false);
-}
-
-// LOGIN modal button (secondary — modal is mainly for settings/admin when logged in)
-document.getElementById("loginBtn")?.addEventListener("click", async () => {
-    const username = document.getElementById("loginUsername").value.trim().toUpperCase();
-    const pw       = document.getElementById("loginPassword").value;
-    const errEl    = document.getElementById("loginError");
-    document.getElementById("loginPassword").value = "";
-    await doLogin(username, pw, errEl, "loginBtn");
-});
-
-// REGISTER modal button
-document.getElementById("registerBtn")?.addEventListener("click", async () => {
-    const username = document.getElementById("regUsername").value.trim().toUpperCase();
-    const pw       = document.getElementById("regPassword").value;
-    const confirm  = document.getElementById("regConfirm").value;
-    const role     = document.getElementById("regRole").value;
-    const errEl    = document.getElementById("regError");
-    document.getElementById("regPassword").value = "";
-    document.getElementById("regConfirm").value  = "";
-    await doRegister(username, pw, confirm, role, errEl, "registerBtn", () => {
-        errEl.style.color = "#34d399";
-        errEl.textContent = "Request submitted — awaiting admin approval.";
-    });
-});
-
-// LOGOUT
-document.getElementById("logoutBtn")?.addEventListener("click", () => {
-    applyCurrentUser(null);
-});
-
-// Open modal
-document.getElementById("accountBtn")?.addEventListener("click", () => {
-    updateModalState();
-    document.getElementById("accountModal").style.display = "flex";
-    // Auto-expand admin panel for owner so it's immediately visible
-    const u = getCurrentUser();
-    if (u?.role === "owner") {
-        const body = document.getElementById("adminPanel");
-        const chevron = document.querySelector("#adminToggle .modal-collapsible-chevron");
-        if (body) body.style.display = "flex";
-        if (chevron) chevron.textContent = "▴";
-    }
-});
-document.getElementById("accountModalClose")?.addEventListener("click", () => {
-    document.getElementById("accountModal").style.display = "none";
-});
-document.getElementById("accountModal")?.addEventListener("click", e => {
-    if (e.target.id === "accountModal")
-        document.getElementById("accountModal").style.display = "none";
-});
-
-// Restore logged-in user on page load
-// Always validate the cached session against Firestore to catch:
-//  - accounts deleted by admin
-//  - accounts that are still pending (pre-approval-feature sessions)
-//  - stale sessions from before the auth screen was added
-{
-    const user = getCurrentUser();
-    if (user) {
-        // Validate against Firestore before restoring
-        getDoc(doc(db, "accounts", user.username)).then(async snap => {
-            // Account deleted or pending → force logout and show auth screen
-            if (!snap.exists() || (snap.data().status === "pending")) {
-                localStorage.removeItem("deltaCurrentUser");
-                showAuthScreen();
-                return;
-            }
-            // Account valid — restore session
-            const acctData = snap.data();
-            // OWNER_CALLSIGN always gets role "owner" regardless of what Firestore
-            // stores (the account may have been registered before the owner-role fix).
-            const resolvedRole = (user.username === OWNER_CALLSIGN)
-                ? "owner"
-                : (acctData.role || user.role);
-            const resolvedCallsign = acctData.callsign || user.callsign || user.username;
-            // Sync any server-side changes (role, callsign, userId)
-            const syncedUser = {
-                ...user,
-                role:     resolvedRole,
-                callsign: resolvedCallsign,
-                userId:   acctData.userId || user.userId || null,
-            };
-            // Generate userId if still missing
-            if (!syncedUser.userId) {
-                syncedUser.userId = generateUserId();
-                try { await updateDoc(doc(db, "accounts", user.username), { userId: syncedUser.userId }); } catch (_) {}
-            }
-            // One-time: regenerate PLAYFRA's userId to clear any legacy value
-            if (user.username === OWNER_CALLSIGN && !localStorage.getItem("_ownerIdRegen1")) {
-                syncedUser.userId = generateUserId();
-                try {
-                    await updateDoc(doc(db, "accounts", OWNER_CALLSIGN), { userId: syncedUser.userId });
-                    localStorage.setItem("_ownerIdRegen1", "1");
-                } catch (_) {}
-            }
-            localStorage.setItem("deltaCurrentUser", JSON.stringify(syncedUser));
-
-            // Update DOM inputs — must happen before enforceOwnerRole()
-            const callEl = document.getElementById("callsignInput");
-            if (callEl) callEl.value = resolvedCallsign;
-            const roleEl = document.getElementById("roleSelect");
-            if (roleEl) roleEl.value = resolvedRole;
-
-            // Keep vezha identity keys in sync so getCallsign()/getRole() are
-            // never stale after a page refresh (fixes "B2X4IS / OP" in Vezha)
-            localStorage.setItem("vezhaCallsign", resolvedCallsign);
-            localStorage.setItem("vezhaRole",     resolvedRole);
-            enforceOwnerRole();
-
-            updatePresence();
-            presenceInterval = setInterval(updatePresence, 30000);
-            if (resolvedRole === "owner") startAdminListeners();
-            restoreUserState(syncedUser.username);
-            updateModalState();
-            drawWatermarkCanvas(syncedUser.userId);
-
-            const idEl = document.getElementById("loggedInId");
-            if (idEl) idEl.textContent = syncedUser.userId || "——";
-        }).catch(() => {
-            // Firestore unreachable — restore from cache optimistically
-            const cachedRole     = (user.username === OWNER_CALLSIGN) ? "owner" : user.role;
-            const cachedCallsign = user.callsign || user.username;
-            const callEl = document.getElementById("callsignInput");
-            if (callEl) callEl.value = cachedCallsign;
-            const roleEl = document.getElementById("roleSelect");
-            if (roleEl) roleEl.value = cachedRole;
-            localStorage.setItem("vezhaCallsign", cachedCallsign);
-            localStorage.setItem("vezhaRole",     cachedRole);
-            enforceOwnerRole();
-            updatePresence();
-            presenceInterval = setInterval(updatePresence, 30000);
-            if (cachedRole === "owner") startAdminListeners();
-            restoreUserState(user.username);
-            updateModalState();
-            drawWatermarkCanvas(user.userId || null);
-        });
-    } else {
-        showAuthScreen();
-    }
-}
-
-// ─── AUTH SCREEN BUTTONS ──────────────────────────────────────────────────────
-document.getElementById("authTabLogin")?.addEventListener("click", () => showAuthPanel("login"));
-document.getElementById("authTabRegister")?.addEventListener("click", () => showAuthPanel("register"));
-document.getElementById("authPendingBack")?.addEventListener("click", () => showAuthPanel("login"));
-
-document.getElementById("authLoginBtn")?.addEventListener("click", async () => {
-    const username = document.getElementById("authLoginUser").value.trim().toUpperCase();
-    const pw       = document.getElementById("authLoginPass").value;
-    const errEl    = document.getElementById("authLoginError");
-    document.getElementById("authLoginPass").value = "";
-    await doLogin(username, pw, errEl, "authLoginBtn");
-});
-document.getElementById("authLoginUser")?.addEventListener("keydown", e => {
-    if (e.key === "Enter") document.getElementById("authLoginBtn")?.click();
-});
-document.getElementById("authLoginPass")?.addEventListener("keydown", e => {
-    if (e.key === "Enter") document.getElementById("authLoginBtn")?.click();
-});
-
-document.getElementById("authRegBtn")?.addEventListener("click", async () => {
-    const username = document.getElementById("authRegUser").value.trim().toUpperCase();
-    const pw       = document.getElementById("authRegPass").value;
-    const confirm  = document.getElementById("authRegConfirm").value;
-    const role     = document.getElementById("authRegRole").value;
-    const errEl    = document.getElementById("authRegError");
-    document.getElementById("authRegPass").value    = "";
-    document.getElementById("authRegConfirm").value = "";
-    await doRegister(username, pw, confirm, role, errEl, "authRegBtn", () => {
-        showAuthPanel("pending");
-    });
-});
-
-// ─── SETTINGS PANEL ────────────────────────────────────────────────────────────
-document.getElementById("settingsToggle")?.addEventListener("click", () => {
-    const panel = document.getElementById("settingsPanel");
-    const open  = panel.style.display === "none" || panel.style.display === "";
-    panel.style.display = open ? "flex" : "none";
-    document.querySelector("#settingsToggle .modal-collapsible-chevron").textContent = open ? "▴" : "▾";
-});
-document.getElementById("settingsSaveBtn")?.addEventListener("click", async () => {
-    const errEl    = document.getElementById("settingsError");
-    const user     = getCurrentUser();
-    if (!user) return;
-    errEl.textContent = "";
-    errEl.style.color = "";
-    const newCallsign = document.getElementById("settingsCallsign").value.trim().toUpperCase();
-    const newPass     = document.getElementById("settingsPass").value;
-    const newPassConf = document.getElementById("settingsPassConfirm").value;
-    const updates = {};
-    if (newCallsign && newCallsign !== (user.callsign || user.username)) {
-        updates.callsign = newCallsign;
-    }
-    if (newPass) {
-        if (newPass.length < 8) { errEl.textContent = t("errPassLen"); return; }
-        if (newPass !== newPassConf) { errEl.textContent = t("errPassMatch"); return; }
-        updates.passHash = hashPass(newPass);
-    }
-    if (Object.keys(updates).length === 0) { errEl.textContent = "Nothing to change."; return; }
-    try {
-        await updateDoc(doc(db, "accounts", user.username), updates);
-        const newUser = { ...user, ...updates };
-        delete newUser.passHash;   // don't store hash in localStorage
-        if (updates.callsign) {
-            newUser.callsign = updates.callsign;
-            localStorage.setItem("vezhaCallsign", updates.callsign);
-            const callEl = document.getElementById("callsignInput");
-            if (callEl) callEl.value = updates.callsign;
-        }
-        localStorage.setItem("deltaCurrentUser", JSON.stringify(newUser));
-        document.getElementById("settingsPass").value     = "";
-        document.getElementById("settingsPassConfirm").value = "";
-        errEl.style.color = "#34d399";
-        errEl.textContent = "Saved ✓";
-        setTimeout(() => { errEl.textContent = ""; errEl.style.color = ""; }, 2000);
-    } catch (e) {
-        console.error("Settings save error:", e);
-        errEl.textContent = t("errNetwork");
-    }
-});
-
-// ─── ADMIN PANEL TOGGLE ────────────────────────────────────────────────────────
-document.getElementById("adminToggle")?.addEventListener("click", () => {
-    const panel = document.getElementById("adminPanel");
-    const open  = panel.style.display === "none" || panel.style.display === "";
-    panel.style.display = open ? "flex" : "none";
-    document.querySelector("#adminToggle .modal-collapsible-chevron").textContent = open ? "▴" : "▾";
-});
-
-// ─── KEYBOARD SHORTCUTS ────────────────────────────────────────────────────────
-const _drawCanvas = document.getElementById("drawCanvas");
-document.addEventListener("keydown", async (e) => {
-    // Enable canvas pointer-events for Ctrl+drag selection (only when NOT already in draw mode)
-    if (e.key === "Control" && !drawMode) {
-        map.dragging.disable();
-        // Add a temporary CSS class instead of inline style, so drawMode's .active class still works
-        _drawCanvas?.classList.add("ctrl-select");
-    }
-
-    const tag = document.activeElement?.tagName;
-    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-    if (artilleryActive) return;
-    if (e.ctrlKey || e.metaKey) {
-        const k = e.key.toLowerCase();
-        if (k === "z" && !e.shiftKey) { e.preventDefault(); await undoLast(); }
-        if (k === "y" || (k === "z" && e.shiftKey)) { e.preventDefault(); await redoLast(); }
-    }
-});
-document.addEventListener("keyup", (e) => {
-    if (e.key === "Control") {
-        _drawCanvas?.classList.remove("ctrl-select");
-        if (!drawMode) map.dragging.enable();
-        if (_selBoxActive) {
-            _selBoxActive = false;
-            selBox = null;
-            redrawAll();
-        }
-    }
-});
-
-let localStream    = null;
-let mySessionRef   = null;
-let vezhaUnsubs    = [];
-let chatUnsub      = null;
-let processedSigs  = new Set();
-const peers        = {};
-const peerMeta     = {};   // peerId → { callsign, role } from vezha_sessions
-let vezhaEnterTime = 0;
-let heartbeatTimer = null;
-
-const ICE_CONFIG = {
-    iceServers: [
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" }
-    ]
-};
-
-// Best-effort cleanup on tab close
-window.addEventListener("beforeunload", () => {
-    if (mySessionRef) deleteDoc(mySessionRef);
-    clearPresence();
-});
-
-// ─── VIEW SWITCHING ───────────────────────────────────────────────────────────
-const mapViewBtn   = document.getElementById("mapViewBtn");
-const vezhaViewBtn = document.getElementById("vezhaViewBtn");
-const brandModule  = document.getElementById("brandModule");
-
-mapViewBtn.addEventListener("click",   () => { if (vezhaActive)  exitVezha(); });
-vezhaViewBtn.addEventListener("click", () => { if (!vezhaActive) enterVezha(); });
-
-// ─── VEZHA ROOMS ─────────────────────────────────────────────────────────────
-async function initVezhaRooms() {
-    roomsData = {};
-    try {
-        const snap = await getDocs(vezha_rooms_col);
-        snap.forEach(d => { roomsData[d.id] = { id: d.id, ...d.data() }; });
-        const b = writeBatch(db); let dirty = false;
-        for (let i = 1; i <= 10; i++) {
-            const rid = `room_${i}`;
-            if (!roomsData[rid]) {
-                b.set(doc(db, "vezha_rooms", rid), { name: `ROOM ${i}`, order: i });
-                roomsData[rid] = { id: rid, name: `ROOM ${i}`, order: i };
-                dirty = true;
-            }
-        }
-        if (dirty) await b.commit();
-    } catch (e) { console.error("initVezhaRooms:", e); }
-}
-
-async function joinRoom(roomId) {
-    if (!mySessionRef) return;
-    const next = myCurrentRoom === roomId ? null : roomId;
-    myCurrentRoom = next;
-    try { await updateDoc(mySessionRef, { room: next }); } catch (e) { console.error("joinRoom:", e); }
-    renderRoomsPanel();
-    // Refresh stream visibility: remove tiles from users not in our room, keep our own
-    const grid = document.getElementById("vezhaGrid");
-    if (grid) {
-        grid.querySelectorAll(".vezha-tile:not(.vezha-tile-self)").forEach(tile => {
-            const uid = tile.id.replace("tile-", "");
-            const theirRoom = sessionsCache[uid]?.room;
-            if (next && theirRoom && theirRoom !== next) tile.remove();
-        });
-        if (typeof updateTileLayout === "function") updateTileLayout();
-    }
-}
-
-async function renameRoom(roomId, newName) {
-    const n = (newName || "").trim().toUpperCase().slice(0, 20) || `ROOM ${roomId.split("_")[1] || "?"}`;
-    try { await updateDoc(doc(db, "vezha_rooms", roomId), { name: n }); } catch (e) { console.error("renameRoom:", e); }
-}
-
-async function adminMoveUser(docId, targetRoomId) {
-    try { await updateDoc(doc(db, "vezha_sessions", docId), { room: targetRoomId }); } catch (e) { console.error("adminMoveUser:", e); }
-}
-
-function renderRoomsPanel() {
-    const list = document.getElementById("vezhaRoomsList");
-    if (!list) return;
-    const sorted  = Object.values(roomsData).sort((a, b) => (a.order || 0) - (b.order || 0));
-    const isAdmin = getCurrentUser()?.role === "owner";
-
-    // Map room → members
-    const byRoom = {};
-    sorted.forEach(r => { byRoom[r.id] = []; });
-    Object.values(sessionsCache).forEach(s => {
-        if (s.room && byRoom[s.room]) byRoom[s.room].push(s);
-    });
-
-    list.innerHTML = "";
-    sorted.forEach(room => {
-        const members = byRoom[room.id] || [];
-        const isMine  = myCurrentRoom === room.id;
-        const item    = document.createElement("div");
-        item.className = "vr-item" + (isMine ? " vr-mine" : "");
-
-        // Header
-        const hdr = document.createElement("div");
-        hdr.className = "vr-hdr";
-        hdr.innerHTML =
-            `<svg class="vr-icon" width="10" height="10" viewBox="0 0 10 10" fill="none">` +
-            `<path d="M1 2.5h8M1 5h8M1 7.5h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>` +
-            `<span class="vr-name" id="vrn_${room.id}">${escHtml(room.name)}</span>` +
-            (members.length ? `<span class="vr-cnt">${members.length}</span>` : "") +
-            `<button class="vr-edit-btn" data-rid="${room.id}" title="Rename">✎</button>`;
-
-        hdr.addEventListener("click", e => {
-            if (e.target.closest(".vr-edit-btn")) return;
-            joinRoom(room.id);
-        });
-        hdr.querySelector(".vr-edit-btn").addEventListener("click", e => {
-            e.stopPropagation();
-            const nameSpan = document.getElementById(`vrn_${room.id}`);
-            if (!nameSpan) return;
-            const inp = document.createElement("input");
-            inp.className = "vr-name-inp"; inp.value = room.name; inp.maxLength = 20;
-            nameSpan.replaceWith(inp); inp.focus(); inp.select();
-            const commit = () => {
-                const n = inp.value.trim().toUpperCase() || room.name;
-                renameRoom(room.id, n);
-                // nameSpan will be refreshed on next snapshot
-            };
-            inp.addEventListener("blur", commit);
-            inp.addEventListener("keydown", e2 => {
-                if (e2.key === "Enter") { e2.preventDefault(); commit(); }
-                if (e2.key === "Escape") inp.replaceWith(nameSpan);
-            });
-        });
-        item.appendChild(hdr);
-
-        // Drag-over target on header
-        item.addEventListener("dragover", e => { e.preventDefault(); item.classList.add("drag-over"); });
-        item.addEventListener("dragleave", () => item.classList.remove("drag-over"));
-        item.addEventListener("drop", e => {
-            e.preventDefault(); item.classList.remove("drag-over");
-            const docId   = e.dataTransfer.getData("text/plain");
-            const fromRoom = e.dataTransfer.getData("application/x-room");
-            if (!docId) return;
-            if (fromRoom !== room.id) adminMoveUser(docId, room.id);
-        });
-
-        // Members
-        if (members.length) {
-            const mWrap = document.createElement("div");
-            mWrap.className = "vr-members";
-            members.forEach(sess => {
-                const rc  = ROLE_COLORS[sess.role] || "#64697e";
-                const mRow = document.createElement("div");
-                mRow.className = "vr-member";
-                // Status icons: muted, deafened, streaming — visible to everyone
-                const muteIcon   = sess.muted    ? `<span class="vr-si si-muted"  title="Muted">🔇</span>`    : "";
-                const deafIcon   = sess.deafened ? `<span class="vr-si si-deaf"   title="Deafened">🔕</span>` : "";
-                const streamIcon = sess.streaming? `<span class="vr-si si-stream" title="Streaming">📡</span>`: "";
-                mRow.innerHTML =
-                    `<span class="vr-dot" style="background:${rc}"></span>` +
-                    `<span class="vr-mname">${escHtml(sess.callsign)}</span>` +
-                    `<span class="vr-status-icons">${muteIcon}${deafIcon}${streamIcon}</span>`;
-                // Drag-to-move (any user can be dragged by admin)
-                if (isAdmin && sess.userId !== myPeerId) {
-                    mRow.draggable = true;
-                    mRow.addEventListener("dragstart", e2 => {
-                        e2.dataTransfer.setData("text/plain", sess.docId);
-                        e2.dataTransfer.setData("application/x-room", room.id);
-                        mRow.classList.add("dragging");
-                    });
-                    mRow.addEventListener("dragend", () => mRow.classList.remove("dragging"));
-                }
-                mWrap.appendChild(mRow);
-            });
-            item.appendChild(mWrap);
-        }
-        list.appendChild(item);
-    });
-}
-
-async function enterVezha() {
-    if (typeof artilleryActive !== "undefined" && artilleryActive) exitArtillery();
-    // Clean up monitor map 3D scene — it's invisible when appBody is hidden
-    if (map3DState) {
-        map3DState.dispose(); map3DState = null;
-        const b = document.getElementById("mapDimToggle");
-        if (b) { b.textContent = "3D"; b.title = "Switch to 3D view"; b.classList.remove("active"); }
-    }
-    vezhaActive    = true;
-    vezhaEnterTime = Date.now();
-    document.body.classList.add("in-vezha"); document.body.classList.remove("in-arty");
-
-    document.getElementById("appBody").style.display = "none";
-    document.getElementById("vezhaView").classList.add("active");
-    brandModule.textContent = "VEZHA";
-    mapViewBtn.classList.remove("active");
-    vezhaViewBtn.classList.add("active");
-
-    // ── Purge stale sessions (no heartbeat for >60 s) ──
-    try {
-        const all = await getDocs(vezha_sessions);
-        const b   = writeBatch(db);
-        let dirty = false;
-        all.forEach(d => {
-            const ls = d.data().lastSeen || d.data().created || 0;
-            if (Date.now() - ls > 60000) { b.delete(d.ref); dirty = true; }
-        });
-        if (dirty) await b.commit();
-    } catch (e) { /* non-fatal */ }
-
-    // ── Register presence (include callsign + role so peers can label tiles) ──
-    mySessionRef = await addDoc(vezha_sessions, {
-        userId:   myPeerId,
-        callsign: getCallsign(),
-        role:     getRole(),
-        lastSeen: Date.now(),
-        created:  Date.now()
-    });
-
-    // ── Heartbeat every 15 s ──
-    heartbeatTimer = setInterval(async () => {
-        if (mySessionRef) {
-            try { await updateDoc(mySessionRef, { lastSeen: Date.now() }); } catch (_) {}
-        }
-    }, 15000);
-
-    // ── Listen for WebRTC signals directed to me ──
-    const unsubSig = onSnapshot(
-        query(vezha_signals, where("to", "==", myPeerId)),
-        snapshot => {
-            snapshot.docChanges().forEach(change => {
-                if (change.type === "added" && !processedSigs.has(change.doc.id)) {
-                    const sig = change.doc.data();
-                    if (sig.created >= vezhaEnterTime - 5000) {
-                        processedSigs.add(change.doc.id);
-                        handleSignal(sig, change.doc.id);
-                    }
-                }
-            });
-        }
-    );
-    vezhaUnsubs.push(unsubSig);
-
-    // ── Listen for peer sessions ──
-    const unsubSess = onSnapshot(vezha_sessions, snapshot => {
-        snapshot.docChanges().forEach(change => {
-            const data = change.doc.data();
-            const uid  = data.userId;
-            if (change.type === "added" || change.type === "modified") {
-                sessionsCache[uid] = {
-                    callsign:  data.callsign  || uid.slice(-6).toUpperCase(),
-                    role:      data.role      || "operator",
-                    room:      data.room      || null,
-                    docId:     change.doc.id,
-                    userId:    uid,
-                    muted:     data.muted     || false,
-                    deafened:  data.deafened  || false,
-                    streaming: data.streaming || false,
-                };
-                if (uid === myPeerId) {
-                    myCurrentRoom = data.room || null;
-                } else {
-                    peerMeta[uid] = { callsign: sessionsCache[uid].callsign, role: sessionsCache[uid].role };
-                }
-            }
-            if (uid !== myPeerId) {
-                if (change.type === "added"   && localStream) createOffer(uid);
-                if (change.type === "removed") { delete peerMeta[uid]; removePeer(uid); }
-            }
-            if (change.type === "removed") delete sessionsCache[uid];
-        });
-        // Count only peers with a recent heartbeat
-        const now = Date.now();
-        let count = 0;
-        snapshot.forEach(d => {
-            const data = d.data();
-            if (data.userId !== myPeerId) {
-                const ls = data.lastSeen || data.created || 0;
-                if (now - ls < 45000) count++;
-            }
-        });
-        document.getElementById("vezhaStatus").textContent = t("operators", count);
-        renderRoomsPanel();
-    });
-    vezhaUnsubs.push(unsubSess);
-
-    // ── Init + subscribe to rooms ─────────────────────────────────────────────
-    await initVezhaRooms();
-    const unsubRooms = onSnapshot(vezha_rooms_col, snap => {
-        snap.docChanges().forEach(ch => {
-            if (ch.type === "removed") delete roomsData[ch.doc.id];
-            else roomsData[ch.doc.id] = { id: ch.doc.id, ...ch.doc.data() };
-        });
-        renderRoomsPanel();
-        renderChannelTabs();
-    });
-    vezhaUnsubs.push(unsubRooms);
-
-    // ── Subscribe to chat — fast load: last 60 msgs, then live tail ──
-    document.getElementById("vezhaChatMessages").innerHTML = "";
-    chatMsgCache.length = 0;
-    renderChannelTabs(); // initialise with "general" before rooms load
-    chatUnsub = onSnapshot(
-        query(vezha_chat, orderBy("created", "asc"), limit(60)),
-        snapshot => {
-            snapshot.docChanges().forEach(change => {
-                if (change.type === "added") {
-                    const docId = change.doc.id;
-                    const data  = change.doc.data();
-                    // Add to cache if not already present
-                    if (!chatMsgCache.find(m => m.id === docId)) {
-                        chatMsgCache.push({ id: docId, data });
-                    }
-                    renderChatMessage(data);
-                } else if (change.type === "removed") {
-                    const docId = change.doc.id;
-                    const idx = chatMsgCache.findIndex(m => m.id === docId);
-                    if (idx !== -1) chatMsgCache.splice(idx, 1);
-                }
-            });
-            // Scroll to latest after each batch
-            const msgsEl = document.getElementById("vezhaChatMessages");
-            if (msgsEl) requestAnimationFrame(() => { msgsEl.scrollTop = msgsEl.scrollHeight; });
-        }
-    );
-
-    updateTileLayout();
-    initMic();
-
-    // ── Request streams from peers that are already present ──
-    // Done AFTER all listeners are subscribed so offers/answers won't be missed.
-    // The sessions listener "added" handler only fires offers when WE are the
-    // streamer; this covers the reverse case (we join late, others are streaming).
-    try {
-        const existingSnap = await getDocs(vezha_sessions);
-        existingSnap.forEach(d => {
-            const uid = d.data().userId;
-            if (uid === myPeerId) return;
-            // Send a lightweight "request-stream" signal so the remote peer
-            // creates a fresh offer to us (they'll include their stream if any).
-            addDoc(vezha_signals, {
-                from: myPeerId, to: uid,
-                type: "request-stream",
-                created: Date.now()
-            });
-        });
-    } catch (_) {}
-}
-
-async function exitVezha() {
-    await stopSharing();
-    stopMic();
-    vezhaActive = false;
-    document.body.classList.remove("in-vezha");
-
-    clearInterval(heartbeatTimer); heartbeatTimer = null;
-    if (mySessionRef) { deleteDoc(mySessionRef); mySessionRef = null; }
-    vezhaUnsubs.forEach(u => u()); vezhaUnsubs = [];
-    if (chatUnsub) { chatUnsub(); chatUnsub = null; }
-    chatMsgCache.length = 0;
-    processedSigs.clear();
-    Object.keys(peers).forEach(removePeer);
-    Object.keys(peerMeta).forEach(k => delete peerMeta[k]);
-    sessionsCache = {}; roomsData = {}; myCurrentRoom = null;
-    const _rlist = document.getElementById("vezhaRoomsList");
-    if (_rlist) _rlist.innerHTML = "";
-
-    document.getElementById("vezhaView").classList.remove("active");
-    document.getElementById("appBody").style.display = "flex";
-    brandModule.textContent = "MONITOR";
-    vezhaViewBtn.classList.remove("active");
-    mapViewBtn.classList.add("active");
-    // Leaflet loses track of container size while hidden — must re-validate
-    setTimeout(() => {
-        map.invalidateSize({ animate: false });
-        resizeCanvas();
-        redrawAll();
-        drawWatermarkCanvas(getCurrentUser()?.userId || null);
-    }, 50);
-}
-
-// ─── SCREEN SHARING ───────────────────────────────────────────────────────────
-document.getElementById("shareScreenBtn").addEventListener("click", shareScreen);
-document.getElementById("stopSharingBtn").addEventListener("click", stopSharing);
-
-async function shareScreen() {
-    try {
-        localStream = await navigator.mediaDevices.getDisplayMedia({
-            video: { cursor: "always" }, audio: true
-        });
-        localStream.getVideoTracks()[0].addEventListener("ended", stopSharing);
-        addVideoTile("self", localStream, "YOU  ·  BROADCASTING");
-        document.getElementById("shareScreenBtn").style.display = "none";
-        document.getElementById("stopSharingBtn").style.display = "flex";
-        const snap = await getDocs(vezha_sessions);
-        snap.forEach(d => {
-            if (d.data().userId !== myPeerId) createOffer(d.data().userId);
-        });
-    } catch (err) {
-        if (err.name !== "NotAllowedError") console.error("Screen share error:", err);
-    }
-}
-
-async function stopSharing() {
-    if (!localStream) return;
-    localStream.getTracks().forEach(t => t.stop());
-    localStream = null;
-    removeTile("self");
-    document.getElementById("shareScreenBtn").style.display = "flex";
-    document.getElementById("stopSharingBtn").style.display  = "none";
-
-    // Tell all peers to remove our tile immediately (don't wait for ICE timeout)
-    const stopSignals = Object.keys(peers).map(uid =>
-        addDoc(vezha_signals, { from: myPeerId, to: uid, type: "stop-stream", created: Date.now() })
-            .catch(() => {})
-    );
-    await Promise.allSettled(stopSignals);
-
-    // Close all peer connections — we're no longer sending a stream
-    Object.keys(peers).forEach(uid => { peers[uid].pc.close(); delete peers[uid]; });
-}
-
-// ─── PEER CONNECTION ──────────────────────────────────────────────────────────
-function getOrCreatePeer(userId) {
-    if (peers[userId]) return peers[userId].pc;
-    const pc = new RTCPeerConnection(ICE_CONFIG);
-    peers[userId] = { pc };
-    pc.addEventListener("icecandidate", e => {
-        if (e.candidate) {
-            addDoc(vezha_signals, { from: myPeerId, to: userId, type: "ice", data: e.candidate.toJSON(), created: Date.now() });
-        }
-    });
-    pc.addEventListener("track", e => {
-        // e.streams[0] can be undefined on the answerer side in Chrome/Edge —
-        // fall back to wrapping the track in a new MediaStream.
-        const stream   = (e.streams && e.streams[0]) || new MediaStream([e.track]);
-        const meta     = peerMeta[userId] || {};
-        const cs       = meta.callsign || userId.slice(-6).toUpperCase();
-        const roleKey  = meta.role || "operator";
-        const roleDisp = roleKey === "owner" ? "ADMIN" : roleKey.toUpperCase();
-        // Only show stream if user is in the same room as us (or we're not in a room)
-        const theirRoom = sessionsCache[userId]?.room;
-        if (myCurrentRoom && theirRoom && theirRoom !== myCurrentRoom) return;
-        addVideoTile(userId, stream, `${roleDisp} · ${cs}`);
-    });
-    pc.addEventListener("connectionstatechange", () => {
-        if (["disconnected", "failed", "closed"].includes(pc.connectionState)) removePeer(userId);
-    });
-    return pc;
-}
-
-async function createOffer(userId) {
-    const pc = getOrCreatePeer(userId);
-    if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-    if (micStream) micStream.getAudioTracks().forEach(t => { try { pc.addTrack(t, micStream); } catch (_) {} });
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    addDoc(vezha_signals, { from: myPeerId, to: userId, type: "offer", data: { sdp: offer.sdp, type: offer.type }, created: Date.now() });
-}
-
-async function handleSignal(sig, docId) {
-    const { from, type, data } = sig;
-    try {
-        if (type === "offer") {
-            const pc = getOrCreatePeer(from);
-            if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-            if (micStream) micStream.getAudioTracks().forEach(t => { try { pc.addTrack(t, micStream); } catch (_) {} });
-            await pc.setRemoteDescription(new RTCSessionDescription(data));
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            addDoc(vezha_signals, { from: myPeerId, to: from, type: "answer", data: { sdp: answer.sdp, type: answer.type }, created: Date.now() });
-        } else if (type === "answer") {
-            const pc = peers[from]?.pc;
-            if (pc && pc.signalingState !== "stable") await pc.setRemoteDescription(new RTCSessionDescription(data));
-        } else if (type === "ice") {
-            const pc = peers[from]?.pc;
-            if (pc) await pc.addIceCandidate(new RTCIceCandidate(data));
-        } else if (type === "request-stream") {
-            // A peer just entered Vezha and is asking us to send them our stream.
-            // Close any stale PC for this peer then create a fresh offer.
-            if (peers[from]) { peers[from].pc.close(); delete peers[from]; }
-            if (localStream) await createOffer(from);
-        } else if (type === "stop-stream") {
-            // Remote peer stopped sharing — remove their tile immediately.
-            removePeer(from);
-        }
-    } catch (err) { console.error("Signal handling error:", err); }
-    try { await deleteDoc(doc(db, "vezha_signals", docId)); } catch (_) {}
-}
-
-function removePeer(userId) {
-    if (!peers[userId]) return;
-    peers[userId].pc.close();
-    delete peers[userId];
-    removeTile(userId);
-}
-
-// ─── VIDEO TILES ──────────────────────────────────────────────────────────────
-function addVideoTile(id, stream, label) {
-    removeTile(id);
-    const grid = document.getElementById("vezhaGrid");
-    const tile = document.createElement("div");
-    tile.className = "vezha-tile" + (id === "self" ? " vezha-tile-self" : "");
-    tile.id = "tile-" + id;
-    const video = document.createElement("video");
-    video.autoplay   = true;
-    video.playsInline = true;
-    // All tiles start muted — browsers block autoplay of unmuted video.
-    // Remote tiles can be unmuted by clicking them after playback starts.
-    video.muted = true;
-    video.srcObject = stream;
-    // Call play() immediately (autoplay=true alone can be suppressed by the browser).
-    // Retry every 500 ms in case the track hasn't started flowing yet.
-    const tryPlay = () => video.play().catch(() => setTimeout(tryPlay, 500));
-    tryPlay();
-    // Allow click-to-unmute on remote tiles
-    if (id !== "self") {
-        video.title = "Click to unmute";
-        video.style.cursor = "pointer";
-        video.addEventListener("click", () => {
-            video.muted = !video.muted;
-            video.title = video.muted ? "Click to unmute" : "Click to mute";
-        });
-    }
-    const lbl = document.createElement("div");
-    lbl.className = "vezha-tile-label mono"; lbl.textContent = label;
-    // Watermark overlay
-    const wmCanvas = document.createElement("canvas");
-    wmCanvas.className = "tile-watermark";
-    tile.appendChild(video); tile.appendChild(lbl); tile.appendChild(wmCanvas);
-    grid.appendChild(tile);
-    // Draw after the tile is in DOM and has dimensions
-    const userId = getCurrentUser()?.userId || null;
-    if (userId) {
-        requestAnimationFrame(() => {
-            wmCanvas.width  = tile.clientWidth  || 640;
-            wmCanvas.height = tile.clientHeight || 360;
-            drawTileWatermark(wmCanvas, userId);
-        });
-    }
-    updateTileLayout();
-}
-
-function removeTile(id) {
-    document.getElementById("tile-" + id)?.remove();
-    updateTileLayout();
-}
-
-function updateTileLayout() {
-    const grid  = document.getElementById("vezhaGrid");
-    const count = grid.querySelectorAll(".vezha-tile").length;
-    grid.setAttribute("data-count", String(count));
-    const empty = document.getElementById("vezhaEmpty");
-    if (empty) empty.style.display = count === 0 ? "flex" : "none";
-}
-
-// ─── CHAT COLLAPSE ───────────────────────────────────────────────────────────
-document.getElementById("chatCollapseBtn")?.addEventListener("click", () => {
-    const sidebar = document.querySelector(".vezha-chat-sidebar");
-    const btn     = document.getElementById("chatCollapseBtn");
-    if (!sidebar) return;
-    const collapsed = sidebar.classList.toggle("collapsed");
-    btn.textContent = collapsed ? "›" : "‹";
-});
-
-// ─── CHAT ─────────────────────────────────────────────────────────────────────
-document.getElementById("vezhaChatSend").addEventListener("click", sendChat);
-document.getElementById("vezhaChatInput").addEventListener("keydown", e => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); }
-});
-// Save draft on every keystroke so renderChannelTabs rebuild never loses it
-document.getElementById("vezhaChatInput").addEventListener("input", e => {
-    channelDrafts[currentChannel] = e.target.value;
-});
-
-// ─── SCROLL-TO-BOTTOM ARROWS ──────────────────────────────────────────────────
-function setupScrollArrow(msgsEl) {
-    if (!msgsEl || msgsEl._scrollArrow) return;
-    const arrow = document.createElement("button");
-    arrow.className = "scroll-to-bottom";
-    arrow.title = "Scroll to latest";
-    arrow.innerHTML = "&#8595;";
-    const parent = msgsEl.parentElement;
-    if (parent) { parent.style.position = "relative"; parent.appendChild(arrow); }
-    const check = () => {
-        const atBottom = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 40;
-        arrow.classList.toggle("visible", !atBottom);
-    };
-    msgsEl.addEventListener("scroll", check);
-    arrow.addEventListener("click", () => { msgsEl.scrollTop = msgsEl.scrollHeight; });
-    msgsEl._scrollArrow = arrow;
-}
-setupScrollArrow(document.getElementById("vezhaChatMessages"));
-setupScrollArrow(document.getElementById("monitorChatMessages"));
-
-// ─── CHAT SEARCH ─────────────────────────────────────────────────────────────
-{
-    const toggle    = document.getElementById("chatSearchToggle");
-    const searchBar = document.getElementById("chatSearchBar");
-    const searchInp = document.getElementById("chatSearchInput");
-    const msgsEl    = document.getElementById("vezhaChatMessages");
-
-    toggle?.addEventListener("click", () => {
-        const open = searchBar.style.display === "none";
-        searchBar.style.display = open ? "block" : "none";
-        if (open) { searchInp.value = ""; searchInp.focus(); filterChat(""); }
-        else filterChat("");
-    });
-
-    function filterChat(term) {
-        const q = term.trim().toLowerCase();
-        msgsEl?.querySelectorAll(".chat-msg").forEach(el => {
-            const text = el.textContent.toLowerCase();
-            el.style.display = (!q || text.includes(q)) ? "" : "none";
-        });
-    }
-
-    searchInp?.addEventListener("input", e => filterChat(e.target.value));
-}
-
-// ─── CALLSIGN / ROLE (persisted in localStorage) ─────────────────────────────
-// ROLE_COLORS and OWNER_CALLSIGN are declared at the top of the file.
-function isOwner() { return getCallsign().toUpperCase() === OWNER_CALLSIGN; }
-
-function getCallsign() {
-    return (document.getElementById("callsignInput")?.value.trim() ||
-            localStorage.getItem("vezhaCallsign") || "").toUpperCase() || myShortId;
-}
-function getRole() {
-    return document.getElementById("roleSelect")?.value ||
-           localStorage.getItem("vezhaRole") || "operator";
-}
-
-// Restore identity from localStorage (module runs after DOM is parsed)
-{
-    const cs = localStorage.getItem("vezhaCallsign");
-    const rl = localStorage.getItem("vezhaRole");
-    if (cs) { const el = document.getElementById("callsignInput"); if (el) el.value = cs; }
-    if (rl) { const el = document.getElementById("roleSelect");    if (el) el.value = rl; }
-}
-// Apply language on load
-applyLang();
-
-// ─── MONITOR CHAT ─────────────────────────────────────────────────────────────
-{
-    const monitorChat   = document.getElementById("monitorChat");
-    const monitorMsgs   = document.getElementById("monitorChatMessages");
-    const monitorInput  = document.getElementById("monitorChatInput");
-    const monitorSend   = document.getElementById("monitorChatSend");
-    const monitorToggle = document.getElementById("monitorChatToggle");
-    const monitorChevron= document.getElementById("monitorChatChevron");
-
-    // Toggle collapse
-    monitorToggle?.addEventListener("click", () => {
-        monitorChat.classList.toggle("collapsed");
-        saveUserState();
-        const up = !monitorChat.classList.contains("collapsed");
-        monitorChevron.innerHTML = up
-            ? `<polyline points="2,7 5,3 8,7" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
-            : `<polyline points="2,3 5,7 8,3" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
-    });
-
-    // Render a message into the monitor chat panel (reuses renderChatMessage styles)
-    function renderMonitorMsg(data) {
-        if (!monitorMsgs) return;
-        const isMine = data.userId === myPeerId;
-        const el = document.createElement("div");
-        el.className = "chat-msg" + (isMine ? " chat-msg-mine" : "");
-        const d  = new Date(data.created);
-        const hh = String(d.getHours()).padStart(2, "0");
-        const mm = String(d.getMinutes()).padStart(2, "0");
-        const name      = escHtml(data.callsign || data.shortId || "?");
-        const role      = data.role || "operator";
-        const roleColor = ROLE_COLORS[role] || ROLE_COLORS.operator;
-        const roleLabel = role === "owner" ? "ADMIN" : role.toUpperCase();
-        el.innerHTML = `
-          <div class="chat-msg-meta">
-            <span class="chat-msg-author" style="color:${roleColor}">${name}</span>
-            <span class="chat-msg-role" style="color:${roleColor}">[${roleLabel}]</span>
-            <span class="chat-msg-time mono">${hh}:${mm}</span>
-          </div>
-          <div class="chat-msg-text">${escHtml(data.text)}</div>`;
-        monitorMsgs.appendChild(el);
-        monitorMsgs.scrollTop = monitorMsgs.scrollHeight;
-    }
-
-    // Send from monitor chat (same Firestore collection as Vezha chat)
-    async function sendMonitorChat() {
-        const text = monitorInput?.value.trim();
-        if (!text) return;
-        monitorInput.value = "";
-        try {
-            await addDoc(vezha_chat, {
-                userId: myPeerId, shortId: myShortId,
-                callsign: getCallsign(), role: getRole(),
-                text, created: Date.now()
-            });
-        } catch (err) { console.error("Monitor chat error:", err); }
-    }
-
-    monitorSend?.addEventListener("click", sendMonitorChat);
-    monitorInput?.addEventListener("keydown", e => {
-        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMonitorChat(); }
-    });
-
-    // Mirror the shared vezha_chat stream into the monitor panel.
-    // This listener runs immediately on page load regardless of Vezha state.
-    window.__monitorRenderHook = renderMonitorMsg;
-    let _monitorInitialLoad = true;
-    onSnapshot(
-        query(vezha_chat, orderBy("created", "asc"), limit(60)),
-        snapshot => {
-            snapshot.docChanges().forEach(change => {
-                if (change.type === "added") renderMonitorMsg(change.doc.data());
-            });
-            // After each batch (especially the initial load), scroll to bottom
-            if (monitorMsgs) {
-                requestAnimationFrame(() => { monitorMsgs.scrollTop = monitorMsgs.scrollHeight; });
-            }
-        }
-    );
-}
-
-function enforceOwnerRole() {
-    const cs       = getCallsign();
-    const roleEl   = document.getElementById("roleSelect");
-    if (!roleEl) return;
-    const ownerOpt = roleEl.querySelector('option[value="owner"]');
-    if (cs === OWNER_CALLSIGN) {
-        // Force owner role and lock the select
-        roleEl.value    = "owner";
-        roleEl.disabled = true;
-        if (ownerOpt) ownerOpt.style.display = "";
-        localStorage.setItem("vezhaRole", "owner");
-    } else {
-        roleEl.disabled = false;
-        // Hide owner option for non-owners
-        if (ownerOpt) ownerOpt.style.display = "none";
-        // Only reset if role is "owner" AND we're sure callsign is fully typed (not mid-input)
-        // Do NOT write to localStorage here — let the change event handle that
-        if (roleEl.value === "owner") { roleEl.value = "operator"; }
-    }
-}
-document.getElementById("callsignInput")?.addEventListener("input", e => {
-    localStorage.setItem("vezhaCallsign", e.target.value.trim());
-    // Only run owner enforcement; role is preserved — enforceOwnerRole no longer writes operator to localStorage
-    enforceOwnerRole();
-});
-// Persist role on blur (after user finishes typing callsign)
-document.getElementById("callsignInput")?.addEventListener("blur", () => {
-    const roleEl = document.getElementById("roleSelect");
-    if (roleEl && roleEl.value !== "owner") {
-        localStorage.setItem("vezhaRole", roleEl.value);
-    }
-});
-document.getElementById("roleSelect")?.addEventListener("change", e => {
-    if (e.target.value === "owner" && getCallsign() !== OWNER_CALLSIGN) {
-        e.target.value = "operator";   // non-owners can't select owner
-    }
-    localStorage.setItem("vezhaRole", e.target.value);
-});
-enforceOwnerRole();
-
-async function sendChat() {
-    const input    = document.getElementById("vezhaChatInput");
-    const text     = input.value.trim();
-    if (!text || !vezhaActive) return;
-    input.value = "";
-    const callsign = getCallsign();
-    const role     = getRole();
-    try {
-        await addDoc(vezha_chat, {
-            userId: myPeerId, shortId: myShortId,
-            callsign, role, text, created: Date.now(),
-            channel: currentChannel
-        });
-    } catch (err) { console.error("Chat error:", err); }
-}
-
-function renderChatMessage(data) {
-    // Filter by current channel — legacy messages without channel go to "general"
-    const msgChannel = data.channel || "general";
-    if (msgChannel !== currentChannel) return;
-    const isMine   = data.userId === myPeerId;
-    const msgs     = document.getElementById("vezhaChatMessages");
-    const el       = document.createElement("div");
-    el.className   = "chat-msg" + (isMine ? " chat-msg-mine" : "");
-    el.dataset.channel = msgChannel;
-    const d   = new Date(data.created);
-    const hh  = String(d.getHours()).padStart(2, "0");
-    const mm  = String(d.getMinutes()).padStart(2, "0");
-    const name = escHtml(data.callsign || data.shortId || data.userId.slice(-6).toUpperCase());
-    const role = data.role || "operator";
-    const roleColor = ROLE_COLORS[role] || ROLE_COLORS.operator;
-    const roleLabel = role === "owner" ? "ADMIN" : role.toUpperCase();
-    el.innerHTML = `
-      <div class="chat-msg-meta">
-        <span class="chat-msg-author" style="color:${roleColor}">${name}</span>
-        <span class="chat-msg-role" style="color:${roleColor}">[${roleLabel}]</span>
-        <span class="chat-msg-time mono">${hh}:${mm}</span>
-      </div>
-      <div class="chat-msg-text">${escHtml(data.text)}</div>`;
-    msgs.appendChild(el);
-    requestAnimationFrame(() => { msgs.scrollTop = msgs.scrollHeight; });
-}
-
-function escHtml(s) {
-    return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-}
-
-// ─── THEME TOGGLE ────────────────────────────────────────────────────────────
-
-const themeToggleBtn = document.getElementById("themeToggleBtn");
-themeToggleBtn.addEventListener("click", () => {
-    isLightTheme = !isLightTheme;
-    document.body.classList.toggle("light-theme", isLightTheme);
-    themeToggleBtn.title = isLightTheme ? "Switch to dark theme" : "Switch to light theme";
-    themeToggleBtn.classList.toggle("active", isLightTheme);
-    saveUserState();
-    // Re-draw watermark with updated colour scheme
-    drawWatermarkCanvas(getCurrentUser()?.userId || null);
-    const logoImg = document.querySelector(".brand-shield img");
-    if (logoImg) logoImg.src = isLightTheme ? "logo_light.png" : "logo.png";
-    const themeIcon = document.getElementById("themeIcon");
-    if (isLightTheme) {
-        themeIcon.innerHTML = `
-            <path d="M13 9a5 5 0 1 1-5.93-4.93A7 7 0 0 0 13 9z"
-                  stroke="currentColor" stroke-width="1.3" fill="none"
-                  stroke-linecap="round" stroke-linejoin="round"/>`;
-    } else {
-        themeIcon.innerHTML = `
-            <circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.3" fill="none"/>
-            <line x1="8" y1="1" x2="8" y2="3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-            <line x1="8" y1="13" x2="8" y2="15" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-            <line x1="1" y1="8" x2="3" y2="8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-            <line x1="13" y1="8" x2="15" y2="8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-            <line x1="2.9" y1="2.9" x2="4.3" y2="4.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-            <line x1="11.7" y1="11.7" x2="13.1" y2="13.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-            <line x1="11.7" y1="4.3" x2="13.1" y2="2.9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-            <line x1="2.9" y1="13.1" x2="4.3" y2="11.7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>`;
-    }
-});
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// ARTILLERY CALCULATOR  —  based on grand-hawk/artillery-calculator (MIT)
-// Math ported from packages/mtc-artillery/src/utils/math.ts
-// Gun data from packages/mtc-artillery/src/config/guns.ts + importedGuns.json
-// ═══════════════════════════════════════════════════════════════════════════════
-
-// ─── Physics constants (MTC game values, 1 stud = 1 m) ───────────────────────
-const ARTY_G = 9.8 * 1.8;     // in-game gravity (Roblox = 1.8× Earth) m/s²
-// 1:1 stud = meter — no conversion needed
-function studsToMeters(s) { return s; }   // identity: coordinates ARE in metres
-
-function artyCalcLowElev(d, v, h = 0) {
-    const disc = v ** 4 - ARTY_G * (ARTY_G * d * d + 2 * h * v * v);
-    if (disc < 0) return null;
-    return Math.atan((v * v - Math.sqrt(disc)) / (ARTY_G * d)) * (180 / Math.PI);
-}
-function artyCalcHighElev(d, v, h = 0) {
-    const disc = v ** 4 - ARTY_G * (ARTY_G * d * d + 2 * h * v * v);
-    if (disc < 0) return null;
-    return Math.atan((v * v + Math.sqrt(disc)) / (ARTY_G * d)) * (180 / Math.PI);
-}
-function artyCalcToF(elevDeg, v, d) {
-    const rad = elevDeg * Math.PI / 180;
-    return d / (v * Math.cos(rad));
-}
-// Azimuth: 0° = North (target directly north of gun), 90° = East, etc.
-// Leaflet CRS.Simple: lat increases upward (north), lng increases rightward (east)
-function artyCalcAzimuth(x1, y1, x2, y2) {
-    const rad = Math.atan2(y2 - y1, x2 - x1);
-    return (90 - (rad * 180 / Math.PI) + 360) % 360;
-}
-function artyCalcDist(x1, y1, x2, y2) {
-    return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
-}
-
-// ─── Gun database (importedGuns.json + custom guns from guns.ts) ──────────────
-const ARTY_GUNS = [
-    // ── Custom guns (from guns.ts — exact repo data) ──
-    { name: "Mortar", projectiles: [
-        { name: "Low Charge",    velocity: 125 },
-        { name: "Medium Charge", velocity: 172 },
-        { name: "High Charge",   velocity: 225 },
-    ]},
-    { name: "AGS-17", projectiles: [
-        { name: "VOG-17M", velocity: 185 },
-    ]},
-    { name: "122mm D-30", projectiles: [
-        { name: "3BK-10",               velocity: 726 },
-        { name: "3OF56 Low Charge",     velocity: 175 },
-        { name: "3OF56 Medium Charge",  velocity: 350 },
-        { name: "3OF56 High Charge",    velocity: 690 },
-    ]},
-    { name: "82mm 2B9 Vasilek", projectiles: [
-        { name: "Low Charge",    velocity: 75  },
-        { name: "Medium Charge", velocity: 175 },
-        { name: "High Charge",   velocity: 255 },
-    ]},
-    { name: "Hell Cannon", projectiles: [
-        { name: "Propane", velocity: 130 },
-    ]},
-    { name: "UB-32", projectiles: [
-        { name: "S-5K1", velocity: 650 },
-    ]},
-    { name: "12-Pounder Cannon", projectiles: [
-        { name: "Roundshot", velocity: 480 },
-        { name: "Grapeshot", velocity: 365 },
-    ]},
-    // ── Imported guns (importedGuns.json) ──
-    { name: "2S19 Msta-S", projectiles: [
-        { name: "3VO28 Low Charge",        velocity: 207 },
-        { name: "3VOF91 Low Charge",       velocity: 216 },
-        { name: "OF-72 Low Charge",        velocity: 216 },
-        { name: "3VO28 Medium Charge",     velocity: 414 },
-        { name: "3VOF91 Medium Charge",    velocity: 432 },
-        { name: "OF-72 Medium Charge",     velocity: 432 },
-        { name: "3VO28 High Charge",       velocity: 828 },
-        { name: "3VOF91 High Charge",      velocity: 864 },
-        { name: "OF-72 High Charge",       velocity: 864 },
-    ]},
-    { name: "2S43", projectiles: [
-        { name: "3VO28 Low Charge",        velocity: 207 },
-        { name: "3VOF91 Low Charge",       velocity: 216 },
-        { name: "3VO28 Medium Charge",     velocity: 414 },
-        { name: "3VOF91 Medium Charge",    velocity: 432 },
-        { name: "3VO28 High Charge",       velocity: 828 },
-        { name: "3VOF91 High Charge",      velocity: 864 },
-    ]},
-    { name: "2S7 Pion", projectiles: [
-        { name: "3VO15 Low Charge",        velocity: 194 },
-        { name: "3VOF34 Low Charge",       velocity: 194 },
-        { name: "3VO15 Medium Charge",     velocity: 388 },
-        { name: "3VOF34 Medium Charge",    velocity: 388 },
-        { name: "3VO15 High Charge",       velocity: 775 },
-        { name: "3VOF34 High Charge",      velocity: 775 },
-        { name: "2VG11",                   velocity: 864 },
-    ]},
-    { name: "9K720 Iskander", projectiles: [
-        { name: "SS-26 HE-frag Low",       velocity: 500  },
-        { name: "SS-26 HE-frag Medium",    velocity: 1000 },
-        { name: "SS-26 HE-frag High",      velocity: 2000 },
-    ]},
-    { name: "BM-21 Grad",    projectiles: [{ name: "9M22/M21 HE-Frag",          velocity: 180 }]},
-    { name: "BMP-1TS",       projectiles: [{ name: "VOG-17M",                   velocity: 185 }]},
-    { name: "BMP-2M",        projectiles: [{ name: "VOG-17M",                   velocity: 185 }]},
-    { name: "BMP-30M",       projectiles: [{ name: "VOG-17M",                   velocity: 185 }]},
-    { name: "BMPT Terminator",projectiles:[{ name: "VOG-17M",                   velocity: 185 }]},
-    { name: "BTR-4",         projectiles: [{ name: "VOG-17M",                   velocity: 185 }]},
-    { name: "BTR-90",        projectiles: [{ name: "VOG-17M",                   velocity: 185 }]},
-    { name: "Centurion Mk.5 AVRE", projectiles: [{ name: "L33A1",              velocity: 259 }]},
-    { name: "Cheonma-2",     projectiles: [{ name: "VOG-17M",                   velocity: 185 }]},
-    { name: "Churchill AVRE",projectiles: [{ name: "L33A1",                     velocity: 259 }]},
-    { name: "CV 9040C",      projectiles: [
-        { name: "M383",   velocity: 241 },
-        { name: "M430A1", velocity: 241 },
-    ]},
-    { name: "GAZ Tigr M",    projectiles: [{ name: "VOG-17M",                   velocity: 185 }]},
-    { name: "Humvee",        projectiles: [
-        { name: "M383",   velocity: 241 },
-        { name: "M430A1", velocity: 241 },
-    ]},
-    { name: "Karl-Gerät",    projectiles: [{ name: "Schwere Betongranate",      velocity: 150 }]},
-    { name: "LUAZ-672",      projectiles: [{ name: "9M22/M21 HE-Frag",          velocity: 180 }]},
-    { name: "M1117 ASV",     projectiles: [
-        { name: "M383",   velocity: 241 },
-        { name: "M430A1", velocity: 241 },
-    ]},
-    { name: "M109",          projectiles: [
-        { name: "M107 Low Charge",    velocity: 171 },
-        { name: "M107 Medium Charge", velocity: 342 },
-        { name: "M107 High Charge",   velocity: 684 },
-        { name: "M110 Low Charge",    velocity: 171 },
-        { name: "M110 Medium Charge", velocity: 342 },
-        { name: "M110 High Charge",   velocity: 684 },
-    ]},
-    { name: "M109A6",        projectiles: [
-        { name: "M107 Low Charge",    velocity: 171 },
-        { name: "M107 Medium Charge", velocity: 342 },
-        { name: "M107 High Charge",   velocity: 684 },
-    ]},
-    { name: "M17 Whizbang",  projectiles: [{ name: "7.2 in T37",               velocity: 49  }]},
-    { name: "M26 T99",       projectiles: [{ name: "HE Rockets",                velocity: 260 }]},
-    { name: "M270 MLRS",     projectiles: [
-        { name: "M26A1 Low Charge",    velocity: 180 },
-        { name: "M31A2 Low Charge",    velocity: 180 },
-        { name: "M26A1 Medium Charge", velocity: 300 },
-        { name: "M31A2 Medium Charge", velocity: 300 },
-        { name: "M26A1 High Charge",   velocity: 420 },
-        { name: "M31A2 High Charge",   velocity: 420 },
-    ]},
-    { name: "M7 Priest",     projectiles: [
-        { name: "M67 shot", velocity: 381 },
-        { name: "M1 shell", velocity: 472 },
-    ]},
-    { name: "Merkava Mk.1B", projectiles: [
-        { name: "Blast-frag Low Charge",  velocity: 30  },
-        { name: "Blast-frag Med Charge",  velocity: 80  },
-        { name: "Blast-frag High Charge", velocity: 150 },
-        { name: "Smoke",                  velocity: 30  },
-    ]},
-    { name: "Merkava Mk.4M", projectiles: [
-        { name: "Blast-frag Low Charge",  velocity: 30  },
-        { name: "Blast-frag Med Charge",  velocity: 80  },
-        { name: "Blast-frag High Charge", velocity: 150 },
-        { name: "Smoke",                  velocity: 30  },
-    ]},
-    { name: "Namer 30",      projectiles: [
-        { name: "Blast-frag Low Charge",  velocity: 30  },
-        { name: "Blast-frag Med Charge",  velocity: 80  },
-        { name: "Blast-frag High Charge", velocity: 150 },
-    ]},
-    { name: "Object 781",    projectiles: [{ name: "VOG-17M",                   velocity: 185 }]},
-    { name: "PzH 2000",      projectiles: [
-        { name: "DM121 Low Charge",     velocity: 254  },
-        { name: "DM121 Medium Charge",  velocity: 506  },
-        { name: "DM121 High Charge",    velocity: 1015 },
-        { name: "DM702A1 Low Charge",   velocity: 254  },
-        { name: "DM702A1 Medium Charge",velocity: 506  },
-        { name: "DM702A1 High Charge",  velocity: 1015 },
-    ]},
-    { name: "Pz.W.42",       projectiles: [{ name: "15 cm Wurfgranate 41",      velocity: 340 }]},
-    { name: "RBT-5",         projectiles: [{ name: "TT-250 Rocket",             velocity: 135 }]},
-    { name: "RBU-6000 MT-LB",projectiles: [{ name: "RGB-60",                    velocity: 400 }]},
-    { name: "RSZO-1",        projectiles: [{ name: "HE Rockets",                 velocity: 150 }]},
-    { name: "RSZO-2",        projectiles: [{ name: "HE Rockets",                 velocity: 150 }]},
-    { name: "SAU-2",         projectiles: [
-        { name: "3OF25 Low Charge",    velocity: 200 },
-        { name: "3OF25 Medium Charge", velocity: 400 },
-        { name: "3OF25 High Charge",   velocity: 665 },
-        { name: "BR-540B",             velocity: 600 },
-        { name: "3VO28",               velocity: 200 },
-        { name: "Smoke Shell",         velocity: 200 },
-    ]},
-    { name: "Sturmtiger",    projectiles: [{ name: "38 cm R Spgr.4581",         velocity: 150 }]},
-    { name: "T-62 Berezhok", projectiles: [{ name: "VOG-17M",                   velocity: 185 }]},
-    { name: "T-64E",         projectiles: [{ name: "VOG-17M",                   velocity: 185 }]},
-    { name: "T34 Calliope",  projectiles: [{ name: "HE Rockets",                velocity: 260 }]},
-    { name: "TOS-1A BM-1",  projectiles: [
-        { name: "Blast fragmentation", velocity: 180 },
-        { name: "Incendiary",          velocity: 180 },
-        { name: "Thermobaric",         velocity: 180 },
-    ]},
-].sort((a, b) => a.name.localeCompare(b.name));
-
-// ─── Populate gun/projectile selects ─────────────────────────────────────────
-{
-    const gunSel  = document.getElementById("artyGunSelect");
-    const projSel = document.getElementById("artyProjectileSelect");
-    if (gunSel && projSel) {
-        ARTY_GUNS.forEach((gun, i) => {
-            const opt = document.createElement("option");
-            opt.value = i; opt.textContent = gun.name;
-            gunSel.appendChild(opt);
-        });
-        function populateProjectiles() {
-            projSel.innerHTML = "";
-            const gun = ARTY_GUNS[+gunSel.value];
-            if (!gun) return;
-            gun.projectiles.forEach((p, i) => {
-                const opt = document.createElement("option");
-                opt.value = i; opt.textContent = `${p.name}  (v=${p.velocity} m/s)`;
-                projSel.appendChild(opt);
-            });
-        }
-        gunSel.addEventListener("change", populateProjectiles);
-        populateProjectiles();
-    }
-}
-
-// ─── Calculate ────────────────────────────────────────────────────────────────
-document.getElementById("artyCalcBtn")?.addEventListener("click", () => {
-    const gunSel  = document.getElementById("artyGunSelect");
-    const projSel = document.getElementById("artyProjectileSelect");
-    const gx = parseFloat(document.getElementById("artyGunX").value);
-    const gy = parseFloat(document.getElementById("artyGunY").value);
-    const tx = parseFloat(document.getElementById("artyTgtX").value);
-    const ty = parseFloat(document.getElementById("artyTgtY").value);
-    const hd = parseFloat(document.getElementById("artyHeightDiff").value) || 0;
-    const results = document.getElementById("artyResults");
-    const noResult= document.getElementById("artyNoResult");
-
-    if (isNaN(gx)||isNaN(gy)||isNaN(tx)||isNaN(ty)) {
-        results.innerHTML = `<div class="arty-error-row">${t("artyEnterCoords")}</div>`;
-        return;
-    }
-    const gun  = ARTY_GUNS[+gunSel.value];
-    const proj = gun?.projectiles[+projSel.value];
-    if (!proj) return;
-
-    const distStuds = artyCalcDist(gx, gy, tx, ty);
-    const distM     = studsToMeters(distStuds);
-    const heightM   = studsToMeters(hd);
-    const azimuth   = artyCalcAzimuth(gx, gy, tx, ty);
-    const v         = proj.velocity;
-
-    const lowElev  = artyCalcLowElev(distM, v, heightM);
-    const highElev = artyCalcHighElev(distM, v, heightM);
-
-    if (lowElev === null) {
-        results.innerHTML = `<div class="arty-error-row">OUT OF RANGE — ${escHtml(proj.name)} (v=${v} m/s)</div>`;
-        return;
-    }
-
-    const tofLow  = artyCalcToF(lowElev,  v, distM);
-    const tofHigh = (highElev !== null) ? artyCalcToF(highElev, v, distM) : null;
-
-    // Store for trajectory animation
-    lastArtyCalc = {
-        distM, v, elevDeg: lowElev, tof: tofLow,
-        gLat: artyGunPx?.lat, gLng: artyGunPx?.lng,
-        tLat: artyTgtPx?.lat, tLng: artyTgtPx?.lng,
-        heightM
-    };
-    if (arty3DState?.updateTrajectory) arty3DState.updateTrajectory(lastArtyCalc);
-
-    // 2 decimal places; omit decimals when the value is a whole number
-    const fmt2 = n => {
-        if (n === null) return "---";
-        const r = Math.round(n * 100) / 100;
-        return Number.isInteger(r) ? r.toString() : r.toFixed(2);
-    };
-    const fmt1 = fmt2;   // alias — all arty values now use fmt2
-    const fmt0 = fmt2;
-
-    results.innerHTML = `
-      <div class="arty-result-row accent-result">
-        <span class="arty-result-label">${t("artyAzimuth")}</span>
-        <span class="arty-result-val large">${fmt1(azimuth)}<span class="arty-result-unit">°</span></span>
-      </div>
-      <div class="arty-result-row">
-        <span class="arty-result-label">${t("artyDistance")}</span>
-        <span class="arty-result-val">${fmt0(distM)}<span class="arty-result-unit"> m</span></span>
-      </div>
-      <div class="arty-result-row">
-        <span class="arty-result-label">${t("artyLowArc")}</span>
-        <span class="arty-result-val">${fmt1(lowElev)}<span class="arty-result-unit">°</span>
-          <span class="arty-result-sub"> · ${t("artyTof")}: ${fmt1(tofLow)} s</span></span>
-      </div>
-      <div class="arty-result-row">
-        <span class="arty-result-label">${t("artyHighArc")}</span>
-        <span class="arty-result-val ${highElev === null ? "dim" : ""}">${highElev !== null ? fmt1(highElev) + "°" : "N/A"}
-          <span class="arty-result-sub">${tofHigh !== null ? " · " + t("artyTof") + ": " + fmt1(tofHigh) + " s" : ""}</span></span>
-      </div>
-      <div class="arty-result-row muted-row">
-        <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);line-height:1.5">
-          ${escHtml(gun.name)}<br>${escHtml(proj.name)} · ${v} m/s · Δh: ${hd > 0 ? "+" : ""}${hd} m
-        </span>
-      </div>`;
-    if (noResult) noResult.style.display = "none";
-
-    // ── Fire mission log ──────────────────────────────────────────────────────
-    const logContainer = document.getElementById("artyMissionLog");
-    if (logContainer) {
-        const logEntry = document.createElement("div");
-        logEntry.className = "arty-log-entry";
-        const ts = new Date();
-        const pad = n => String(n).padStart(2, "0");
-        const timeStr = `${pad(ts.getHours())}:${pad(ts.getMinutes())}:${pad(ts.getSeconds())}`;
-        logEntry.innerHTML = `
-          <div class="arty-log-time">${timeStr}</div>
-          <div class="arty-log-line"><b>${escHtml(gun.name)}</b> · ${escHtml(proj.name)}</div>
-          <div class="arty-log-line">AZ <b>${fmt1(azimuth)}°</b> · DIST <b>${fmt0(distM)} m</b> · Δh <b>${hd >= 0 ? "+" : ""}${hd} m</b></div>
-          <div class="arty-log-line">LOW <b>${fmt1(lowElev)}°</b> (${fmt1(tofLow)}s)${highElev !== null ? ` · HIGH <b>${fmt1(highElev)}°</b> (${fmt1(tofHigh)}s)` : ""}</div>`;
-        logContainer.prepend(logEntry);   // newest on top
-    }
-});
-
-// ─── Artillery Map (Leaflet instance inside ARTY view) ───────────────────────
-// 1 stud = 1 m; 1 pixel = (1/PIXELS_PER_METER) metres × calibration correction
-const ARTY_PX_TO_STUD = (1 / PIXELS_PER_METER) * DIST_CORRECTION;  // ≈ 1.785 m/px
-const ARTY_STUD_TO_PX = 1 / ARTY_PX_TO_STUD;
-
-let artyMapInstance = null;
-let artyGunMarker   = null;
-let artyTgtMarker   = null;
-let artyLine        = null;
-// Raw Leaflet pixel coords of last gun/target placement (for the line and markers)
-let artyGunPx       = null;   // { lat, lng } in Leaflet map coords (px)
-let artyTgtPx       = null;
-// Latest calc result for trajectory animation
-let lastArtyCalc    = null;  // { distM, v, elevDeg, tof, gLat, gLng, tLat, tLng }
-
-function makeArtyIcon(label, color) {
-    return L.divIcon({
-        html: `<div style="
-            width:30px;height:30px;background:${color};border:2.5px solid #111;
-            border-radius:50%;display:flex;align-items:center;justify-content:center;
-            font-family:monospace;font-size:13px;font-weight:900;color:#111;line-height:1;
-            box-shadow:0 2px 6px rgba(0,0,0,.5);">${label}</div>`,
-        className: "", iconSize: [30, 30], iconAnchor: [15, 15]
-    });
-}
-
-function updateArtyLine() {
-    if (artyLine) { artyLine.remove(); artyLine = null; }
-    if (artyGunPx && artyTgtPx && artyMapInstance) {
-        artyLine = L.polyline(
-            [[artyGunPx.lat, artyGunPx.lng], [artyTgtPx.lat, artyTgtPx.lng]],
-            { color: "#facc15", weight: 2, dashArray: "6 4", opacity: 0.85 }
-        ).addTo(artyMapInstance);
-    }
-}
-
-function triggerArtyCalc() {
-    const gx = parseFloat(document.getElementById("artyGunX")?.value);
-    const gy = parseFloat(document.getElementById("artyGunY")?.value);
-    const tx = parseFloat(document.getElementById("artyTgtX")?.value);
-    const ty = parseFloat(document.getElementById("artyTgtY")?.value);
-    if (!isNaN(gx) && !isNaN(gy) && !isNaN(tx) && !isNaN(ty)) {
-        document.getElementById("artyCalcBtn")?.click();
-    }
-}
-
-function initArtyMap() {
-    const el = document.getElementById("artyMapEl");
-    if (!el) return;
-    if (artyMapInstance) {
-        // Already created — just resize to the newly visible container
-        setTimeout(() => {
-            artyMapInstance.invalidateSize();
-            artyMapInstance.fitBounds([[0, 0], [imageHeight, imageWidth]]);
-        }, 80);
-        return;
-    }
-    artyMapInstance = L.map("artyMapEl", {
-        crs: L.CRS.Simple, minZoom: -3, maxZoom: 2,
-        zoomControl: true, attributionControl: false
-    });
-    const artBounds = [[0, 0], [imageHeight, imageWidth]];
-    L.imageOverlay(MAPS[currentMapIdx].file, artBounds).addTo(artyMapInstance);
-    artyMapInstance.fitBounds(artBounds);
-    // Force a second layout pass after the flex container finishes sizing
-    setTimeout(() => {
-        artyMapInstance.invalidateSize();
-        artyMapInstance.fitBounds(artBounds);
-    }, 120);
-
-    artyMapInstance.on("click", (e) => {
-        // Convert Leaflet pixel coords → game studs for the input fields
-        const stud_x = Math.round(e.latlng.lng * ARTY_PX_TO_STUD);
-        const stud_y = Math.round(e.latlng.lat * ARTY_PX_TO_STUD);
-        document.getElementById("artyGunX").value = stud_x;
-        document.getElementById("artyGunY").value = stud_y;
-        artyGunPx = { lat: e.latlng.lat, lng: e.latlng.lng };
-        if (artyGunMarker) artyGunMarker.remove();
-        artyGunMarker = L.marker([e.latlng.lat, e.latlng.lng], {
-            icon: makeArtyIcon("G", "#4ade80")
-        }).addTo(artyMapInstance);
-        if (arty3DState) arty3DState.addSimple("_gun", artyGunPx.lat, artyGunPx.lng, "G", "#4ade80");
-        updateArtyLine();
-        triggerArtyCalc();
-    });
-
-    artyMapInstance.on("contextmenu", (e) => {
-        const stud_x = Math.round(e.latlng.lng * ARTY_PX_TO_STUD);
-        const stud_y = Math.round(e.latlng.lat * ARTY_PX_TO_STUD);
-        document.getElementById("artyTgtX").value = stud_x;
-        document.getElementById("artyTgtY").value = stud_y;
-        artyTgtPx = { lat: e.latlng.lat, lng: e.latlng.lng };
-        if (artyTgtMarker) artyTgtMarker.remove();
-        artyTgtMarker = L.marker([e.latlng.lat, e.latlng.lng], {
-            icon: makeArtyIcon("T", "#f87171")
-        }).addTo(artyMapInstance);
-        if (arty3DState) arty3DState.addSimple("_tgt", artyTgtPx.lat, artyTgtPx.lng, "T", "#f87171");
-        updateArtyLine();
-        triggerArtyCalc();
-    });
-
-    // ── Mirror monitor markers onto arty map (read-only, auto-updates) ─────────
-    // displayedMarkers is the live map keyed by Firestore id
-    const artyMarkerLayer = {};
-    function syncArtyMarkers() {
-        // Add/update
-        Object.entries(displayedMarkers).forEach(([id, { marker, data }]) => {
-            if (artyMarkerLayer[id]) return;
-            const ll = marker.getLatLng();
-            const m  = L.marker([ll.lat, ll.lng], {
-                icon: createIcon(data.type || "infantry_alive", data),
-                interactive: false
-            }).addTo(artyMapInstance);
-            artyMarkerLayer[id] = m;
-        });
-        // Remove deleted
-        Object.keys(artyMarkerLayer).forEach(id => {
-            if (!displayedMarkers[id]) {
-                artyMarkerLayer[id].remove();
-                delete artyMarkerLayer[id];
-            }
-        });
-    }
-    syncArtyMarkers();
-    // Re-sync whenever monitor markers change (onSnapshot already updates displayedMarkers)
-    const _origSnap = window.__artyMarkerSyncInterval;
-    window.__artyMarkerSyncInterval = setInterval(syncArtyMarkers, 3000);
-
-    // ── Mirror drawings onto arty map via a canvas overlay ───────────────────
-    // We create a Leaflet canvas layer that redraws whenever strokes changes
-    const ArtyDrawLayer = L.Layer.extend({
-        onAdd(map) {
-            this._map = map;
-            this._canvas = L.DomUtil.create("canvas", "arty-draw-canvas");
-            map.getPanes().overlayPane.appendChild(this._canvas);
-            map.on("viewreset moveend zoomend", this._redraw, this);
-            this._redraw();
-        },
-        onRemove(map) {
-            this._canvas.remove();
-            map.off("viewreset moveend zoomend", this._redraw, this);
-        },
-        update() { this._redraw(); },
-        _redraw() {
-            const size = this._map.getSize();
-            this._canvas.width  = size.x;
-            this._canvas.height = size.y;
-            Object.assign(this._canvas.style, {
-                position: "absolute", top: 0, left: 0,
-                width: size.x + "px", height: size.y + "px",
-                pointerEvents: "none"
-            });
-            const gc = this._canvas.getContext("2d");
-            gc.clearRect(0, 0, size.x, size.y);
-            strokes.forEach(s => this._drawStroke(gc, s));
-        },
-        _drawStroke(gc, s) {
-            const llToP = ll => this._map.latLngToContainerPoint(L.latLng(ll.lat, ll.lng));
-            gc.save();
-            gc.strokeStyle = s.color; gc.lineWidth = s.width;
-            gc.lineCap = "round"; gc.lineJoin = "round";
-            if (s.tool === "pen" || s.tool === "eraser") {
-                if (s.tool === "eraser") { gc.globalCompositeOperation = "destination-out"; gc.lineWidth = s.width * 5; }
-                gc.beginPath();
-                (s.points || []).forEach((pt, i) => {
-                    const p = llToP(pt);
-                    i === 0 ? gc.moveTo(p.x, p.y) : gc.lineTo(p.x, p.y);
-                });
-                gc.stroke();
-            } else if (s.tool === "line" || s.tool === "arrow") {
-                const p1 = llToP(s.ll1), p2 = llToP(s.ll2);
-                gc.beginPath(); gc.moveTo(p1.x, p1.y); gc.lineTo(p2.x, p2.y); gc.stroke();
-                if (s.tool === "arrow") {
-                    const ang = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-                    const hl  = Math.max(10, s.width * 4);
-                    gc.fillStyle = s.color; gc.beginPath();
-                    gc.moveTo(p2.x, p2.y);
-                    gc.lineTo(p2.x - hl * Math.cos(ang - Math.PI/6), p2.y - hl * Math.sin(ang - Math.PI/6));
-                    gc.lineTo(p2.x - hl * Math.cos(ang + Math.PI/6), p2.y - hl * Math.sin(ang + Math.PI/6));
-                    gc.closePath(); gc.fill();
-                }
-            } else if (s.tool === "circle") {
-                const p1 = llToP(s.ll1), p2 = llToP(s.ll2);
-                gc.beginPath();
-                gc.ellipse((p1.x+p2.x)/2, (p1.y+p2.y)/2, Math.abs(p2.x-p1.x)/2, Math.abs(p2.y-p1.y)/2, 0, 0, Math.PI*2);
-                gc.stroke();
-            } else if (s.tool === "rect") {
-                const p1 = llToP(s.ll1), p2 = llToP(s.ll2);
-                gc.beginPath(); gc.strokeRect(p1.x, p1.y, p2.x-p1.x, p2.y-p1.y);
-            } else if (s.tool === "label") {
-                const p = llToP(s.ll1);
-                const fs = Math.max(9, Math.min(s.width * 4, 28));
-                gc.font = `700 ${fs}px 'Share Tech Mono', monospace`;
-                gc.fillStyle = s.color;
-                gc.shadowColor = "rgba(0,0,0,0.8)"; gc.shadowBlur = 4;
-                gc.fillText(s.labelText || "", p.x, p.y);
-                gc.shadowBlur = 0;
-            } else if (s.tool === "zone") {
-                const p1 = llToP(s.ll1), p2 = llToP(s.ll2);
-                const rx = Math.min(p1.x, p2.x), ry = Math.min(p1.y, p2.y);
-                const rw = Math.abs(p2.x-p1.x), rh = Math.abs(p2.y-p1.y);
-                gc.globalAlpha = 0.16; gc.fillStyle = s.color; gc.fillRect(rx, ry, rw, rh); gc.globalAlpha = 1;
-                gc.setLineDash([5,4]); gc.strokeRect(rx, ry, rw, rh); gc.setLineDash([]);
-                if (s.zoneName) {
-                    const cx2 = rx+rw/2, cy2 = ry+rh/2;
-                    const fs2 = Math.max(9, Math.min(rh*0.18, 18));
-                    gc.font = `700 ${fs2}px 'Share Tech Mono', monospace`;
-                    gc.textAlign = "center"; gc.textBaseline = "middle";
-                    const tw = gc.measureText(s.zoneName).width;
-                    gc.fillStyle = "rgba(6,12,22,0.72)"; gc.fillRect(cx2-tw/2-5, cy2-fs2/2-2, tw+10, fs2+5);
-                    gc.fillStyle = s.color; gc.fillText(s.zoneName, cx2, cy2);
-                    gc.textAlign = "left"; gc.textBaseline = "alphabetic";
-                }
-            }
-            gc.restore();
-        }
-    });
-    const artyDrawLayer = new ArtyDrawLayer();
-    artyDrawLayer.addTo(artyMapInstance);
-    window.__artyDrawLayer = artyDrawLayer;
-    // Hook into redrawAll so arty map redraws when strokes change
-    const _origRedrawAll = redrawAll;
-    window.__artyRedrawHook = () => { if (artyMapInstance) artyDrawLayer.update(); };
-}
-
-// ─── Artillery view switching ─────────────────────────────────────────────────
-let artilleryActive = false;
-const artilleryViewBtn = document.getElementById("artilleryViewBtn");
-
-function enterArtillery() {
-    if (vezhaActive) exitVezha();
-    artilleryActive = true;
-    document.body.classList.add("in-arty"); document.body.classList.remove("in-vezha");
-    document.getElementById("appBody").style.display = "none";
-    document.getElementById("vezhaView").classList.remove("active");
-    document.getElementById("artilleryView").classList.add("active");
-    brandModule.textContent = "ARTY";
-    mapViewBtn.classList.remove("active");
-    vezhaViewBtn.classList.remove("active");
-    artilleryViewBtn.classList.add("active");
-    setTimeout(() => {
-        initArtyMap();
-        drawArtyWatermark(getCurrentUser()?.userId || null);
-    }, 50);
-}
-
-function exitArtillery() {
-    // Clean up arty 3D scene if active
-    if (arty3DState) {
-        arty3DState.dispose(); arty3DState = null;
-        const b = document.getElementById("artyDimToggle");
-        if (b) { b.textContent = "3D"; b.title = "Switch to 3D view"; b.classList.remove("active"); }
-    }
-    artilleryActive = false;
-    document.body.classList.remove("in-arty");
-    document.getElementById("artilleryView").classList.remove("active");
-    document.getElementById("appBody").style.display = "flex";
-    brandModule.textContent = "MONITOR";
-    artilleryViewBtn.classList.remove("active");
-    mapViewBtn.classList.add("active");
-    setTimeout(() => {
-        map.invalidateSize({ animate: false });
-        resizeCanvas();
-        redrawAll();
-        drawWatermarkCanvas(getCurrentUser()?.userId || null);
-    }, 50);
-}
-
-artilleryViewBtn?.addEventListener("click", () => {
-    if (!artilleryActive) enterArtillery();
-});
-
-// Patch mapViewBtn and vezhaViewBtn to also exit artillery
-const _origMapClick  = mapViewBtn.onclick;
-const _origVezhaClick = vezhaViewBtn.onclick;
-mapViewBtn.addEventListener("click",  () => { if (artilleryActive) exitArtillery(); });
-vezhaViewBtn.addEventListener("click",() => { if (artilleryActive) exitArtillery(); });
-
-// ─── Kill browser autofill in coordinate search box ──────────────────────────
-setTimeout(() => {
-    const csi = document.getElementById("coordSearchInput");
-    if (csi) { csi.value = ""; csi.setAttribute("readonly", ""); setTimeout(() => csi.removeAttribute("readonly"), 100); }
-}, 250);
-
-// ════════════════════════════════════════════════════════════════════
-// CUSTOM CONFIRM POPUP
-// ════════════════════════════════════════════════════════════════════
-function showConfirm(msg, okLabel = "DELETE") {
-    return new Promise(resolve => {
-        const overlay = document.getElementById("confirmPopup");
-        if (!overlay) { resolve(window.confirm(msg)); return; }
-        document.getElementById("confirmPopupMsg").textContent = msg;
-        document.getElementById("confirmPopupOk").textContent  = okLabel;
-        overlay.hidden = false;
-        const okBtn     = document.getElementById("confirmPopupOk");
-        const cancelBtn = document.getElementById("confirmPopupCancel");
-        function done(result) {
-            overlay.hidden = true;
-            okBtn.removeEventListener("click", onOk);
-            cancelBtn.removeEventListener("click", onCancel);
-            overlay.removeEventListener("click", onOverlay);
-            resolve(result);
-        }
-        function onOk()      { done(true);  }
-        function onCancel()  { done(false); }
-        function onOverlay(e){ if (e.target === overlay) done(false); }
-        okBtn.addEventListener("click",     onOk);
-        cancelBtn.addEventListener("click", onCancel);
-        overlay.addEventListener("click",   onOverlay);
-    });
-}
-
-// ════════════════════════════════════════════════════════════════════
-// MARKER SIZE CONTROL
-// ════════════════════════════════════════════════════════════════════
-let markerScale = parseFloat(localStorage.getItem("mkrScale") || "1");
-function setMarkerScale(s) {
-    markerScale = Math.max(0.25, Math.min(3, parseFloat(s.toFixed(2))));
-    document.documentElement.style.setProperty("--mkr-scale", markerScale);
-    localStorage.setItem("mkrScale", markerScale);
-}
-setMarkerScale(markerScale); // apply stored value on load
-document.getElementById("mkrSizeUp"  )?.addEventListener("click", () => setMarkerScale(markerScale + 0.15));
-document.getElementById("mkrSizeDown")?.addEventListener("click", () => setMarkerScale(markerScale - 0.15));
-
-// ════════════════════════════════════════════════════════════════════
-// MAP SELECTOR
-// ════════════════════════════════════════════════════════════════════
-function buildMapSelectorDropdown() {
-    const drop = document.getElementById("mapSelDropdown");
-    if (!drop) return;
-    drop.innerHTML = MAPS.map((m, i) =>
-        `<div class="map-sel-opt${i === currentMapIdx ? " active" : ""}" data-idx="${i}">
-           ${m.name}
-           <span class="map-sel-scale">${Math.round(1 / m.ppm)}m per pixel</span>
-         </div>`
-    ).join("");
-    drop.querySelectorAll(".map-sel-opt").forEach(opt => {
-        opt.addEventListener("click", () => {
-            const idx = parseInt(opt.dataset.idx);
-            drop.classList.remove("open");
-            if (idx !== currentMapIdx) loadMapConfig(idx);
-        });
-    });
-}
-buildMapSelectorDropdown();
-// Set initial label
-{
-    const lbl = document.getElementById("mapSelLabel");
-    if (lbl) lbl.textContent = MAPS[currentMapIdx].name;
-}
-document.getElementById("mapSelBtn")?.addEventListener("click", e => {
-    e.stopPropagation();
-    document.getElementById("mapSelDropdown")?.classList.toggle("open");
-});
-document.addEventListener("click", () => {
-    document.getElementById("mapSelDropdown")?.classList.remove("open");
-});
-
-// ════════════════════════════════════════════════════════════════════
-// TEXT CHANNELS (Vezha chat)
-// ════════════════════════════════════════════════════════════════════
-function renderChannelTabs() {
-    const container = document.getElementById("vcChannelTabs");
-    if (!container) return;
-    // Build list: general + one per room in roomsData
-    const channels = [{ id: "general", label: "# GENERAL" }];
-    Object.values(roomsData)
-        .sort((a, b) => (a.order || 0) - (b.order || 0))
-        .forEach(r => channels.push({ id: r.id, label: "# " + (r.name || r.id.replace("_", " ").toUpperCase()) }));
-
-    container.innerHTML = "";
-    channels.forEach(ch => {
-        const tab = document.createElement("button");
-        tab.className = "vc-channel-tab" + (ch.id === currentChannel ? " active" : "");
-        tab.textContent = ch.label;
-        tab.addEventListener("click", () => {
-            // Save current draft before switching
-            const inputEl = document.getElementById("vezhaChatInput");
-            if (inputEl) channelDrafts[currentChannel] = inputEl.value;
-
-            currentChannel = ch.id;
-            // Clear and re-render messages for the new channel from cache
-            const msgsEl = document.getElementById("vezhaChatMessages");
-            if (msgsEl) {
-                msgsEl.innerHTML = "";
-                chatMsgCache
-                    .filter(m => (m.data.channel || "general") === currentChannel)
-                    .forEach(m => renderChatMessage(m.data));
-                requestAnimationFrame(() => { msgsEl.scrollTop = msgsEl.scrollHeight; });
-            }
-            container.querySelectorAll(".vc-channel-tab").forEach((t, i) => {
-                t.classList.toggle("active", channels[i].id === currentChannel);
-            });
-            // Restore draft for the new channel
-            if (inputEl) inputEl.value = channelDrafts[currentChannel] || "";
-        });
-        container.appendChild(tab);
-    });
-}
-
-// ════════════════════════════════════════════════════════════════════
-// VEZHA STATUS SYNC (muted / deafened / streaming)
-// ════════════════════════════════════════════════════════════════════
-let _isMicMuted   = false;
-let _isDeafened   = false;
-let _isStreaming  = false;
-
-async function updateMyVezhaStatus() {
-    if (!mySessionRef) return;
-    try {
-        await updateDoc(mySessionRef, {
-            muted:     _isMicMuted,
-            deafened:  _isDeafened,
-            streaming: _isStreaming,
-        });
-    } catch (_) {}
-}
-
-// Patch shareScreen and stopSharing to update streaming status
-const _origShareScreen = shareScreen;
-const _origStopSharing = stopSharing;
-// (We hook at call sites instead since they're async functions defined earlier)
-document.getElementById("shareScreenBtn")?.addEventListener("click", async () => {
-    _isStreaming = true;
-    await updateMyVezhaStatus();
-}, true); // capture — runs before the existing listener
-document.getElementById("stopSharingBtn")?.addEventListener("click", async () => {
-    _isStreaming = false;
-    await updateMyVezhaStatus();
-}, true);
-
-// Patch mic/deafen toggles (search for existing listeners)
-document.getElementById("micBtn")?.addEventListener("click", () => {
-    // Toggle is determined by class — read state after a tick
-    setTimeout(async () => {
-        const btn = document.getElementById("micBtn");
-        _isMicMuted = btn?.classList.contains("active") === false; // active = unmuted
-        await updateMyVezhaStatus();
-    }, 50);
-});
-document.getElementById("deafBtn")?.addEventListener("click", () => {
-    setTimeout(async () => {
-        const btn = document.getElementById("deafBtn");
-        _isDeafened = btn?.classList.contains("active") === true;
-        await updateMyVezhaStatus();
-    }, 50);
-});
-
-// ─── ARTY EXPORT ──────────────────────────────────────────────────────────────
-document.getElementById("artyExportBtn")?.addEventListener("click", async () => {
-    // If 3D is active, export 3D view
-    if (arty3DState) {
-        try {
-            const artyEl = document.getElementById("arty3DContainer") || document.querySelector(".arty-map-wrap");
-            const W = artyEl?.clientWidth  || 900;
-            const H = artyEl?.clientHeight || 600;
-            const out = document.createElement("canvas");
-            out.width = W; out.height = H;
-            const oc = out.getContext("2d");
-            arty3DState.drawCapture(oc, W, H);
-            const link = document.createElement("a");
-            link.download = `arty_3d_${Date.now()}.png`;
-            link.href = out.toDataURL("image/png");
-            link.click();
-        } catch (err) { console.error("Arty 3D export failed", err); }
-        return;
-    }
-
-    // 2D arty map export
-    if (!artyMapInstance) return;
-    const mapEl = document.getElementById("artyMapEl");
-    const W = mapEl?.clientWidth  || 800;
-    const H = mapEl?.clientHeight || 600;
-    const out = document.createElement("canvas");
-    out.width = W; out.height = H;
-    const oc = out.getContext("2d");
-
-    // 1. Base map
-    await new Promise(res => {
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => {
-            try {
-                const tl = artyMapInstance.latLngToContainerPoint([imageHeight, 0]);
-                const br = artyMapInstance.latLngToContainerPoint([0, imageWidth]);
-                oc.drawImage(img, tl.x, tl.y, br.x - tl.x, br.y - tl.y);
-            } catch (_) { oc.drawImage(img, 0, 0, W, H); }
-            res();
-        };
-        img.onerror = () => res();
-        img.src = MAPS[currentMapIdx].file;
-    });
-
-    // 2. G marker
-    if (artyGunPx) {
-        const pt = artyMapInstance.latLngToContainerPoint([artyGunPx.lat, artyGunPx.lng]);
-        oc.beginPath(); oc.arc(pt.x, pt.y, 12, 0, Math.PI * 2);
-        oc.fillStyle = "#4ade80"; oc.fill();
-        oc.strokeStyle = "rgba(0,0,0,0.7)"; oc.lineWidth = 2; oc.stroke();
-        oc.font = "bold 11px monospace"; oc.fillStyle = "#111";
-        oc.textAlign = "center"; oc.textBaseline = "middle";
-        oc.fillText("G", pt.x, pt.y);
-    }
-
-    // 3. T marker
-    if (artyTgtPx) {
-        const pt = artyMapInstance.latLngToContainerPoint([artyTgtPx.lat, artyTgtPx.lng]);
-        oc.beginPath(); oc.arc(pt.x, pt.y, 12, 0, Math.PI * 2);
-        oc.fillStyle = "#f87171"; oc.fill();
-        oc.strokeStyle = "rgba(0,0,0,0.7)"; oc.lineWidth = 2; oc.stroke();
-        oc.font = "bold 11px monospace"; oc.fillStyle = "#111";
-        oc.textAlign = "center"; oc.textBaseline = "middle";
-        oc.fillText("T", pt.x, pt.y);
-    }
-
-    // 4. Line G→T
-    if (artyGunPx && artyTgtPx) {
-        const g = artyMapInstance.latLngToContainerPoint([artyGunPx.lat, artyGunPx.lng]);
-        const t = artyMapInstance.latLngToContainerPoint([artyTgtPx.lat, artyTgtPx.lng]);
-        oc.beginPath(); oc.moveTo(g.x, g.y); oc.lineTo(t.x, t.y);
-        oc.strokeStyle = "rgba(200,200,255,0.55)"; oc.lineWidth = 1.5;
-        oc.setLineDash([5, 3]); oc.stroke(); oc.setLineDash([]);
-    }
-
-    const link = document.createElement("a");
-    link.download = `arty_2d_${Date.now()}.png`;
-    link.href = out.toDataURL("image/png");
-    link.click();
-});
+/* ========================
+   DELTA / MONITOR  Tactical Situational Awareness
+======================== */
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap');
+:root {
+  /* Brand palette: blue #3A52A9  dark #2D2E33 */
+  --brand-blue:   #3A52A9;
+  --brand-dark:   #2D2E33;
+
+  /* Backgrounds  derived from brand-dark */
+  --bg-base:      #1a1b1f;
+  --bg-panel:     #22232a;
+  --bg-section:   #2d2e35;
+  --bg-hover:     #363740;
+  --bg-active:    #3d3e4b;
+
+  /* Borders */
+  --border:       #3a3b47;
+  --border-light: #50525f;
+
+  /* Accent  brand blue lightened for UI readability on dark backgrounds */
+  --accent:       #7090d8;
+  --accent-dim:   rgba(58, 82, 169, 0.22);
+  --accent-glow:  rgba(58, 82, 169, 0.45);
+
+  --danger:       #ff3b3b;
+  --danger-dim:   rgba(255, 59, 59, 0.12);
+  --text-primary: #c8d0ea;
+  --text-dim:     #64697e;
+  --text-label:   #8a90ad;
+  --font-ui:      'Rajdhani', sans-serif;
+  --font-mono:    'Share Tech Mono', monospace;
+  --topbar-h:     42px;
+  --statusbar-h:  26px;
+  --left-w:       236px;
+  --right-w:      42px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 100%; height: 100%;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  overflow: hidden;
+  transition: background 0.3s, color 0.3s;
+}
+button { cursor: pointer; font-family: var(--font-ui); }
+.mono  { font-family: var(--font-mono); }
+
+/*  TOP BAR  */
+#topBar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 3000;
+  height: var(--topbar-h);
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 10px;
+  user-select: none;
+  transition: background 0.3s, border-color 0.3s;
+}
+.topBar-left, .topBar-right { display: flex; align-items: center; gap: 4px; }
+.brand-shield { display: flex; align-items: center; margin-right: 8px; }
+.brand-name   { font-size: 15px; font-weight: 700; letter-spacing: 3px; color: var(--accent); transition: color 0.3s; }
+.brand-sep    { margin: 0 6px; color: var(--border-light); font-weight: 300; }
+.brand-module { font-size: 13px; font-weight: 500; letter-spacing: 2px; color: var(--text-label); transition: color 0.3s; }
+.top-divider  { width: 1px; height: 22px; background: var(--border); margin: 0 10px; transition: background 0.3s; }
+.topBtn {
+  width: 30px; height: 30px;
+  background: transparent; border: 1px solid transparent; border-radius: 4px;
+  color: var(--text-dim);
+  display: flex; align-items: center; justify-content: center;
+  transition: all .15s;
+}
+.topBtn:hover  { background: var(--bg-hover); border-color: var(--border-light); color: var(--text-primary); }
+.topBtn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+.topBar-center { display: flex; align-items: center; }
+#clock { font-size: 14px; letter-spacing: 1px; color: var(--accent); transition: color 0.3s; }
+.status-pill {
+  display: flex; align-items: center; gap: 5px;
+  padding: 3px 8px; border-radius: 3px;
+  font-size: 11px; font-weight: 600; letter-spacing: 1.5px;
+}
+.status-pill.live {
+  background: rgba(0,220,100,.1); border: 1px solid rgba(0,220,100,.3); color: #00dc64;
+}
+.pulse-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: #00dc64;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: .4; transform: scale(.7); }
+}
+
+/*  APP BODY  */
+#appBody {
+  position: fixed;
+  top: var(--topbar-h); bottom: var(--statusbar-h);
+  left: 0; right: 0;
+  display: flex;
+}
+
+/*  LEFT PANEL  */
+#leftPanel {
+  position: relative;
+  width: var(--left-w);
+  height: 100%;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  flex-shrink: 0;
+  /* overflow visible so the collapse button can escape */
+  overflow: visible;
+  transition: width 0.25s ease, border-color 0.25s ease, background 0.3s;
+}
+#leftPanel.collapsed {
+  width: 0;
+  border-right-color: transparent;
+}
+
+/* Collapse button  always above map (z-index 2500),
+   absolutely positioned so it floats free of the panel width */
+#collapseLeftBtn {
+  position: absolute;
+  top: 8px;
+  right: 6px;
+  z-index: 2500;
+  width: 22px; height: 22px;
+  background: var(--bg-section);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-dim);
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s, border-color .15s, color .15s, right 0.25s ease;
+  flex-shrink: 0;
+}
+#collapseLeftBtn:hover {
+  background: var(--bg-hover); border-color: var(--border-light); color: var(--text-primary);
+}
+
+/* When collapsed: float button out to the right of the zero-width panel */
+#leftPanel.collapsed #collapseLeftBtn {
+  right: -30px;
+  background: var(--bg-panel);
+  border-color: var(--border-light);
+}
+#leftPanel.collapsed #collapseLeftBtn svg {
+  transform: rotate(180deg);
+}
+
+/*  PANEL INNER  fixed height, flex column, not scrollable itself  */
+.panel-inner {
+  width: var(--left-w);
+  height: 100%;
+  overflow: hidden;           /* panel itself does NOT scroll */
+  display: flex;
+  flex-direction: column;
+  padding-top: 28px;          /* space for the abs-positioned collapse button */
+  transition: opacity 0.2s;
+}
+#leftPanel.collapsed .panel-inner {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.panel-section {
+  padding: 8px 10px 0;
+  flex-shrink: 0;             /* fixed sections don't grow/shrink */
+}
+
+/* The symbols section is flex-grow so it fills remaining space */
+#section-symbols {
+  flex: 1 1 0;
+  min-height: 0;              /* allow shrinking below content size */
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 0;
+}
+
+.section-header {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 10px; font-weight: 700; letter-spacing: 2px;
+  color: var(--text-dim); padding-bottom: 8px; text-transform: uppercase;
+  transition: color 0.3s;
+  flex-shrink: 0;
+}
+
+/* Section collapse button (small arrow per section) */
+.section-collapse-btn {
+  margin-left: auto;
+  width: 18px; height: 18px;
+  background: transparent; border: 1px solid var(--border);
+  border-radius: 3px; color: var(--text-dim);
+  display: flex; align-items: center; justify-content: center;
+  transition: all .15s;
+  flex-shrink: 0;
+}
+.section-collapse-btn:hover {
+  background: var(--bg-hover); border-color: var(--border-light); color: var(--text-primary);
+}
+.section-collapse-btn.collapsed svg {
+  transform: rotate(-90deg);
+}
+.section-collapse-btn svg {
+  transition: transform 0.2s ease;
+}
+
+/* section-body: generic collapsed state */
+.section-body {
+  overflow: hidden;
+  transition: max-height 0.25s ease, opacity 0.2s;
+  max-height: 1000px;
+  opacity: 1;
+}
+.section-body.collapsed {
+  max-height: 0 !important;
+  opacity: 0;
+}
+
+/* The symbols body is the ONLY scrollable element */
+.scrollable-symbols {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  max-height: none !important; /* override the generic max-height for open state */
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.scrollable-symbols::-webkit-scrollbar       { width: 4px; }
+.scrollable-symbols::-webkit-scrollbar-track { background: transparent; }
+.scrollable-symbols::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* When symbols section is collapsed, kill the flex growth */
+#section-symbols:has(.section-body.collapsed) {
+  flex: 0 0 auto;
+}
+
+.panel-divider {
+  height: 1px; background: var(--border); margin: 0 10px; flex-shrink: 0;
+  transition: background 0.3s;
+}
+
+/*  SYMBOL GROUPS  */
+.symbol-group { margin-bottom: 8px; }
+.group-label {
+  font-size: 9px; font-weight: 700; letter-spacing: 2px;
+  color: var(--text-dim); text-transform: uppercase;
+  border-left: 2px solid var(--accent); padding: 3px 0 4px 5px;
+  margin-bottom: 4px; transition: color 0.3s, border-color 0.3s;
+  display: flex; align-items: center; gap: 5px;
+}
+.group-info-btn {
+  margin-left: auto; flex-shrink: 0;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: transparent; border: 1px solid var(--border-light);
+  color: var(--text-dim); font-size: 8px; font-weight: 700;
+  line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color 0.15s, color 0.15s;
+  font-family: var(--font-ui);
+}
+.group-info-btn:hover { border-color: var(--accent); color: var(--accent); }
+/* Tooltip popup */
+#groupInfoTooltip {
+  position: fixed; z-index: 9000;
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 5px; padding: 8px 11px;
+  font-family: var(--font-mono); font-size: 9px; line-height: 1.6;
+  color: var(--text-primary); max-width: 200px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  pointer-events: none;
+  display: none;
+}
+.symbol-row { display: flex; flex-wrap: nowrap; gap: 3px; }
+.symbolBtn {
+  width: 48px; height: 62px; flex-shrink: 0;
+  background: var(--bg-section); border: 1px solid var(--border); border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 2px; transition: all .15s;
+  overflow: hidden;
+}
+.symbolBtn:hover  { border-color: var(--border-light); background: var(--bg-hover); }
+.symbolBtn.active { border-color: var(--accent); background: var(--accent-dim); box-shadow: 0 0 8px var(--accent-glow); }
+.symbolBtn svg    { width: 44px; height: 55px; }
+
+/*  COORDINATE SEARCH  */
+.coord-search-row { display: flex; gap: 4px; margin-bottom: 4px; }
+.coord-input {
+  flex: 1; background: var(--bg-section); border: 1px solid var(--border);
+  border-radius: 4px; color: var(--text-primary); font-size: 10px;
+  padding: 5px 7px; outline: none; transition: border-color .15s, background 0.3s, color 0.3s;
+}
+.coord-input::placeholder { color: var(--text-dim); }
+.coord-input:focus { border-color: var(--accent); }
+.coord-go-btn {
+  padding: 5px 8px; background: var(--accent-dim); border: 1px solid var(--accent);
+  border-radius: 4px; color: var(--accent); font-size: 10px; font-weight: 700;
+  letter-spacing: 1px; font-family: var(--font-ui); transition: all .15s;
+}
+.coord-go-btn:hover { background: rgba(58,82,169,0.3); }
+.coord-error { font-size: 9px; color: var(--danger); letter-spacing: 0.5px; min-height: 14px; padding-bottom: 2px; }
+
+/*  RIGHT-CLICK COORDINATE POPUP  */
+.coord-popup {
+  display: none; position: absolute; z-index: 1500;
+  background: var(--bg-panel); border: 1px solid var(--border-light);
+  border-radius: 5px; padding: 8px 10px; min-width: 210px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.7); user-select: none;
+  transition: background 0.3s, border-color 0.3s;
+}
+.coord-popup-header {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 9px; font-weight: 700; letter-spacing: 2px;
+  color: var(--text-dim); margin-bottom: 7px; text-transform: uppercase;
+}
+.coord-popup-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.coord-popup-label {
+  font-size: 9px; font-weight: 700; letter-spacing: 1.5px; color: var(--text-dim);
+  width: 46px; flex-shrink: 0; text-transform: uppercase;
+}
+.coord-popup-val { flex: 1; font-size: 11px; color: var(--accent); letter-spacing: 0.5px; }
+.coord-copy-btn {
+  width: 20px; height: 20px; background: transparent; border: 1px solid var(--border);
+  border-radius: 3px; color: var(--text-dim); display: flex; align-items: center;
+  justify-content: center; font-size: 10px; transition: all .15s; flex-shrink: 0;
+}
+.coord-copy-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+.coord-popup-close {
+  position: absolute; top: 6px; right: 6px; width: 18px; height: 18px;
+  background: transparent; border: none; color: var(--text-dim);
+  font-size: 10px; display: flex; align-items: center; justify-content: center; transition: color .15s;
+}
+.coord-popup-close:hover { color: var(--danger); }
+
+/*  RULER TOOLTIP  */
+.ruler-tooltip {
+  display: none; position: absolute; z-index: 1400;
+  background: rgba(10,12,15,0.85); border: 1px solid #ffcc00; border-radius: 3px;
+  color: #ffcc00; font-family: var(--font-mono); font-size: 11px;
+  padding: 3px 7px; pointer-events: none; white-space: nowrap; letter-spacing: 0.5px;
+}
+
+/*  DRAW TOOLS  */
+.draw-tools-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-bottom: 8px; }
+.drawToolBtn {
+  height: 36px; background: var(--bg-section); border: 1px solid var(--border);
+  border-radius: 4px; color: var(--text-dim); display: flex; align-items: center;
+  justify-content: center; transition: all .15s;
+}
+.drawToolBtn:hover  { background: var(--bg-hover); border-color: var(--border-light); color: var(--text-primary); }
+.drawToolBtn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+.mode-toggle {
+  padding: 2px 6px;
+  font-size: 9px; font-weight: 700; letter-spacing: 1px; font-family: var(--font-mono);
+  border-radius: 3px; background: var(--danger-dim); border: 1px solid var(--danger);
+  color: var(--danger); transition: all .15s;
+}
+.mode-toggle.on { background: rgba(0,220,100,.1); border-color: #00dc64; color: #00dc64; }
+
+/* Slider */
+.slider-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.slider-label { font-size: 9px; font-weight: 700; letter-spacing: 1.5px; color: var(--text-dim); width: 38px; flex-shrink: 0; }
+.slider-val   { font-size: 10px; color: var(--accent); width: 16px; flex-shrink: 0; text-align: right; }
+.tac-slider {
+  flex: 1; -webkit-appearance: none; height: 3px;
+  background: var(--border); border-radius: 2px; outline: none;
+}
+.tac-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 10px; height: 10px; border-radius: 50%;
+  background: var(--accent); cursor: pointer; box-shadow: 0 0 4px var(--accent-glow);
+}
+
+/* Color swatches */
+.color-row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.color-swatches { display: flex; gap: 5px; flex-wrap: wrap; }
+.swatch { width: 18px; height: 18px; border-radius: 3px; border: 2px solid transparent; transition: border-color .1s, transform .1s; padding: 0; }
+.swatch:hover  { transform: scale(1.2); }
+.swatch.active { border-color: #fff; }
+
+/* Danger buttons */
+.danger-btn {
+  width: 100%; padding: 7px 10px;
+  background: var(--danger-dim); border: 1px solid rgba(255,59,59,.25);
+  border-radius: 4px; color: var(--danger); font-size: 10px; font-weight: 700;
+  letter-spacing: 1.5px; display: flex; align-items: center; justify-content: center;
+  gap: 5px; transition: all .15s; margin-top: 2px; margin-bottom: 4px;
+}
+.danger-btn:hover { background: rgba(255,59,59,.22); border-color: var(--danger); }
+
+/*  MAP WRAPPER  */
+#mapWrapper { flex: 1; position: relative; overflow: hidden; }
+#map { width: 100%; height: 100%; background: #0a0c10; transition: background 0.3s; }
+#drawCanvas {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none; z-index: 500;
+}
+#drawCanvas.active            { pointer-events: all; cursor: crosshair; }
+#drawCanvas.ctrl-select       { pointer-events: auto; cursor: crosshair; }
+#drawCanvas[data-tool="eraser"] { cursor: cell; }
+#drawCanvas[data-tool="pen"]    { cursor: crosshair; }
+
+/*  RIGHT PANEL  */
+#rightPanel {
+  width: var(--right-w); background: var(--bg-panel); border-left: 1px solid var(--border);
+  display: flex; flex-direction: column; align-items: center;
+  padding: 8px 0; gap: 4px; flex-shrink: 0;
+  transition: background 0.3s, border-color 0.3s;
+}
+.rightBtn {
+  width: 30px; height: 30px; background: transparent; border: 1px solid transparent;
+  border-radius: 4px; color: var(--text-dim); display: flex; align-items: center;
+  justify-content: center; transition: all .15s;
+}
+.rightBtn:hover  { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+.rightBtn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+/* 2D / 3D toggle in right sidebar */
+.view-dim-btn {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.right-divider { width: 22px; height: 1px; background: var(--border); margin: 4px 0; transition: background 0.3s; }
+
+/* ─── MONITOR CHAT (bottom-right overlay) ──────────────────────────────────── */
+.monitor-chat {
+  position: fixed;
+  bottom: var(--statusbar-h);
+  right: calc(var(--right-w) + 6px);
+  width: 240px;
+  z-index: 2800;
+  display: flex; flex-direction: column;
+  border-radius: 6px 6px 0 0;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  background: var(--bg-panel);
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
+  transition: background 0.3s, border-color 0.3s;
+  font-family: var(--font-ui);
+}
+.monitor-chat-header {
+  display: flex; align-items: center; gap: 7px;
+  padding: 0 10px; height: 32px; flex-shrink: 0;
+  font-size: 10px; font-weight: 700; letter-spacing: 2px;
+  color: var(--text-dim); text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer; user-select: none;
+  border-radius: 6px 6px 0 0;
+  transition: background 0.15s, border-color 0.3s;
+}
+.monitor-chat-header:hover { background: var(--bg-hover); }
+.monitor-chat.collapsed .monitor-chat-body { display: none; }
+.monitor-chat.collapsed .monitor-chat-header { border-bottom-color: transparent; border-radius: 6px; }
+.monitor-chat-body {
+  display: flex; flex-direction: column;
+  height: 220px;
+}
+.monitor-chat-messages {
+  flex: 1; overflow-y: auto; padding: 8px 10px;
+  display: flex; flex-direction: column; gap: 6px;
+  font-size: 11px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.monitor-chat-messages::-webkit-scrollbar { width: 3px; }
+.monitor-chat-messages::-webkit-scrollbar-track { background: transparent; }
+.monitor-chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.monitor-chat-messages .chat-msg { max-width: 100%; }
+.monitor-chat-input-row {
+  display: flex; gap: 4px;
+  padding: 6px 8px; border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.monitor-chat-input {
+  flex: 1; background: var(--bg-section); border: 1px solid var(--border);
+  border-radius: 4px; color: var(--text-primary);
+  font-size: 10px; padding: 5px 8px; outline: none;
+  transition: border-color 0.15s;
+}
+.monitor-chat-input:focus { border-color: var(--accent); }
+.monitor-chat-input::placeholder { color: var(--text-dim); font-size: 9px; }
+.monitor-chat-send-btn {
+  width: 28px; height: 28px; flex-shrink: 0;
+  background: var(--accent-dim); border: 1px solid var(--accent);
+  border-radius: 4px; color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: background 0.15s;
+}
+.monitor-chat-send-btn:hover { background: rgba(58,82,169,0.35); }
+/* hide in vezha/arty views — visible only in monitor */
+body.in-vezha   .monitor-chat,
+body.in-arty    .monitor-chat { display: none; }
+
+/*  STATUS BAR  */
+#statusBar {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 3000;
+  height: var(--statusbar-h); background: var(--bg-panel); border-top: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 12px; transition: background 0.3s, border-color 0.3s;
+}
+.status-left, .status-right { display: flex; align-items: center; gap: 6px; }
+.status-item { font-size: 10px; letter-spacing: 1px; color: var(--text-dim); text-transform: uppercase; transition: color 0.3s; }
+.status-sep  { color: var(--border-light); }
+
+/*  LEAFLET OVERRIDES  */
+.leaflet-container { background: #0a0c10 !important; font-family: var(--font-ui) !important; }
+.leaflet-control-zoom { display: none; }
+.leaflet-bar { display: none; }
+.leaflet-popup-content-wrapper {
+  background: var(--bg-panel); border: 1px solid var(--border-light);
+  border-radius: 4px; color: var(--text-primary); font-family: var(--font-ui);
+  box-shadow: 0 4px 20px rgba(0,0,0,.6);
+}
+.leaflet-popup-tip { background: var(--bg-panel); }
+.leaflet-popup-close-button { color: var(--text-dim) !important; }
+
+/* ============================
+   LIGHT THEME
+============================ */
+body.light-theme {
+  --bg-base:      #eef1f6;
+  --bg-panel:     #ffffff;
+  --bg-section:   #f3f5f9;
+  --bg-hover:     #e6eaf1;
+  --bg-active:    #dce2ec;
+  --border:       #d0d7e2;
+  --border-light: #b8c3d2;
+  --accent:       #2563eb;
+  --accent-dim:   rgba(37, 99, 235, 0.08);
+  --accent-glow:  rgba(37, 99, 235, 0.2);
+  --danger:       #dc2626;
+  --danger-dim:   rgba(220, 38, 38, 0.06);
+  --text-primary: #1e293b;
+  --text-dim:     #64748b;
+  --text-label:   #475569;
+}
+body.light-theme #map,
+body.light-theme .leaflet-container { background: #e2e6ee !important; }
+body.light-theme .status-pill.live  { background: rgba(22,163,74,.07); border-color: rgba(22,163,74,.3); color: #16a34a; }
+body.light-theme .pulse-dot         { background: #16a34a; }
+body.light-theme .swatch.active     { border-color: #1e293b; }
+body.light-theme .ruler-tooltip     { background: rgba(255,255,255,.92); border-color: #d97706; color: #d97706; }
+body.light-theme .coord-popup       { box-shadow: 0 4px 24px rgba(0,0,0,.1); }
+body.light-theme .tac-slider        { background: var(--border-light); }
+body.light-theme .danger-btn        { border-color: rgba(220,38,38,.2); }
+body.light-theme .danger-btn:hover  { background: rgba(220,38,38,.1); border-color: var(--danger); }
+body.light-theme .brand-shield svg path { stroke: var(--accent); }
+body.light-theme .mode-toggle       { background: rgba(220,38,38,.06); }
+body.light-theme .mode-toggle.on    { background: rgba(22,163,74,.07); }
+body.light-theme .coord-go-btn:hover { background: rgba(37,99,235,.15); }
+body.light-theme .scrollable-symbols::-webkit-scrollbar-thumb { background: var(--border-light); }
+
+/*  LIGHT THEME: symbol interior strokes darkened, but border/status colors preserved  */
+/*
+   Strategy: in light mode we ONLY darken the symbol-interior drawing elements
+   (the lines/shapes that represent infantry cross, tank box, etc).
+   We do NOT override the outer rect stroke (which carries the status color)
+   nor the damage/dead overlay fills.
+   
+   We target the interior strokes by their explicit stroke color (#d0d8e8 in dark mode).
+   In light mode we replace that light grey with a dark readable color.
+*/
+/* NATO symbols use #111 for all designator strokes/fills  visible on both themes.
+   The salmon fill (#f87171) and status bar colors are intentionally kept as-is. */
+
+/*  FILTER CHIPS  */
+.filter-chips {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  padding: 4px 0 6px;
+}
+.filter-chip {
+  font-family: var(--font-mono);
+  font-size: 8.5px; font-weight: 700; letter-spacing: 1px;
+  padding: 3px 7px; border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--bg-section);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.15s;
+  text-transform: uppercase;
+}
+.filter-chip.active {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+.filter-chip:not(.active) {
+  opacity: 0.45;
+}
+.filter-chip:hover { opacity: 1; border-color: var(--border-light); }
+body.light-theme .filter-chip.active { color: var(--accent); }
+
+/* ── Enemy / Friendly side-toggle ───────────────────────────────────────────── */
+.side-toggle {
+  display: flex; gap: 0; margin-left: 8px;
+  border: 1px solid var(--border); border-radius: 4px; overflow: hidden;
+  flex-shrink: 0;
+}
+.side-btn {
+  padding: 2px 7px;
+  font-family: var(--font-ui); font-size: 8px; font-weight: 700; letter-spacing: 1px;
+  background: transparent; border: none; color: var(--text-dim);
+  cursor: pointer; transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.side-btn.active[data-side="enemy"] {
+  background: rgba(248,113,113,0.2); color: #f87171;
+}
+.side-btn.active[data-side="friendly"] {
+  background: rgba(136,196,240,0.25); color: #88c4f0;
+}
+.side-btn:not(.active):hover { background: var(--bg-section); color: var(--text-secondary); }
+
+/*  CHAT IDENTITY BAR  */
+.chat-identity-bar {
+  display: flex; align-items: center; gap: 5px;
+  padding: 6px 10px 5px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--bg-section);
+  transition: background 0.3s, border-color 0.3s;
+}
+.chat-identity-input {
+  flex: 1; min-width: 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: 9px; font-weight: 700; letter-spacing: 1.5px;
+  padding: 3px 6px; outline: none;
+  text-transform: uppercase;
+  transition: border-color 0.15s, background 0.3s;
+}
+.chat-identity-input::placeholder { color: var(--text-dim); font-size: 8.5px; }
+.chat-identity-input:focus { border-color: var(--accent); }
+.chat-role-select {
+  flex-shrink: 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 8.5px; font-weight: 700; letter-spacing: 0.8px;
+  padding: 3px 4px; outline: none; cursor: pointer;
+  text-transform: uppercase;
+  transition: border-color 0.15s, background 0.3s;
+}
+.chat-role-select:focus { border-color: var(--accent); }
+
+/*  CHAT ROLE LABEL  */
+.chat-msg-role {
+  font-size: 8.5px; font-weight: 700; letter-spacing: 1px;
+  font-family: var(--font-mono);
+  opacity: 0.75;
+  margin-left: 2px;
+}
+
+/* ============================
+   VEZHA  LIVE STREAMING VIEW
+============================ */
+#vezhaView {
+  display: none;
+  position: fixed;
+  top: var(--topbar-h); bottom: var(--statusbar-h);
+  left: 0; right: 0;
+  flex-direction: row;     /* main area + chat sidebar side-by-side */
+  background: var(--bg-base);
+  z-index: 10;
+  transition: background 0.3s;
+}
+#vezhaView.active { display: flex; }
+
+/*  MAIN AREA (grid + controls)  */
+.vezha-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/*  MOSAIC GRID  */
+.vezha-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.vezha-grid::-webkit-scrollbar       { width: 4px; }
+.vezha-grid::-webkit-scrollbar-track { background: transparent; }
+.vezha-grid::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* Center content when empty; tile layout fills space when active */
+.vezha-grid:not(:has(.vezha-tile)) { place-content: center; }
+.vezha-grid:has(.vezha-tile)       { grid-auto-rows: 1fr; overflow-y: hidden; }
+
+/* Auto-adjust columns by JS-set data-count */
+.vezha-grid[data-count="1"]               { grid-template-columns: 1fr; }
+.vezha-grid[data-count="2"]               { grid-template-columns: 1fr 1fr; }
+.vezha-grid[data-count="3"],
+.vezha-grid[data-count="4"]               { grid-template-columns: 1fr 1fr; }
+.vezha-grid[data-count="5"],
+.vezha-grid[data-count="6"]               { grid-template-columns: 1fr 1fr 1fr; }
+
+/*  VIDEO TILE  */
+.vezha-tile {
+  position: relative;
+  background: #000;
+  border: 1px solid var(--border); border-radius: 6px;
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+.vezha-tile.vezha-tile-self { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-glow); }
+.vezha-tile video { width: 100%; height: 100%; object-fit: contain; display: block; }
+.vezha-tile-label {
+  position: absolute; bottom: 8px; left: 8px;
+  background: rgba(0,0,0,0.65); color: var(--text-primary);
+  font-size: 10px; letter-spacing: 1px; padding: 3px 8px; border-radius: 3px;
+  pointer-events: none;
+}
+.vezha-tile-self .vezha-tile-label { background: rgba(58,82,169,0.3); color: var(--accent); }
+
+/*  EMPTY STATE  */
+.vezha-empty {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 14px; padding: 40px 20px; color: var(--text-dim);
+}
+.vezha-empty svg { opacity: 0.35; }
+.vezha-empty span {
+  font-size: 11px; font-weight: 700; letter-spacing: 2.5px;
+  text-transform: uppercase; color: var(--text-dim);
+}
+.vezha-hint {
+  font-size: 10px !important; font-weight: 400 !important;
+  letter-spacing: 0.5px !important; text-transform: none !important;
+  color: var(--text-dim); opacity: 0.55; max-width: 280px; text-align: center;
+}
+
+/*  CONTROLS BAR  */
+.vezha-controls {
+  height: 52px; flex-shrink: 0;
+  background: var(--bg-panel); border-top: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  gap: 10px; padding: 0 20px;
+  transition: background 0.3s, border-color 0.3s;
+}
+.vezha-ctrl-btn {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 16px;
+  background: var(--accent-dim); border: 1px solid var(--accent);
+  border-radius: 4px; color: var(--accent);
+  font-size: 11px; font-weight: 700; letter-spacing: 1.5px;
+  font-family: var(--font-ui); cursor: pointer; transition: all .15s;
+}
+.vezha-ctrl-btn:hover { background: rgba(58,82,169,0.3); }
+.vezha-danger-btn {
+  background: var(--danger-dim) !important;
+  border-color: var(--danger) !important;
+  color: var(--danger) !important;
+}
+.vezha-danger-btn:hover { background: rgba(255,59,59,0.22) !important; }
+.vezha-ctrl-sep { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
+.vezha-status   { font-size: 10px; letter-spacing: 1px; color: var(--text-dim); }
+
+/*  CHAT SIDEBAR  */
+/*  Chat sidebar & collapse  */
+.vezha-chat-sidebar {
+  width: 260px; flex-shrink: 0;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  display: flex; flex-direction: row;   /* collapse-tab | chat-inner */
+  position: relative;
+  /* NO overflow:hidden  collapse tab must be visible */
+  transition: width 0.25s ease, background 0.3s, border-color 0.3s;
+}
+.vezha-chat-sidebar.collapsed { width: 26px; min-width: 26px; }
+
+/* Inner content column  clips during collapse animation */
+.chat-inner {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  transition: opacity 0.2s;
+}
+.vezha-chat-sidebar.collapsed .chat-inner {
+  opacity: 0; pointer-events: none;
+}
+
+/*  Collapse / expand tab (always visible, left strip of sidebar)  */
+.chat-collapse-btn {
+  flex-shrink: 0;
+  order: -1;                           /* leftmost child */
+  width: 26px;
+  align-self: stretch;                 /* full height */
+  background: var(--bg-section);
+  border: none;
+  border-right: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 15px; font-weight: 700;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: color 0.15s, background 0.15s, border-color 0.3s;
+  padding: 0;
+}
+.chat-collapse-btn:hover {
+  color: var(--accent);
+  background: rgba(58,82,169,0.12);
+}
+.vezha-chat-header {
+  display: flex; align-items: center; gap: 7px;
+  padding: 0 12px; height: 38px; flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 10px; font-weight: 700; letter-spacing: 2px;
+  color: var(--text-dim); text-transform: uppercase;
+  transition: border-color 0.3s;
+}
+.vezha-chat-messages {
+  flex: 1; min-height: 0;
+  overflow-y: auto; padding: 10px 10px 6px;
+  display: flex; flex-direction: column; gap: 8px;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+.vezha-chat-messages::-webkit-scrollbar       { width: 3px; }
+.vezha-chat-messages::-webkit-scrollbar-track { background: transparent; }
+.vezha-chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* Message bubbles */
+.chat-msg {
+  display: flex; flex-direction: column; gap: 3px;
+  max-width: 100%;
+}
+.chat-msg-meta {
+  display: flex; align-items: baseline; gap: 6px;
+}
+.chat-msg-author {
+  font-size: 9px; font-weight: 700; letter-spacing: 1.5px;
+  color: var(--text-dim); text-transform: uppercase;
+  font-family: var(--font-mono);
+}
+.chat-msg-mine .chat-msg-author { color: var(--accent); }
+.chat-msg-time {
+  font-size: 9px; color: var(--text-dim); opacity: 0.6; margin-left: auto;
+}
+.chat-msg-text {
+  font-size: 11px; line-height: 1.5;
+  color: var(--text-primary);
+  background: var(--bg-section);
+  border: 1px solid var(--border);
+  border-radius: 4px; padding: 5px 8px;
+  word-break: break-word;
+  transition: background 0.3s, border-color 0.3s;
+}
+.chat-msg-mine .chat-msg-text {
+  background: var(--accent-dim);
+  border-color: rgba(58,82,169,0.25);
+}
+
+/* Input row */
+.vezha-chat-input-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 10px; border-top: 1px solid var(--border);
+  flex-shrink: 0; transition: border-color 0.3s;
+}
+.vezha-chat-input {
+  flex: 1; background: var(--bg-section); border: 1px solid var(--border);
+  border-radius: 4px; color: var(--text-primary);
+  font-size: 10px; padding: 6px 8px; outline: none;
+  transition: border-color .15s, background 0.3s, color 0.3s;
+}
+.vezha-chat-input::placeholder { color: var(--text-dim); font-size: 9px; }
+.vezha-chat-input:focus { border-color: var(--accent); }
+.vezha-chat-send {
+  width: 28px; height: 28px; flex-shrink: 0;
+  background: var(--accent-dim); border: 1px solid var(--accent);
+  border-radius: 4px; color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all .15s;
+}
+.vezha-chat-send:hover { background: rgba(58,82,169,0.35); }
+
+/*  LIGHT THEME  */
+body.light-theme #vezhaView          { background: var(--bg-base); }
+body.light-theme .vezha-tile         { border-color: var(--border); }
+body.light-theme .vezha-tile-self    { border-color: var(--accent); }
+body.light-theme .vezha-ctrl-btn:hover  { background: rgba(37,99,235,0.15); }
+body.light-theme .vezha-danger-btn:hover{ background: rgba(220,38,38,0.1) !important; }
+body.light-theme .chat-msg-mine .chat-msg-text { background: rgba(37,99,235,0.07); border-color: rgba(37,99,235,0.2); }
+body.light-theme .vezha-chat-send:hover { background: rgba(37,99,235,0.15); }
+
+/*  MARKER LABEL OVERLAYS
+   .mkr-wrap is 140×140 px; icon SVG is 46×46 centred at (47,47).
+   iconAnchor [70,70] = map lat/lng point = SVG centre.
+   .mkr-outer is the Leaflet divIcon wrapper — must have pointer-events:none
+   so clicks on empty space pass through to the map for new marker placement.
+   .mkr-icon re-enables pointer-events only on the actual icon SVG area.
+    */
+.mkr-outer {
+  pointer-events: none !important;
+}
+.mkr-wrap {
+  position: relative;
+  width: 140px; height: 140px;
+  pointer-events: none;
+}
+/* SVG is 4657 (diamond 4646 + 11 px bar)  icon element is 4657 */
+.mkr-icon {
+  position: absolute;
+  left: 47px; top: 44px;     /* shift up 3 px so diamond centre stays at y=67 */
+  width: 46px; height: 57px;
+  pointer-events: auto;
+  cursor: pointer;
+}
+/*  Label boxes  styled like the user's reference sketch  */
+.ml {
+  position: absolute;
+  font-family: var(--font-mono);
+  font-size: 9px; line-height: 1.4;
+  color: #d8e4f0;
+  background: rgba(6, 12, 22, 0.82);
+  border: 1px solid rgba(160, 185, 220, 0.35);
+  padding: 2px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.ml:empty { display: none; }
+
+/*  top-left: DATE  full date must not be clipped  no max-width */
+.ml-tl {
+  bottom: 97px; right: 93px;
+  text-align: right;
+  max-width: 130px;          /* wide enough for DD/MM/YY HH:MM:SS */
+}
+/*  center-top: AMOUNT  */
+.ml-tc {
+  bottom: 102px;
+  left: 50%; transform: translateX(-50%);
+  text-align: center;
+  min-width: 20px;
+}
+/*  top-right: INFO  */
+.ml-tr { bottom: 97px; left: 93px; max-width: 90px; }
+/*  bottom-left: AUTHOR (callsign) */
+.ml-bl { top: 102px; right: 93px; max-width: 90px; text-align: right; }
+/*  bottom-right: SOURCE  */
+.ml-br { top: 102px; left: 93px; max-width: 90px; }
+
+/* Light-mode overrides */
+body.light-theme .ml {
+  color: #0d1f35;
+  background: rgba(255,255,255,0.88);
+  border-color: rgba(30,60,100,0.25);
+}
+body.light-theme .ml-tc {
+  background: rgba(255,255,255,0.94);
+  color: #0d1f35;
+  border-color: rgba(30,60,100,0.35);
+}
+
+/*  MARKER EDIT POPUP 
+   .mep-outer is the Leaflet popup wrapper class
+    */
+.mep-outer .leaflet-popup-content-wrapper {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  padding: 0;
+  color: var(--text-primary);
+}
+.mep-outer .leaflet-popup-tip-container { display: none; }
+.mep-outer .leaflet-popup-content { margin: 0; }
+.mep-popup {
+  padding: 12px 14px 10px;
+  display: flex; flex-direction: column; gap: 8px;
+  min-width: 200px;
+}
+.mep-row {
+  display: flex; align-items: center; gap: 8px;
+}
+.mep-label {
+  font-family: var(--font-mono);
+  font-size: 9px; font-weight: 700;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--text-dim);
+  width: 34px; flex-shrink: 0;
+}
+.mep-date {
+  font-family: var(--font-mono);
+  font-size: 10px; color: var(--text-dim);
+}
+.mep-sel, .mep-inp {
+  flex: 1;
+  background: var(--bg-section);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 4px 7px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.mep-sel:focus, .mep-inp:focus { border-color: var(--accent); }
+.mep-inp::placeholder { color: var(--text-dim); font-size: 9px; }
+.mep-save {
+  align-self: flex-end;
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 1.5px;
+  padding: 5px 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+  margin-top: 2px;
+}
+.mep-save:hover { background: rgba(58,82,169,0.35); }
+
+/* light-mode popup */
+body.light-theme .mep-outer .leaflet-popup-content-wrapper {
+  background: var(--bg-panel);
+  border-color: var(--border);
+}
+body.light-theme .mep-save:hover { background: rgba(37,99,235,0.15); }
+
+/* ─── LANGUAGE SWITCHER ────────────────────────────────────────────────────── */
+.lang-switcher {
+  display: flex; align-items: center; gap: 2px;
+  background: var(--bg-section);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px;
+}
+.lang-btn {
+  background: transparent; border: none; border-radius: 3px;
+  color: var(--text-dim); font-family: var(--font-mono);
+  font-size: 9px; font-weight: 700; letter-spacing: 1px;
+  padding: 3px 7px; cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.lang-btn:hover { color: var(--accent); background: var(--bg-hover); }
+.lang-btn.active { background: var(--accent-dim); color: var(--accent); }
+
+/* ─── ACCOUNT MODAL ────────────────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 10000;
+  background: rgba(0,0,0,0.65);
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(4px);
+}
+.modal-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+  min-width: 320px; max-width: 380px; width: 100%;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-section);
+}
+.modal-title {
+  font-family: var(--font-ui);
+  font-size: 11px; font-weight: 700; letter-spacing: 2.5px;
+  color: var(--text-primary); text-transform: uppercase;
+}
+.modal-close-btn {
+  background: none; border: none; color: var(--text-dim);
+  font-size: 13px; cursor: pointer; padding: 2px 6px; border-radius: 3px;
+  transition: color 0.15s, background 0.15s;
+}
+.modal-close-btn:hover { color: var(--danger); background: var(--danger-dim); }
+.modal-body {
+  padding: 16px; display: flex; flex-direction: column; gap: 14px;
+}
+.modal-field { display: flex; flex-direction: column; gap: 5px; }
+.modal-field-row { flex-direction: row; align-items: center; gap: 10px; }
+.modal-label {
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-dim);
+}
+.modal-input, .modal-select {
+  background: var(--bg-section); border: 1px solid var(--border);
+  border-radius: 4px; color: var(--text-primary);
+  font-family: var(--font-mono); font-size: 11px;
+  padding: 7px 10px; outline: none;
+  transition: border-color 0.15s, background 0.3s;
+}
+.modal-input:focus, .modal-select:focus { border-color: var(--accent); }
+.modal-select { cursor: pointer; }
+.modal-role-preview {
+  width: 24px; height: 24px; border-radius: 50%;
+  border: 2px solid var(--border); flex-shrink: 0;
+  transition: background 0.2s;
+}
+.modal-save-btn {
+  margin: 0 16px 16px;
+  background: var(--accent-dim); border: 1px solid var(--accent);
+  border-radius: 4px; color: var(--accent);
+  font-family: var(--font-ui); font-size: 11px; font-weight: 700;
+  letter-spacing: 1.5px; padding: 8px;
+  cursor: pointer; transition: background 0.15s;
+}
+.modal-save-btn:hover { background: rgba(58,82,169,0.35); }
+
+/* Modal tabs */
+.modal-tabs {
+  display: flex; border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.modal-tab {
+  flex: 1; background: none; border: none; border-bottom: 2px solid transparent;
+  color: var(--text-dim); font-family: var(--font-mono);
+  font-size: 10px; font-weight: 700; letter-spacing: 2px;
+  padding: 10px 0; cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -1px;
+}
+.modal-tab:hover { color: var(--accent); }
+.modal-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* Logged-in info */
+.modal-username {
+  font-size: 12px; font-weight: 700; letter-spacing: 1.5px;
+  color: var(--accent);
+}
+.modal-logout-btn {
+  background: var(--danger-dim) !important;
+  border-color: var(--danger) !important;
+  color: var(--danger) !important;
+}
+.modal-logout-btn:hover { background: rgba(255,59,59,0.22) !important; }
+
+/* Error text */
+.modal-error {
+  font-family: var(--font-mono); font-size: 9px;
+  color: var(--danger); letter-spacing: 0.5px;
+  min-height: 14px; line-height: 1.4;
+}
+
+/* light theme modal */
+body.light-theme .modal-card { background: var(--bg-panel); border-color: var(--border); }
+body.light-theme .modal-header { background: var(--bg-section); }
+body.light-theme .modal-input,
+body.light-theme .modal-select { background: var(--bg-section); }
+
+/* ─── CYRILLIC FONT COMPENSATION (RU / UA) ───────────────────────────────────
+   Cyrillic strings are typically 20-40% longer than their English equivalents.
+   Shrink font sizes in tight UI areas so nothing overflows.
+*/
+body.lang-ru, body.lang-ua {
+  /* Status bar items */
+  --status-font: 9px;
+}
+body.lang-ru .status-item,
+body.lang-ua .status-item {
+  font-size: 9px; letter-spacing: 0.5px;
+}
+body.lang-ru .filter-chip,
+body.lang-ua .filter-chip {
+  font-size: 8px; letter-spacing: 0.5px; padding: 4px 7px;
+}
+body.lang-ru .group-label,
+body.lang-ua .group-label {
+  font-size: 8px; letter-spacing: 1px;
+}
+body.lang-ru .section-header span[data-i18n],
+body.lang-ua .section-header span[data-i18n] {
+  font-size: 8.5px; letter-spacing: 1px;
+}
+body.lang-ru .vezha-ctrl-btn,
+body.lang-ua .vezha-ctrl-btn {
+  font-size: 9px; padding: 7px 10px; letter-spacing: 1px;
+}
+body.lang-ru .vezha-status,
+body.lang-ua .vezha-status {
+  font-size: 9px; letter-spacing: 0.5px;
+}
+body.lang-ru .chat-identity-input::placeholder,
+body.lang-ua .chat-identity-input::placeholder { font-size: 8px; }
+body.lang-ru .modal-label,
+body.lang-ua .modal-label { font-size: 8px; letter-spacing: 1px; }
+body.lang-ru .modal-tab,
+body.lang-ua .modal-tab { font-size: 9px; letter-spacing: 1px; }
+body.lang-ru .danger-btn,
+body.lang-ua .danger-btn { font-size: 9px; letter-spacing: 0.5px; }
+
+/* ─── ARTILLERY CALCULATOR VIEW ──────────────────────────────────────────────*/
+#artilleryView {
+  display: none;
+  position: fixed;
+  top: var(--topbar-h); bottom: var(--statusbar-h);
+  left: 0; right: 0;
+  flex-direction: column;
+  background: var(--bg-base);
+  overflow: hidden;
+  padding: 20px;
+  gap: 16px;
+  z-index: 10;
+  transition: background 0.3s;
+}
+#artilleryView.active { display: flex; }
+
+.arty-header {
+  display: flex; align-items: center; gap: 10px;
+  padding-bottom: 14px; border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.arty-header-icon { color: var(--accent); opacity: 0.8; }
+.arty-header-title {
+  font-size: 13px; font-weight: 700; letter-spacing: 3px;
+  color: var(--text-primary); text-transform: uppercase;
+}
+.arty-header-sub {
+  font-size: 10px; color: var(--text-dim); letter-spacing: 1px;
+  font-family: var(--font-mono); margin-left: auto;
+}
+
+.arty-main {
+  display: flex; flex-direction: row;
+  gap: 16px; flex: 1; min-height: 0;
+}
+@media (max-width: 860px) { .arty-main { flex-direction: column; } }
+
+/* Sidebar containing config + results */
+.arty-sidebar {
+  width: 290px; flex-shrink: 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex; flex-direction: column; gap: 12px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  transition: background 0.3s, border-color 0.3s;
+}
+.arty-sidebar::-webkit-scrollbar       { width: 4px; }
+.arty-sidebar::-webkit-scrollbar-track { background: transparent; }
+.arty-sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+/* Map wrapper */
+.arty-map-wrap {
+  flex: 1; min-width: 0;
+  position: relative;
+  border-radius: 8px; overflow: hidden;
+  border: 1px solid var(--border);
+}
+.arty-right-panel {
+  width: var(--right-w); background: var(--bg-panel); border-left: 1px solid var(--border);
+  display: flex; flex-direction: column; align-items: center;
+  padding: 8px 0; gap: 4px; flex-shrink: 0;
+}
+#artyMapEl {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+}
+#artyWatermarkCanvas {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 450;
+  width: 100%; height: 100%;
+}
+/* ── 3D canvas overlay (shared by monitor map and arty calc) ── */
+.view-3d-canvas {
+  position: absolute; inset: 0;
+  z-index: 520;          /* above drawCanvas (500) */
+  display: block;
+  cursor: grab;
+}
+.view-3d-canvas:active { cursor: grabbing; }
+.draw-mode-3d .view-3d-canvas,
+.draw-mode-3d .view-3d-canvas:active { cursor: crosshair !important; }
+
+/* ── 2D / 3D pill buttons inside the arty map ── */
+.map-dim-group {
+  position: absolute; top: 10px; right: 10px;
+  z-index: 530;
+  display: flex; gap: 2px;
+  background: rgba(6,12,22,0.82);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px;
+}
+.map-dim-btn {
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.5px; padding: 3px 9px;
+  background: transparent; border: none; border-radius: 3px;
+  color: var(--text-dim); cursor: pointer; transition: all .15s;
+}
+.map-dim-btn:hover  { background: var(--accent-dim); color: var(--accent); }
+.map-dim-btn.active { background: var(--accent-dim); color: var(--accent); }
+
+.arty-map-hint {
+  position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+  background: rgba(0,0,0,0.65); color: var(--text-dim);
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 1.5px;
+  padding: 5px 14px; border-radius: 4px; pointer-events: none;
+  white-space: nowrap; z-index: 500;
+}
+
+/* Legacy .arty-panel still used if present */
+.arty-panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex; flex-direction: column; gap: 14px;
+  transition: background 0.3s, border-color 0.3s;
+}
+.arty-panel-title {
+  font-size: 9px; font-weight: 700; letter-spacing: 2.5px;
+  color: var(--text-dim); text-transform: uppercase;
+  padding-bottom: 10px; border-bottom: 1px solid var(--border);
+}
+.arty-field { display: flex; flex-direction: column; gap: 5px; }
+.arty-label {
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-dim);
+}
+.arty-select, .arty-input {
+  background: var(--bg-section); border: 1px solid var(--border);
+  border-radius: 4px; color: var(--text-primary);
+  font-family: var(--font-mono); font-size: 11px;
+  padding: 7px 10px; outline: none; width: 100%;
+  transition: border-color 0.15s, background 0.3s;
+  box-sizing: border-box;
+}
+.arty-select:focus, .arty-input:focus { border-color: var(--accent); }
+.arty-select { cursor: pointer; }
+.arty-input::placeholder { color: var(--text-dim); }
+.arty-xy-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+}
+.arty-divider { height: 1px; background: var(--border); margin: 2px 0; }
+.arty-calc-btn {
+  margin-top: auto;
+  background: var(--accent-dim); border: 1px solid var(--accent);
+  border-radius: 4px; color: var(--accent);
+  font-family: var(--font-ui); font-size: 11px; font-weight: 700;
+  letter-spacing: 2px; padding: 10px;
+  cursor: pointer; transition: background 0.15s;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.arty-calc-btn:hover { background: rgba(58,82,169,0.35); }
+.arty-calc-btn svg { flex-shrink: 0; }
+
+/* Results (sidebar single-column rows) */
+#artyResults {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.arty-result-row {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 10px 12px;
+  background: var(--bg-section); border: 1px solid var(--border);
+  border-radius: 6px;
+  transition: background 0.3s, border-color 0.3s;
+}
+.arty-result-row.accent-result {
+  border-color: var(--accent); background: var(--accent-dim);
+}
+.arty-result-row.muted-row {
+  background: none; border-color: transparent; padding: 4px 0;
+}
+.arty-error-row {
+  padding: 10px 12px;
+  background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.3);
+  border-radius: 6px;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 1px;
+  color: #f87171;
+}
+.arty-no-result {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 8px; padding: 16px 0; color: var(--text-dim);
+}
+.arty-no-result-txt {
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: 1.5px;
+  text-align: center; line-height: 1.5;
+}
+
+/* Legacy results grid — keep for backwards compat */
+.arty-results-panel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-content: start;
+}
+.arty-result-card {
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 6px;
+  transition: background 0.3s, border-color 0.3s;
+}
+.arty-result-card.span2 { grid-column: 1 / -1; }
+.arty-result-card.accent-card {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.arty-result-label {
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  letter-spacing: 2px; text-transform: uppercase; color: var(--text-dim);
+}
+.arty-result-val {
+  font-family: var(--font-mono); font-size: 28px; font-weight: 700;
+  color: var(--text-primary); letter-spacing: 2px; line-height: 1;
+}
+.arty-result-val.large { font-size: 38px; }
+.arty-result-val.dim { color: var(--text-dim); }
+.arty-result-unit {
+  font-size: 11px; font-weight: 400; color: var(--text-dim);
+  letter-spacing: 1px; margin-left: 4px;
+}
+.arty-result-sub {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-dim);
+  margin-top: 2px;
+}
+/* (legacy .arty-no-result style removed — superseded by sidebar version above) */
+.arty-error-card {
+  grid-column: 1 / -1; background: var(--danger-dim);
+  border: 1px solid var(--danger); border-radius: 8px; padding: 14px 16px;
+  color: var(--danger); font-family: var(--font-mono); font-size: 11px;
+}
+/* Compact val sizes inside sidebar rows */
+.arty-sidebar .arty-result-val { font-size: 18px; }
+.arty-sidebar .arty-result-val.large { font-size: 26px; }
+
+/* ─── FIRE MISSION LOG ─────────────────────────────────────────────────────── */
+.arty-log-header {
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  letter-spacing: 2.5px; color: var(--text-dim);
+  text-transform: uppercase; padding: 4px 0 6px;
+  border-top: 1px solid var(--border); margin-top: 4px;
+}
+.arty-mission-log {
+  display: flex; flex-direction: column; gap: 6px;
+  overflow-y: auto; max-height: 200px;
+}
+.arty-log-entry {
+  background: var(--bg-section); border: 1px solid var(--border);
+  border-radius: 5px; padding: 7px 10px;
+  display: flex; flex-direction: column; gap: 2px;
+  transition: background 0.3s, border-color 0.3s;
+}
+.arty-log-time {
+  font-family: var(--font-mono); font-size: 8px; color: var(--accent);
+  letter-spacing: 1px;
+}
+.arty-log-line {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-dim);
+  line-height: 1.5;
+}
+
+/* ════════════════════════════════════════════════════════
+   MOBILE  (≤ 600 px portrait)
+   ════════════════════════════════════════════════════════ */
+@media (max-width: 600px) {
+
+  /* ── Topbar ── */
+  #topBar { padding: 0 6px; gap: 4px; }
+  /* Hide text brand labels on very small screens, keep icon buttons */
+  .brand-name, .brand-sep, .brand-module, .top-divider { display: none; }
+  /* Shrink icon buttons a touch */
+  .topBtn { width: 28px; height: 28px; }
+  /* Stack lang switcher tighter */
+  .lang-switcher { gap: 1px; }
+  .lang-btn { padding: 2px 4px; font-size: 9px; }
+  /* Status pill: drop text, keep dot */
+  .status-pill span:not(.pulse-dot) { display: none; }
+  .status-pill { padding: 3px 6px; }
+  /* Clock smaller */
+  #clock { font-size: 11px; letter-spacing: 0; }
+
+  /* ── Left panel: icon-strip visible by default, slides open ── */
+  #leftPanel {
+    position: fixed;
+    top: var(--topbar-h); bottom: var(--statusbar-h);
+    left: 0; z-index: 2000;
+    width: 30px;            /* just the collapse-arrow strip */
+    overflow: visible;
+    border-right: 1px solid var(--border);
+    transition: width 0.25s ease;
+  }
+  #leftPanel.mobile-open {
+    width: min(248px, 82vw);
+    box-shadow: 4px 0 24px rgba(0,0,0,0.65);
+  }
+  /* Collapse arrow: always visible in the 30 px strip */
+  #collapseLeftBtn {
+    position: absolute;
+    top: 50%;
+    right: 4px;
+    transform: translateY(-50%);
+    z-index: 2600;
+    width: 22px; height: 22px;
+    background: var(--bg-panel);
+    border-color: var(--border-light);
+  }
+  /* Arrow points right (→ open) when closed, left (← close) when open */
+  #leftPanel:not(.mobile-open) #collapseLeftBtn svg { transform: rotate(180deg); }
+  #leftPanel.mobile-open #collapseLeftBtn { right: 6px; top: 8px; transform: none; }
+  /* Panel inner hidden until open */
+  #leftPanel:not(.mobile-open) .panel-inner { opacity: 0; pointer-events: none; }
+
+  /* Offset appBody by the 30px strip so map content isn't hidden behind it */
+  #appBody { left: 30px; }
+
+  /* ── Right toolbar ── */
+  #rightToolbar { display: none; }   /* hide vertical right rail on mobile */
+
+  /* ── Vezha: collapse chat sidebar by default on mobile ── */
+  .vezha-chat-sidebar { width: 26px; min-width: 26px; }
+  .vezha-chat-sidebar .chat-inner { opacity: 0; pointer-events: none; }
+
+  /* ── Vezha bottom controls bar ── */
+  .vezha-controls {
+    height: auto; min-height: 44px;
+    flex-wrap: wrap;
+    gap: 5px; padding: 6px 8px;
+    justify-content: flex-start;
+  }
+  .vezha-ctrl-btn {
+    padding: 5px 9px;
+    font-size: 9px; letter-spacing: 0.8px;
+    gap: 5px;
+  }
+  .vezha-ctrl-btn svg { width: 12px; height: 12px; flex-shrink: 0; }
+  .vezha-ctrl-sep { height: 18px; margin: 0 2px; }
+  .vezha-status { font-size: 9px; letter-spacing: 0.5px; white-space: nowrap; }
+  /* Override the collapsed hide when user manually opens it */
+  .vezha-chat-sidebar:not(.collapsed) .chat-inner { opacity: 1; pointer-events: auto; }
+  .vezha-chat-sidebar:not(.collapsed) { width: min(240px, 78vw); }
+
+  /* ── Artillery view ── */
+  #artilleryView { padding: 8px; gap: 8px; }
+  .arty-main { flex-direction: column; }
+  .arty-sidebar {
+    width: 100%; flex-shrink: 0;
+    max-height: 50vh; overflow-y: auto;
+  }
+  .arty-map-wrap { min-height: 280px; }
+
+  /* ── Monitor chat on mobile ── */
+  .monitor-chat { right: 6px; width: calc(100vw - 12px - 30px); }
+
+  /* ── Account modal ── */
+  .account-modal-box {
+    width: 92vw; max-width: 340px;
+    padding: 16px;
+  }
+
+  /* ── Status bar ── */
+  #statusBar { font-size: 9px; padding: 0 6px; gap: 6px; }
+  .sb-item { gap: 3px; }
+
+  /* ── Symbol panel ── */
+  .symbolBtn svg { width: 32px; height: 40px; }
+  .symbolBtn { padding: 3px; }
+
+  /* ── Ruler readout ── */
+  #rulerReadout { font-size: 9px; }
+}
+
+/* Medium mobile / landscape (601–860 px) */
+@media (min-width: 601px) and (max-width: 860px) {
+  .brand-module, .top-divider { display: none; }
+  #leftPanel { width: 190px; }
+  :root { --left-w: 190px; }
+  .arty-main { flex-direction: column; }
+  .arty-sidebar { width: 100%; max-height: 45vh; }
+  .arty-map-wrap { min-height: 260px; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AUTH SCREEN
+═══════════════════════════════════════════════════════════ */
+.auth-screen {
+  position: fixed; inset: 0; z-index: 99999;
+  background: var(--bg-base);
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+}
+.auth-screen.hidden { display: none; }
+.auth-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 20px 70px rgba(0,0,0,0.75);
+  width: 100%; max-width: 360px;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  max-height: 100vh; overflow-y: auto;
+}
+.auth-brand {
+  display: flex; align-items: center; gap: 14px;
+  padding: 22px 20px 18px;
+  background: var(--bg-section);
+  border-bottom: 1px solid var(--border);
+}
+.auth-brand-text { display: flex; flex-direction: column; gap: 3px; }
+.auth-brand-name {
+  font-family: var(--font-ui); font-weight: 700;
+  font-size: 15px; letter-spacing: 2px;
+  color: var(--text-primary);
+}
+.auth-brand-sub {
+  font-family: var(--font-mono); font-size: 8px;
+  letter-spacing: 1.5px; color: var(--text-dim); text-transform: uppercase;
+}
+.auth-tabs {
+  display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.auth-tab {
+  flex: 1; background: none; border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim); font-family: var(--font-mono);
+  font-size: 10px; font-weight: 700; letter-spacing: 2px;
+  padding: 10px 0; cursor: pointer;
+  transition: color 0.15s, border-color 0.15s; margin-bottom: -1px;
+}
+.auth-tab:hover { color: var(--accent); }
+.auth-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.auth-panel { padding: 18px 20px; display: flex; flex-direction: column; gap: 11px; }
+.auth-field { display: flex; flex-direction: column; gap: 5px; }
+.auth-label {
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-dim);
+}
+.auth-input {
+  background: var(--bg-section); border: 1px solid var(--border);
+  border-radius: 4px; color: var(--text-primary);
+  font-family: var(--font-mono); font-size: 11px;
+  padding: 8px 10px; outline: none; transition: border-color 0.15s;
+  width: 100%;
+}
+.auth-input:focus { border-color: var(--accent); }
+.auth-error {
+  font-family: var(--font-mono); font-size: 9px;
+  color: var(--danger); letter-spacing: 0.5px; min-height: 14px; line-height: 1.4;
+}
+.auth-btn {
+  background: var(--accent-dim); border: 1px solid var(--accent);
+  border-radius: 4px; color: var(--accent);
+  font-family: var(--font-ui); font-size: 11px; font-weight: 700;
+  letter-spacing: 1.5px; padding: 9px;
+  cursor: pointer; transition: background 0.15s; text-align: center;
+}
+.auth-btn:hover { background: rgba(58,82,169,0.35); }
+.auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.auth-btn-outline {
+  background: transparent !important;
+  border-color: var(--border) !important;
+  color: var(--text-dim) !important;
+}
+.auth-btn-outline:hover { background: var(--bg-hover) !important; color: var(--text-primary) !important; }
+.auth-pending { text-align: center; align-items: center; padding: 28px 20px; gap: 10px; }
+.auth-pending-icon { font-size: 38px; line-height: 1; }
+.auth-pending-title {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+  letter-spacing: 2px; color: var(--accent);
+}
+.auth-pending-msg {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-dim);
+  letter-spacing: 0.4px; line-height: 1.8; margin-bottom: 6px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MODAL COLLAPSIBLE SECTIONS (settings / admin)
+═══════════════════════════════════════════════════════════ */
+.modal-collapsible {
+  border: 1px solid var(--border); border-radius: 4px; overflow: hidden;
+}
+.modal-collapsible + .modal-collapsible { margin-top: 6px; }
+.modal-collapsible-header {
+  width: 100%; background: var(--bg-section); border: none;
+  color: var(--text-label); font-family: var(--font-mono);
+  font-size: 9px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
+  padding: 8px 12px; cursor: pointer;
+  display: flex; align-items: center; justify-content: space-between;
+  transition: background 0.15s, color 0.15s;
+}
+.modal-collapsible-header:hover { background: var(--bg-hover); color: var(--text-primary); }
+.modal-collapsible-body {
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;
+  background: var(--bg-panel);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ADMIN PANEL
+═══════════════════════════════════════════════════════════ */
+.admin-sub-section { display: flex; flex-direction: column; gap: 4px; }
+.admin-sub-section + .admin-sub-section { margin-top: 8px; }
+.admin-sub-title {
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-dim);
+  padding-bottom: 5px; border-bottom: 1px solid var(--border);
+}
+.admin-list { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; }
+.admin-empty {
+  font-family: var(--font-mono); font-size: 9px; color: var(--text-dim);
+  letter-spacing: 0.5px; padding: 4px 0;
+}
+.admin-row {
+  display: flex; align-items: center; gap: 5px;
+  padding: 5px 7px; background: var(--bg-section); border-radius: 3px;
+  font-family: var(--font-mono); font-size: 9px;
+}
+.admin-row-name { color: var(--text-primary); font-weight: 700; flex: 1; letter-spacing: 0.8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-row-role { color: var(--text-dim); font-size: 8px; letter-spacing: 0.3px; flex-shrink: 0; }
+.admin-btn {
+  background: none; border: 1px solid; border-radius: 3px;
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  letter-spacing: 0.8px; padding: 2px 6px; cursor: pointer;
+  transition: background 0.12s, color 0.12s; flex-shrink: 0;
+}
+.admin-btn-approve { border-color: #34d399; color: #34d399; }
+.admin-btn-approve:hover { background: rgba(52,211,153,0.15); }
+.admin-btn-deny { border-color: var(--danger); color: var(--danger); }
+.admin-btn-deny:hover { background: var(--danger-dim); }
+.admin-btn-neutral { border-color: var(--border-light); color: var(--text-dim); }
+.admin-btn-neutral:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-light); }
+/* Role-change dropdown inside admin row */
+.admin-role-select {
+  background: transparent; border: 1px solid var(--border);
+  border-radius: 3px; color: var(--text-dim);
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  letter-spacing: 0.3px; padding: 1px 3px; cursor: pointer;
+  flex-shrink: 0;
+}
+.admin-role-select:focus { outline: 1px solid var(--accent); }
+/* Debug panel */
+.debug-pre {
+  font-family: var(--font-mono); font-size: 9px; line-height: 1.55;
+  color: var(--text-dim); background: var(--bg-base);
+  border: 1px solid var(--border); border-radius: 3px;
+  padding: 8px; white-space: pre-wrap; word-break: break-all;
+  max-height: 220px; overflow-y: auto; margin: 0;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+.debug-pre::-webkit-scrollbar       { width: 4px; }
+.debug-pre::-webkit-scrollbar-track { background: transparent; }
+.debug-pre::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+/* 3D marker editor panel (fixed, always above Three.js canvas) */
+.mep-popup-3d {
+  position: fixed; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 9999;
+  background: var(--bg-panel); border: 1px solid var(--border-light);
+  border-radius: 4px; box-shadow: 0 4px 20px rgba(0,0,0,.7);
+}
+.mep-close3d {
+  position: absolute; top: 4px; right: 6px;
+  background: transparent; border: none;
+  color: var(--text-dim); cursor: pointer; font-size: 12px; line-height: 1;
+}
+.mep-close3d:hover { color: var(--accent); }
+/* ─── VEZHA ROOMS / CHANNELS PANEL ─────────────────────────────────────────── */
+.vezha-rooms-panel {
+  width: 190px; flex-shrink: 0;
+  background: var(--bg-panel); border-left: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  transition: background 0.3s, border-color 0.3s;
+}
+.vrp-header {
+  display: flex; align-items: center; gap: 7px;
+  padding: 0 12px; height: 38px; flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 2px; color: var(--text-dim); text-transform: uppercase;
+}
+.vrp-list {
+  flex: 1; overflow-y: auto; padding: 6px 0;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+.vrp-list::-webkit-scrollbar       { width: 4px; }
+.vrp-list::-webkit-scrollbar-track { background: transparent; }
+.vrp-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* Room item */
+.vr-item { border-radius: 3px; margin: 1px 6px; }
+.vr-hdr {
+  display: flex; align-items: center; gap: 5px;
+  padding: 5px 7px; border-radius: 3px;
+  cursor: pointer; transition: background 0.12s;
+}
+.vr-hdr:hover  { background: var(--bg-hover); }
+.vr-item.vr-mine > .vr-hdr {
+  background: var(--accent-dim); border-left: 2px solid var(--accent);
+  padding-left: 5px;
+}
+.vr-icon { color: var(--text-dim); flex-shrink: 0; }
+.vr-item.vr-mine > .vr-hdr .vr-icon { color: var(--accent); }
+
+.vr-name {
+  flex: 1; font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 1px; color: var(--text-dim); text-transform: uppercase;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.vr-item.vr-mine > .vr-hdr .vr-name { color: var(--accent); }
+
+.vr-cnt {
+  font-family: var(--font-mono); font-size: 8px; color: var(--text-dim);
+  background: var(--bg-section); border-radius: 8px;
+  padding: 1px 5px; flex-shrink: 0;
+}
+.vr-edit-btn {
+  background: transparent; border: none; color: var(--text-dim);
+  font-size: 10px; cursor: pointer; padding: 0 2px; opacity: 0;
+  transition: opacity 0.12s, color 0.12s;
+  flex-shrink: 0;
+}
+.vr-hdr:hover .vr-edit-btn { opacity: 1; }
+.vr-edit-btn:hover { color: var(--accent); }
+
+/* Inline rename input */
+.vr-name-inp {
+  flex: 1; background: var(--bg-section); border: 1px solid var(--accent);
+  border-radius: 3px; color: var(--text-primary);
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 1px; padding: 1px 4px; outline: none;
+  text-transform: uppercase;
+}
+
+/* Members list inside a room */
+.vr-members {
+  padding: 2px 7px 5px 20px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.vr-member {
+  display: flex; align-items: center; gap: 5px;
+  font-family: var(--font-mono); font-size: 8.5px;
+  color: var(--text-dim); letter-spacing: 0.5px;
+}
+.vr-dot {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  box-shadow: 0 0 4px rgba(0,0,0,0.4);
+}
+.vr-mname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Admin move dropdown */
+.vr-move-sel {
+  background: var(--bg-section); border: 1px solid var(--border);
+  border-radius: 3px; color: var(--text-dim);
+  font-family: var(--font-mono); font-size: 7px; padding: 1px 2px;
+  cursor: pointer; flex-shrink: 0; max-width: 60px;
+}
+.vr-move-sel:focus { outline: 1px solid var(--accent); }
+
+/* Hide rooms panel in non-vezha views */
+body:not(.in-vezha) .vezha-rooms-panel { display: none; }
+
+.presence-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+}
+.presence-dot.online  { background: #34d399; box-shadow: 0 0 5px rgba(52,211,153,0.5); }
+.presence-dot.offline { background: var(--border); }
+
+/* ═══════════════════════════════════════════════════════════
+   WATERMARK CANVAS
+═══════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════
+   MARKER SCALE
+═══════════════════════════════════════════════════════════ */
+:root { --mkr-scale: 0.82; }
+.mkr-wrap {
+  transform: scale(var(--mkr-scale));
+  transform-origin: 70px 67px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CUSTOM CONFIRM POPUP
+═══════════════════════════════════════════════════════════ */
+.confirm-overlay {
+  position: fixed; inset: 0; z-index: 99999;
+  background: rgba(0,0,0,0.6);
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(4px);
+}
+.confirm-overlay[hidden] { display: none !important; }
+.confirm-box {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-light);
+  border-radius: 8px; padding: 22px 26px;
+  min-width: 260px; max-width: 340px;
+  display: flex; flex-direction: column; gap: 16px;
+  box-shadow: 0 8px 40px rgba(0,0,0,.75);
+  animation: confirmIn .12s ease-out;
+}
+@keyframes confirmIn {
+  from { transform: scale(0.92); opacity: 0; }
+  to   { transform: scale(1);    opacity: 1; }
+}
+.confirm-msg {
+  font-family: var(--font-mono); font-size: 11px;
+  letter-spacing: 1px; color: var(--text-primary); line-height: 1.6;
+}
+.confirm-btns { display: flex; gap: 8px; justify-content: flex-end; }
+.confirm-btn {
+  padding: 6px 16px; border-radius: 4px;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 1px; cursor: pointer; transition: all .15s;
+}
+.confirm-btn-cancel {
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+.confirm-btn-cancel:hover { border-color: var(--border-light); color: var(--text-primary); }
+.confirm-btn-ok {
+  background: rgba(220,50,50,0.18);
+  border: 1px solid rgba(220,60,60,0.7);
+  color: rgba(230,80,80,1);
+}
+.confirm-btn-ok:hover { background: rgba(220,50,50,0.32); }
+
+/* ═══════════════════════════════════════════════════════════
+   CHANNEL TABS (Vezha chat sidebar)
+═══════════════════════════════════════════════════════════ */
+.vc-channel-tabs {
+  display: flex; flex-wrap: wrap; gap: 2px;
+  padding: 5px 7px; border-bottom: 1px solid var(--border);
+  background: var(--bg-section); flex-shrink: 0;
+  max-height: 68px; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+.vc-channel-tab {
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  letter-spacing: 0.6px; padding: 3px 7px; border-radius: 3px;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--text-dim); cursor: pointer; transition: all .15s;
+  white-space: nowrap;
+}
+.vc-channel-tab.active {
+  background: var(--accent-dim); border-color: var(--accent); color: var(--accent);
+}
+.vc-channel-tab:hover:not(.active) { border-color: var(--border-light); color: var(--text-primary); }
+
+/* ═══════════════════════════════════════════════════════════
+   MAP SELECTOR DROPDOWN
+═══════════════════════════════════════════════════════════ */
+.map-selector { position: relative; display: inline-flex; }
+.map-sel-btn {
+  display: flex; align-items: center; gap: 4px;
+  padding: 3px 8px 3px 6px;
+  background: var(--bg-section); border: 1px solid var(--border);
+  border-radius: 4px; color: var(--text-dim);
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 1px; cursor: pointer; transition: all .15s;
+  white-space: nowrap; height: 26px;
+}
+.map-sel-btn:hover { border-color: var(--accent); color: var(--accent); }
+.map-sel-dropdown {
+  position: absolute; top: calc(100% + 4px); left: 0;
+  min-width: 170px;
+  background: var(--bg-panel); border: 1px solid var(--border-light);
+  border-radius: 5px; z-index: 5000;
+  box-shadow: 0 6px 24px rgba(0,0,0,.6);
+  display: none;
+}
+.map-sel-dropdown.open { display: block; }
+.map-sel-opt {
+  padding: 8px 12px; font-family: var(--font-mono); font-size: 9px;
+  letter-spacing: 1px; color: var(--text-dim); cursor: pointer;
+  transition: background .15s; border-bottom: 1px solid var(--border);
+}
+.map-sel-opt:last-child { border-bottom: none; }
+.map-sel-opt:hover { background: var(--bg-hover); color: var(--text-primary); }
+.map-sel-opt.active { color: var(--accent); }
+.map-sel-scale {
+  font-size: 7px; color: var(--text-dim); display: block; margin-top: 1px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ROOMS PANEL — STATUS ICONS + DRAG-TO-MOVE
+═══════════════════════════════════════════════════════════ */
+.vr-status-icons { display: flex; gap: 2px; flex-shrink: 0; align-items: center; }
+.vr-si {
+  font-size: 9px; line-height: 1; color: var(--text-dim); opacity: 0.55;
+  flex-shrink: 0; cursor: default;
+}
+.vr-si.si-muted   { color: #f87171; opacity: 1; }
+.vr-si.si-deaf    { color: #f87171; opacity: 1; }
+.vr-si.si-stream  { color: var(--accent); opacity: 1; }
+.vr-member { cursor: grab; user-select: none; }
+.vr-member.dragging { opacity: 0.35; }
+.vr-item.drag-over > .vr-hdr {
+  background: var(--accent-dim) !important;
+  outline: 1px dashed var(--accent);
+  border-radius: 3px;
+}
+
+#watermarkCanvas {
+  position: absolute; inset: 0; pointer-events: none;
+  z-index: 450; width: 100%; height: 100%;
+}
+.tile-watermark {
+  position: absolute; inset: 0; pointer-events: none;
+  z-index: 5; opacity: 1;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   SCROLL-TO-BOTTOM ARROW
+═══════════════════════════════════════════════════════════ */
+.scroll-to-bottom {
+  position: absolute; bottom: 52px; right: 8px;
+  width: 26px; height: 26px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-light);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; z-index: 20;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.18s;
+  color: var(--accent);
+  font-size: 13px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+}
+.scroll-to-bottom.visible { opacity: 1; pointer-events: auto; }
