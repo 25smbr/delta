@@ -294,7 +294,7 @@ const ROLE_COLORS = {
 const OWNER_CALLSIGN = "PLAYFRA";
 // ─── DRAWING STATE ───────────────────────────────────────────────────────────
 let drawMode    = false;
-let activeTool  = "pen";
+let activeTool  = null;
 let penColor    = "#ff4444";
 let penWidth    = 3;
 let isDrawing   = false;
@@ -1126,13 +1126,20 @@ function getPointCoords(pt) {
 // ─── TOOL SELECTION ───────────────────────────────────────────────────────────
 document.querySelectorAll(".drawToolBtn").forEach((btn) => {
     btn.addEventListener("click", () => {
-        activeTool = btn.dataset.tool;
-        document.querySelectorAll(".drawToolBtn").forEach(b => b.classList.remove("active"));
-        btn.classList.add("active");
-        canvas.dataset.tool = activeTool;
+        if (activeTool === btn.dataset.tool) {
+            // Clicking the active tool deselects it
+            activeTool = null;
+            document.querySelectorAll(".drawToolBtn").forEach(b => b.classList.remove("active"));
+            canvas.dataset.tool = "";
+        } else {
+            activeTool = btn.dataset.tool;
+            document.querySelectorAll(".drawToolBtn").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            canvas.dataset.tool = activeTool;
+        }
     });
 });
-document.querySelector('[data-tool="pen"]')?.classList.add("active");
+// No tool selected by default
 // ─── DRAW MODE TOGGLE ─────────────────────────────────────────────────────────
 const toggleBtn = document.getElementById("toggleDrawMode");
 function applyDrawMode() {
@@ -1378,7 +1385,7 @@ canvas.addEventListener("mousedown", (e) => {
     const _lbw = document.getElementById("labelInputWrap");
     if ((_znw && _znw.style.display !== "none") ||
         (_lbw && _lbw.style.display !== "none")) return;
-    if (!drawMode) return;
+    if (!drawMode || !activeTool) return;
     isDrawing = true;
     const { offsetX: x, offsetY: y } = e;
     startCanvasX = x;
@@ -1790,8 +1797,9 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
     controls.mouseButtons = {
         LEFT:   THREE.MOUSE.PAN,
         MIDDLE: THREE.MOUSE.ROTATE,
-        RIGHT:  THREE.MOUSE.DOLLY
+        RIGHT:  null   // right-click does nothing; zoom via scroll wheel only
     };
+    controls.enableZoom = true;   // scroll wheel zoom stays on
     controls.target.set(0, 0, 0);
     controls.update();
 
