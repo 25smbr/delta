@@ -2524,10 +2524,29 @@ async function enterVezha() {
 
     updateTileLayout();
     initMic();
+
+    // ── Request streams from peers that are already present ──
+    // Done AFTER all listeners are subscribed so offers/answers won't be missed.
+    // The sessions listener "added" handler only fires offers when WE are the
+    // streamer; this covers the reverse case (we join late, others are streaming).
+    try {
+        const existingSnap = await getDocs(vezha_sessions);
+        existingSnap.forEach(d => {
+            const uid = d.data().userId;
+            if (uid === myPeerId) return;
+            // Send a lightweight "request-stream" signal so the remote peer
+            // creates a fresh offer to us (they'll include their stream if any).
+            addDoc(vezha_signals, {
+                from: myPeerId, to: uid,
+                type: "request-stream",
+                created: Date.now()
+            });
+        });
+    } catch (_) {}
 }
 
-function exitVezha() {
-    stopSharing();
+async function exitVezha() {
+    await stopSharing();
     stopMic();
     vezhaActive = false;
     document.body.classList.remove("in-vezha");
@@ -2576,13 +2595,23 @@ async function shareScreen() {
     }
 }
 
-function stopSharing() {
+async function stopSharing() {
     if (!localStream) return;
     localStream.getTracks().forEach(t => t.stop());
     localStream = null;
     removeTile("self");
     document.getElementById("shareScreenBtn").style.display = "flex";
     document.getElementById("stopSharingBtn").style.display  = "none";
+
+    // Tell all peers to remove our tile immediately (don't wait for ICE timeout)
+    const stopSignals = Object.keys(peers).map(uid =>
+        addDoc(vezha_signals, { from: myPeerId, to: uid, type: "stop-stream", created: Date.now() })
+            .catch(() => {})
+    );
+    await Promise.allSettled(stopSignals);
+
+    // Close all peer connections — we're no longer sending a stream
+    Object.keys(peers).forEach(uid => { peers[uid].pc.close(); delete peers[uid]; });
 }
 
 // ─── PEER CONNECTION ──────────────────────────────────────────────────────────
@@ -2637,6 +2666,14 @@ async function handleSignal(sig, docId) {
         } else if (type === "ice") {
             const pc = peers[from]?.pc;
             if (pc) await pc.addIceCandidate(new RTCIceCandidate(data));
+        } else if (type === "request-stream") {
+            // A peer just entered Vezha and is asking us to send them our stream.
+            // Close any stale PC for this peer then create a fresh offer.
+            if (peers[from]) { peers[from].pc.close(); delete peers[from]; }
+            if (localStream) await createOffer(from);
+        } else if (type === "stop-stream") {
+            // Remote peer stopped sharing — remove their tile immediately.
+            removePeer(from);
         }
     } catch (err) { console.error("Signal handling error:", err); }
     try { await deleteDoc(doc(db, "vezha_signals", docId)); } catch (_) {}
