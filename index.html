@@ -325,6 +325,10 @@
           <line x1="12" y1="6" x2="12" y2="4" stroke="currentColor" stroke-width="1.2"/>
         </svg>
       </button>
+      <div class="right-divider"></div>
+      <button class="rightBtn view-dim-btn active" id="map2DBtn" title="2D map view">2D</button>
+      <button class="rightBtn view-dim-btn"        id="map3DBtn" title="3D map view">3D</button>
+      <div class="right-divider"></div>
       <button class="rightBtn" title="Export map as PNG" id="exportBtn">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <rect x="1" y="1" width="14" height="11" rx="1" stroke="currentColor" stroke-width="1.2"/>
@@ -528,6 +532,10 @@
       <div class="arty-map-wrap">
         <div id="artyMapEl"></div>
         <canvas id="artyWatermarkCanvas"></canvas>
+        <div class="map-dim-group" id="artyDimGroup">
+          <button class="map-dim-btn active" id="arty2DBtn" title="2D view">2D</button>
+          <button class="map-dim-btn"        id="arty3DBtn" title="3D view">3D</button>
+        </div>
         <div class="arty-map-hint" data-i18n="artyMapHint">LMB = GUN POSITION  ·  RMB = TARGET</div>
       </div>
 
