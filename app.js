@@ -1399,6 +1399,7 @@ let arty3DState = null;   // active 3D instance for the arty calculator
 async function create3DScene(container, { withMarkers = false } = {}) {
     const THREE = await import("three");
     const { OrbitControls } = await import("three/addons/controls/OrbitControls.js");
+    const { CSS2DRenderer, CSS2DObject } = await import("three/addons/renderers/CSS2DRenderer.js");
 
     const W = container.clientWidth  || 800;
     const H = container.clientHeight || 600;
@@ -1410,6 +1411,12 @@ async function create3DScene(container, { withMarkers = false } = {}) {
     const canvas = renderer.domElement;
     canvas.className = "view-3d-canvas";
     container.appendChild(canvas);
+
+    // ── CSS2D label overlay (for marker text labels in 3D) ─────────────────────
+    const labelRenderer = new CSS2DRenderer();
+    labelRenderer.setSize(W, H);
+    labelRenderer.domElement.style.cssText =
+        "position:absolute;top:0;left:0;pointer-events:none;overflow:hidden;z-index:521;";
 
     // ── Scene / camera ────────────────────────────────────────────────────────
     const scene  = new THREE.Scene();
@@ -1454,12 +1461,16 @@ async function create3DScene(container, { withMarkers = false } = {}) {
     controls.target.set(0, 0, 0);
     controls.update();
 
+    // Attach label renderer after OrbitControls so it doesn't capture events
+    container.appendChild(labelRenderer.domElement);
+
     // ── Render loop ───────────────────────────────────────────────────────────
     let animId;
     const animate = () => {
         animId = requestAnimationFrame(animate);
         controls.update();
         renderer.render(scene, camera);
+        labelRenderer.render(scene, camera);
     };
     animate();
 
@@ -1470,6 +1481,7 @@ async function create3DScene(container, { withMarkers = false } = {}) {
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
         renderer.setSize(w, h);
+        labelRenderer.setSize(w, h);
     });
     ro.observe(container);
 
@@ -1672,13 +1684,29 @@ async function create3DScene(container, { withMarkers = false } = {}) {
         sprite.scale.set(42, 52, 1);
         scene.add(sprite);
         spriteToId.set(sprite, id);
-        Object.assign(markers3D[id], { sprite, tex, spriteMat });
+
+        // ── CSS2D label (same floating boxes as 2D mode) ───────────────────
+        const labelDiv = document.createElement("div");
+        labelDiv.style.cssText = "position:relative;width:140px;height:140px;pointer-events:none;";
+        const esc = s => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+        labelDiv.innerHTML =
+            `<div class="ml ml-tl">${esc(data.date)}</div>` +
+            `<div class="ml ml-tc">${esc(data.amount)}</div>` +
+            `<div class="ml ml-tr">${esc(data.info)}</div>` +
+            `<div class="ml ml-bl">${esc(data.author)}</div>` +
+            `<div class="ml ml-br">${esc(data.source)}</div>`;
+        const labelObj = new CSS2DObject(labelDiv);
+        labelObj.position.set(mx, POLE + 24, mz);
+        scene.add(labelObj);
+
+        Object.assign(markers3D[id], { sprite, tex, spriteMat, labelObj, labelDiv });
     }
 
     function removeMarker3D(id) {
         const m = markers3D[id]; if (!m) return;
         scene.remove(m.line);   m.lineGeo?.dispose(); m.lineMat?.dispose();
         if (m.sprite) { spriteToId.delete(m.sprite); scene.remove(m.sprite); m.tex?.dispose(); m.spriteMat?.dispose(); }
+        if (m.labelObj) { scene.remove(m.labelObj); m.labelDiv?.remove(); }
         delete markers3D[id];
     }
 
@@ -1786,6 +1814,7 @@ async function create3DScene(container, { withMarkers = false } = {}) {
             borderGeo.dispose(); borderMat.dispose();
             renderer.dispose();
             canvas.remove();
+            labelRenderer.domElement.remove();
         }
     };
 }
@@ -1872,7 +1901,7 @@ document.getElementById("exportBtn")?.addEventListener("click", () => {
     function finishExport(out) {
         const oc = out.getContext("2d");
         const W = out.width, H = out.height;
-        if (exportUserId) _paintWatermark(oc, W, H, exportUserId);
+        if (exportUserId) _paintWatermark(oc, W, H, exportUserId, true);
         oc.font = "bold 11px 'Share Tech Mono', monospace";
         oc.fillStyle = "rgba(90,150,220,0.9)";
         oc.shadowColor = "rgba(0,0,0,0.8)"; oc.shadowBlur = 3;
@@ -2349,8 +2378,9 @@ function restoreUserState(username) {
 
 // ─── WATERMARK ─────────────────────────────────────────────────────────────────
 // Core watermark painter — called once dimensions are known.
-function _paintWatermark(ctx, W, H, userId) {
-    ctx.clearRect(0, 0, W, H);
+// skipClear: pass true when painting ON TOP of existing content (e.g. export canvas).
+function _paintWatermark(ctx, W, H, userId, skipClear = false) {
+    if (!skipClear) ctx.clearRect(0, 0, W, H);
     ctx.save();
     ctx.globalAlpha = 0.11;   // 11% — clearly visible, not distracting
     ctx.fillStyle   = document.body.classList.contains("light-theme") ? "#1a2050" : "#9ab4ff";
