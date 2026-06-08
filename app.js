@@ -54,8 +54,8 @@ const i18n = {
         unmute: "UNMUTE", mute: "MUTE", deafen: "DEAFEN", undeafen: "UNDEAFEN",
         comms: "COMMS", typeMessage: "TYPE MESSAGE...", callsign: "CALLSIGN",
         roleOperator: "OPERATOR", roleCommander: "COMMANDER",
-        roleDrone: "DRONE PILOT", roleSniper: "SNIPER",
-        roleMedic: "MEDIC", roleIntel: "INTEL",
+        roleDrone: "DRONE PILOT", roleCrewman: "CREWMAN",
+        roleIntel: "INTEL",
         accountTitle: "ACCOUNT",
         login: "LOGIN", register: "REGISTER",
         username: "USERNAME", password: "PASSWORD", confirmPassword: "CONFIRM PASSWORD",
@@ -99,8 +99,8 @@ const i18n = {
         unmute: "ВКЛ МИК", mute: "ОТКЛ МИК", deafen: "ЗАГЛУШИТЬ", undeafen: "ЗВУК ВКЛ",
         comms: "СВЯЗЬ", typeMessage: "СООБЩЕНИЕ...", callsign: "ПОЗЫВНОЙ",
         roleOperator: "ОПЕРАТОР", roleCommander: "КОМАНДИР",
-        roleDrone: "ПИЛОТ БПЛА", roleSniper: "СНАЙПЕР",
-        roleMedic: "МЕДИК", roleIntel: "РАЗВЕДКА",
+        roleDrone: "ПИЛОТ БПЛА", roleCrewman: "ЭКИПАЖ",
+        roleIntel: "РАЗВЕДКА",
         accountTitle: "АККАУНТ",
         login: "ВОЙТИ", register: "РЕГИСТРАЦИЯ",
         username: "ЛОГИН", password: "ПАРОЛЬ", confirmPassword: "ПОВТОР ПАРОЛЯ",
@@ -144,8 +144,8 @@ const i18n = {
         unmute: "УВІМК МІК", mute: "ВИМК МІК", deafen: "ЗАГЛУШИТИ", undeafen: "ЗВУК УВ.",
         comms: "ЗВ'ЯЗОК", typeMessage: "ПОВІДОМЛЕННЯ...", callsign: "ПОЗИВНИЙ",
         roleOperator: "ОПЕРАТОР", roleCommander: "КОМАНДИР",
-        roleDrone: "ПІЛОТ БПЛА", roleSniper: "СНАЙПЕР",
-        roleMedic: "МЕДИК", roleIntel: "РОЗВІДКА",
+        roleDrone: "ПІЛОТ БПЛА", roleCrewman: "ЕКІПАЖ",
+        roleIntel: "РОЗВІДКА",
         accountTitle: "АККАУНТ",
         login: "УВІЙТИ", register: "РЕЄСТРАЦІЯ",
         username: "ЛОГІН", password: "ПАРОЛЬ", confirmPassword: "ПІДТВЕРДИТИ ПАРОЛЬ",
@@ -237,8 +237,7 @@ const ROLE_COLORS = {
     operator:   "#4fa3ff",
     commander:  "#ff6b6b",
     drone:      "#a78bfa",
-    sniper:     "#34d399",
-    medic:      "#fbbf24",
+    crewman:    "#fb923c",
     intel:      "#22d3ee"
 };
 const OWNER_CALLSIGN = "PLAYFRA";
@@ -357,8 +356,8 @@ function symbolSVG(type = "infantry_alive") {
           <path d="M23 3 L43 23 L23 43 L3 23 Z"/>
         </clipPath>
       </defs>
-      <!-- NATO hostile frame: plain salmon fill + black outline, NO background X -->
-      <path d="M23 3 L43 23 L23 43 L3 23 Z" fill="#f87171" fill-opacity="0.9"/>
+      <!-- NATO hostile frame: plain red fill + black outline, NO background X -->
+      <path d="M23 3 L43 23 L23 43 L3 23 Z" fill="#e3716a" fill-opacity="0.9"/>
       <path d="M23 3 L43 23 L23 43 L3 23 Z"
             fill="none" stroke="${d}" stroke-width="2.5" stroke-linejoin="round"/>
       <!-- Unit type designator (clipped to diamond) -->
@@ -1344,7 +1343,7 @@ async function create3DScene(container, { withMarkers = false } = {}) {
     const H = container.clientHeight || 600;
 
     // ── Renderer ──────────────────────────────────────────────────────────────
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(W, H);
     const canvas = renderer.domElement;
@@ -1499,16 +1498,42 @@ async function create3DScene(container, { withMarkers = false } = {}) {
             const dx = e.clientX - _ptrStart.x, dy = e.clientY - _ptrStart.y;
             _ptrStart = null;
             if (Math.hypot(dx, dy) < 5) {
-                const pt = getHitOnPlane(e.clientX, e.clientY);
-                if (pt) {
-                    const lat = PH / 2 - pt.z, lng = pt.x + PW / 2;
-                    if (lat >= 0 && lat <= PH && lng >= 0 && lng <= PW) {
-                        await handleMapClickLatLng(lat, lng);
+                // Check sprite (marker icon) hit first — opens edit popup
+                const hitId = hitSprite(e.clientX, e.clientY);
+                if (hitId && displayedMarkers[hitId]) {
+                    openMarkerEditPopup(hitId, displayedMarkers[hitId].marker, displayedMarkers[hitId].data);
+                } else {
+                    const pt = getHitOnPlane(e.clientX, e.clientY);
+                    if (pt) {
+                        const lat = PH / 2 - pt.z, lng = pt.x + PW / 2;
+                        if (lat >= 0 && lat <= PH && lng >= 0 && lng <= PW) {
+                            await handleMapClickLatLng(lat, lng);
+                        }
                     }
                 }
             }
         } else {
             _ptrStart = null;
+        }
+    }, true);
+
+    // ── RMB click on sprite → delete marker ───────────────────────────────────
+    let _rmbStart = null;
+    canvas.addEventListener("pointerdown", (e) => {
+        if (e.button === 2) _rmbStart = { x: e.clientX, y: e.clientY };
+    }, true);
+    canvas.addEventListener("pointerup", async (e) => {
+        if (e.button !== 2 || !_rmbStart) return;
+        const dx = e.clientX - _rmbStart.x, dy = e.clientY - _rmbStart.y;
+        _rmbStart = null;
+        if (Math.hypot(dx, dy) >= 5) return;
+        const hitId = hitSprite(e.clientX, e.clientY);
+        if (!hitId || !displayedMarkers[hitId]) return;
+        e.preventDefault(); e.stopPropagation();
+        if (confirm("Delete this marker?")) {
+            await deleteDoc(doc(db, "markers", hitId));
+            const idx = undoStack.findIndex(u => u.type === "marker" && u.id === hitId);
+            if (idx !== -1) undoStack.splice(idx, 1);
         }
     }, true);
 
@@ -1532,7 +1557,8 @@ async function create3DScene(container, { withMarkers = false } = {}) {
     }
 
     // ── 3D Markers ─────────────────────────────────────────────────────────────
-    const markers3D = {};
+    const markers3D  = {};
+    const spriteToId = new Map();   // reverse lookup: Sprite → markerId
 
     function svgToTex(svgStr) {
         return new Promise(resolve => {
@@ -1545,12 +1571,13 @@ async function create3DScene(container, { withMarkers = false } = {}) {
             const done = () => {
                 URL.revokeObjectURL(url);
                 const t = new THREE.CanvasTexture(cv);
+                if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
                 t.needsUpdate = true;
                 resolve(t);
             };
             img.onload = () => { ctx.drawImage(img, 0, 0, CW, CH); done(); };
             img.onerror = () => {
-                ctx.fillStyle = "#f87171";
+                ctx.fillStyle = "#e3716a";
                 ctx.beginPath();
                 ctx.moveTo(CW/2,4); ctx.lineTo(CW-4,CH/2); ctx.lineTo(CW/2,CH-4); ctx.lineTo(4,CH/2);
                 ctx.closePath(); ctx.fill();
@@ -1583,14 +1610,30 @@ async function create3DScene(container, { withMarkers = false } = {}) {
         sprite.position.set(mx, POLE + 24, mz);
         sprite.scale.set(42, 52, 1);
         scene.add(sprite);
+        spriteToId.set(sprite, id);
         Object.assign(markers3D[id], { sprite, tex, spriteMat });
     }
 
     function removeMarker3D(id) {
         const m = markers3D[id]; if (!m) return;
         scene.remove(m.line);   m.lineGeo?.dispose(); m.lineMat?.dispose();
-        if (m.sprite) { scene.remove(m.sprite); m.tex?.dispose(); m.spriteMat?.dispose(); }
+        if (m.sprite) { spriteToId.delete(m.sprite); scene.remove(m.sprite); m.tex?.dispose(); m.spriteMat?.dispose(); }
         delete markers3D[id];
+    }
+
+    // ── Raycast sprites → marker hit (returns markerId or null) ───────────────
+    function hitSprite(clientX, clientY) {
+        const r = canvas.getBoundingClientRect();
+        _mouseNDC.set(
+            ((clientX - r.left) / r.width)  *  2 - 1,
+            -((clientY - r.top)  / r.height) *  2 + 1
+        );
+        raycaster.setFromCamera(_mouseNDC, camera);
+        const sprites = [...spriteToId.keys()];
+        if (!sprites.length) return null;
+        const hits = raycaster.intersectObjects(sprites);
+        if (!hits.length) return null;
+        return spriteToId.get(hits[0].object) || null;
     }
 
     // ── 3D Drawings ────────────────────────────────────────────────────────────
@@ -1658,16 +1701,22 @@ async function create3DScene(container, { withMarkers = false } = {}) {
         })();
     }
 
-    // ── Dispose ───────────────────────────────────────────────────────────────
+    // ── Expose ────────────────────────────────────────────────────────────────
     return {
         addMarker3D,
         removeMarker3D,
         addStroke3D,
         removeStroke3D,
         flyTo,
+        /** Render one frame and return a data-URL for export */
+        capture() {
+            renderer.render(scene, camera);
+            return renderer.domElement.toDataURL("image/png");
+        },
         dispose() {
             Object.keys(markers3D).forEach(removeMarker3D);
             Object.keys(strokes3D).forEach(removeStroke3D);
+            spriteToId.clear();
             _clearPreview3D();
             cancelAnimationFrame(animId);
             ro.disconnect();
@@ -1680,125 +1729,141 @@ async function create3DScene(container, { withMarkers = false } = {}) {
     };
 }
 
-// ── Monitor map 2D/3D toggle ──
-document.getElementById("map2DBtn")?.addEventListener("click", async () => {
-    if (!map3DState) return;  // already 2D
-    map3DState.dispose();
-    map3DState = null;
-    document.getElementById("map2DBtn").classList.add("active");
-    document.getElementById("map3DBtn").classList.remove("active");
-    map.invalidateSize({ animate: false });
-    resizeCanvas();
-    drawWatermarkCanvas(getCurrentUser()?.userId || null);
-});
-
-document.getElementById("map3DBtn")?.addEventListener("click", async () => {
-    if (map3DState) return;   // already 3D
-    const btn = document.getElementById("map3DBtn");
-    btn.disabled = true;
-    btn.textContent = "…";
-    try {
-        map3DState = await create3DScene(document.getElementById("mapWrapper"), { withMarkers: true });
-        document.getElementById("map3DBtn").classList.add("active");
-        document.getElementById("map2DBtn").classList.remove("active");
-        // Populate existing markers and drawings into the 3D scene
-        Object.entries(displayedMarkers).forEach(([id, { data }]) => map3DState.addMarker3D(id, data));
-        strokes.forEach(s => { if (s.firestoreId) map3DState.addStroke3D(s.firestoreId, s); });
-    } catch (e) {
-        console.error("3D init error:", e);
+// ── Monitor map 2D/3D toggle (single button) ──────────────────────────────────
+document.getElementById("mapDimToggle")?.addEventListener("click", async () => {
+    const btn = document.getElementById("mapDimToggle");
+    if (map3DState) {
+        // Switch to 2D
+        map3DState.dispose(); map3DState = null;
+        btn.textContent = "3D";
+        btn.title = "Switch to 3D view";
+        btn.classList.remove("active");
+        map.invalidateSize({ animate: false });
+        resizeCanvas();
+        drawWatermarkCanvas(getCurrentUser()?.userId || null);
+    } else {
+        // Switch to 3D
+        btn.disabled = true; btn.textContent = "…";
+        try {
+            map3DState = await create3DScene(document.getElementById("mapWrapper"), { withMarkers: true });
+            btn.textContent = "2D";
+            btn.title = "Switch to 2D view";
+            btn.classList.add("active");
+            Object.entries(displayedMarkers).forEach(([id, { data }]) => map3DState.addMarker3D(id, data));
+            strokes.forEach(s => { if (s.firestoreId) map3DState.addStroke3D(s.firestoreId, s); });
+        } catch (e) {
+            console.error("3D init error:", e);
+            btn.textContent = "3D";
+        }
+        btn.disabled = false;
     }
-    btn.disabled = false;
-    btn.textContent = "3D";
 });
 
-// ── Arty calculator 2D/3D toggle ──
-document.getElementById("arty2DBtn")?.addEventListener("click", async () => {
-    if (!arty3DState) return;
-    arty3DState.dispose();
-    arty3DState = null;
-    document.getElementById("arty2DBtn").classList.add("active");
-    document.getElementById("arty3DBtn").classList.remove("active");
-    if (artyMapInstance) artyMapInstance.invalidateSize({ animate: false });
-});
-
-document.getElementById("arty3DBtn")?.addEventListener("click", async () => {
-    if (arty3DState) return;
-    const btn = document.getElementById("arty3DBtn");
-    btn.disabled = true;
-    btn.textContent = "…";
-    try {
-        const container = document.querySelector(".arty-map-wrap");
-        arty3DState = await create3DScene(container);
-        document.getElementById("arty3DBtn").classList.add("active");
-        document.getElementById("arty2DBtn").classList.remove("active");
-    } catch (e) {
-        console.error("3D arty init error:", e);
+// ── Arty calculator 2D/3D toggle (single button) ──────────────────────────────
+document.getElementById("artyDimToggle")?.addEventListener("click", async () => {
+    const btn = document.getElementById("artyDimToggle");
+    if (arty3DState) {
+        // Switch to 2D
+        arty3DState.dispose(); arty3DState = null;
+        btn.textContent = "3D";
+        btn.title = "Switch to 3D view";
+        btn.classList.remove("active");
+        if (artyMapInstance) artyMapInstance.invalidateSize({ animate: false });
+    } else {
+        // Switch to 3D
+        btn.disabled = true; btn.textContent = "…";
+        try {
+            arty3DState = await create3DScene(document.querySelector(".arty-map-wrap"));
+            btn.textContent = "2D";
+            btn.title = "Switch to 2D view";
+            btn.classList.add("active");
+        } catch (e) {
+            console.error("3D arty init error:", e);
+            btn.textContent = "3D";
+        }
+        btn.disabled = false;
     }
-    btn.disabled = false;
-    btn.textContent = "3D";
 });
 
 // Clean up 3D scenes when navigating away
 function cleanup3D() {
     if (map3DState) {
         map3DState.dispose(); map3DState = null;
-        document.getElementById("map2DBtn")?.classList.add("active");
-        document.getElementById("map3DBtn")?.classList.remove("active");
+        const b = document.getElementById("mapDimToggle");
+        if (b) { b.textContent = "3D"; b.title = "Switch to 3D view"; b.classList.remove("active"); }
+        map.invalidateSize({ animate: false }); resizeCanvas();
     }
     if (arty3DState) {
         arty3DState.dispose(); arty3DState = null;
-        document.getElementById("arty2DBtn")?.classList.add("active");
-        document.getElementById("arty3DBtn")?.classList.remove("active");
+        const b = document.getElementById("artyDimToggle");
+        if (b) { b.textContent = "3D"; b.title = "Switch to 3D view"; b.classList.remove("active"); }
+        if (artyMapInstance) artyMapInstance.invalidateSize({ animate: false });
     }
 }
 
 // ─── MAP EXPORT (PNG) ─────────────────────────────────────────────────────────
 document.getElementById("exportBtn")?.addEventListener("click", () => {
-    const mapEl = document.getElementById("map");
-    const W = mapEl.clientWidth, H = mapEl.clientHeight;
+    const now = new Date();
+    const ts  = `DELTA MONITOR  ${now.toISOString().slice(0,16).replace("T"," ")} UTC`;
+    const fname = `delta_monitor_${now.toISOString().slice(0,19).replace(/:/g,"-")}.png`;
+    const exportUserId = getCurrentUser()?.userId || null;
 
-    // Load map.png from same origin (no CORS issue) and compose the export.
+    function finishExport(out) {
+        const oc = out.getContext("2d");
+        const W = out.width, H = out.height;
+        if (exportUserId) _paintWatermark(oc, W, H, exportUserId);
+        oc.font = "bold 11px 'Share Tech Mono', monospace";
+        oc.fillStyle = "rgba(90,150,220,0.9)";
+        oc.shadowColor = "rgba(0,0,0,0.8)"; oc.shadowBlur = 3;
+        oc.fillText(ts, 10, H - 10);
+        oc.shadowBlur = 0;
+        const link = document.createElement("a");
+        link.download = fname; link.href = out.toDataURL("image/png"); link.click();
+    }
+
+    if (map3DState) {
+        // ── 3D export: capture WebGL canvas ──────────────────────────────────
+        const dataURL = map3DState.capture();
+        const wrapper = document.getElementById("mapWrapper");
+        const W = wrapper.clientWidth || 800, H = wrapper.clientHeight || 600;
+        const out = document.createElement("canvas");
+        out.width = W; out.height = H;
+        const oc = out.getContext("2d");
+        const img = new Image();
+        img.onload = () => { oc.drawImage(img, 0, 0, W, H); finishExport(out); };
+        img.src = dataURL;
+        return;
+    }
+
+    // ── 2D export: compose from map.png + draw canvas ─────────────────────────
+    const mapEl = document.getElementById("map");
+    const W = mapEl.clientWidth || 800, H = mapEl.clientHeight || 600;
+    const out = document.createElement("canvas");
+    out.width = W; out.height = H;
+    const oc = out.getContext("2d");
+
     const baseImg = new Image();
     baseImg.onload = () => {
-        const out = document.createElement("canvas");
-        out.width  = W; out.height = H;
-        const oc = out.getContext("2d");
-
-        // 1) Draw the base map image scaled to current viewport
-        //    Replicate what Leaflet does: map.png covers the full image bounds.
-        const topLeft     = map.latLngToContainerPoint([imageHeight, 0]);
-        const bottomRight = map.latLngToContainerPoint([0, imageWidth]);
-        const imgX = topLeft.x, imgY = topLeft.y;
-        const imgW = bottomRight.x - topLeft.x;
-        const imgH = bottomRight.y - topLeft.y;
-        oc.drawImage(baseImg, imgX, imgY, imgW, imgH);
-
-        // 2) Overlay drawing canvas (free-draw strokes + ruler lines)
+        try {
+            const topLeft     = map.latLngToContainerPoint([imageHeight, 0]);
+            const bottomRight = map.latLngToContainerPoint([0, imageWidth]);
+            oc.drawImage(baseImg, topLeft.x, topLeft.y,
+                         bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
+        } catch (e) {
+            // Fallback: fill the full canvas with the map image
+            oc.drawImage(baseImg, 0, 0, W, H);
+        }
         const drawCanvas = document.getElementById("drawCanvas");
-        oc.drawImage(drawCanvas, 0, 0);
-
-        // 3) User-ID tiled watermark
-        const exportUserId = getCurrentUser()?.userId || null;
-        if (exportUserId) _paintWatermark(oc, W, H, exportUserId);
-
-        // 4) Timestamp watermark
-        const now = new Date();
-        const ts  = `DELTA MONITOR  ${now.toISOString().slice(0,16).replace("T"," ")} UTC`;
-        oc.font        = "bold 11px 'Share Tech Mono', monospace";
-        oc.fillStyle   = "rgba(90,150,220,0.9)";
-        oc.shadowColor = "rgba(0,0,0,0.8)";
-        oc.shadowBlur  = 3;
-        oc.fillText(ts, 10, H - 10);
-        oc.shadowBlur  = 0;
-
-        // 5) Download
-        const link = document.createElement("a");
-        link.download = `delta_monitor_${now.toISOString().slice(0,19).replace(/:/g,"-")}.png`;
-        link.href = out.toDataURL("image/png");
-        link.click();
+        if (drawCanvas) oc.drawImage(drawCanvas, 0, 0);
+        finishExport(out);
     };
-    baseImg.onerror = () => console.error("Export: failed to load map.png");
-    baseImg.src = "map.png";
+    baseImg.onerror = () => {
+        // If map.png fails, just export watermark + drawings
+        const drawCanvas = document.getElementById("drawCanvas");
+        if (drawCanvas) oc.drawImage(drawCanvas, 0, 0);
+        finishExport(out);
+    };
+    baseImg.src = "map.png?" + Date.now();   // cache-bust to avoid tainted-canvas
 });
 function mapDistancePixels(ll1, ll2) {
     const p1 = map.latLngToContainerPoint(ll1);
@@ -2861,8 +2926,8 @@ async function enterVezha() {
     // Clean up monitor map 3D scene — it's invisible when appBody is hidden
     if (map3DState) {
         map3DState.dispose(); map3DState = null;
-        document.getElementById("map2DBtn")?.classList.add("active");
-        document.getElementById("map3DBtn")?.classList.remove("active");
+        const b = document.getElementById("mapDimToggle");
+        if (b) { b.textContent = "3D"; b.title = "Switch to 3D view"; b.classList.remove("active"); }
     }
     vezhaActive    = true;
     vezhaEnterTime = Date.now();
@@ -3969,8 +4034,8 @@ function exitArtillery() {
     // Clean up arty 3D scene if active
     if (arty3DState) {
         arty3DState.dispose(); arty3DState = null;
-        document.getElementById("arty2DBtn")?.classList.add("active");
-        document.getElementById("arty3DBtn")?.classList.remove("active");
+        const b = document.getElementById("artyDimToggle");
+        if (b) { b.textContent = "3D"; b.title = "Switch to 3D view"; b.classList.remove("active"); }
     }
     artilleryActive = false;
     document.body.classList.remove("in-arty");
