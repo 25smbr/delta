@@ -180,7 +180,7 @@ function t(key, ...args) {
 }
 // ─── MAP CONFIGURATIONS ──────────────────────────────────────────────────────
 const MAPS = [
-    { id: "map1", name: "MAP 1", file: "map.png",  width: 1204, height: 1290, ppm: 142/250 },
+    { id: "map1", name: "Dustbowl 2", file: "map.png",  width: 1204, height: 1290, ppm: 142/250 },
     // Add more maps here — e.g.:
     // { id: "map2", name: "MAP 2", file: "map2.png", width: 2000, height: 2000, ppm: 200/250 },
 ];
@@ -1104,6 +1104,8 @@ function redrawAll() {
     if (currentStroke) drawStroke(currentStroke);
     if (rulerMode && rulerPoints.length > 0) drawRulerOverlay();
     if (window.__artyRedrawHook) window.__artyRedrawHook();
+    // Draw selection box if active
+    if (selBox) drawSelectionBox(ctx, selBox.x1, selBox.y1, selBox.x2, selBox.y2);
 }
 function drawStroke(s) {
     ctx.save();
@@ -1260,7 +1262,36 @@ function drawPreview(curX, curY) {
     ctx.restore();
 }
 // ─── MOUSE EVENTS ────────────────────────────────────────────────────────────
+// ─── CTRL+LMB SELECTION BOX ──────────────────────────────────────────────────
+let selBox = null; // { x1,y1,x2,y2 }
+let _selBoxActive = false;
+
+function drawSelectionBox(ctx, x1, y1, x2, y2) {
+    const rx = Math.min(x1,x2), ry = Math.min(y1,y2);
+    const rw = Math.abs(x2-x1), rh = Math.abs(y2-y1);
+    ctx.save();
+    ctx.globalAlpha = 0.15;
+    ctx.fillStyle = "#4fa3ff";
+    ctx.fillRect(rx, ry, rw, rh);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = "#4fa3ff";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(rx, ry, rw, rh);
+    ctx.setLineDash([]);
+    ctx.restore();
+}
+
 canvas.addEventListener("mousedown", (e) => {
+    // Ctrl+LMB: selection box (works regardless of drawMode)
+    if (e.ctrlKey && e.button === 0) {
+        e.preventDefault();
+        _selBoxActive = true;
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left, y = e.clientY - rect.top;
+        selBox = { x1: x, y1: y, x2: x, y2: y };
+        return;
+    }
     if (!drawMode) return;
     isDrawing = true;
     const { offsetX: x, offsetY: y } = e;
@@ -1278,6 +1309,13 @@ canvas.addEventListener("mousedown", (e) => {
     }
 });
 canvas.addEventListener("mousemove", (e) => {
+    if (_selBoxActive && selBox) {
+        const rect = canvas.getBoundingClientRect();
+        selBox.x2 = e.clientX - rect.left;
+        selBox.y2 = e.clientY - rect.top;
+        redrawAll(); // will draw selection box on top
+        return;
+    }
     if (!drawMode || !isDrawing) return;
     const { offsetX: x, offsetY: y } = e;
     if (activeTool === "pen" || activeTool === "eraser") {
@@ -1289,6 +1327,54 @@ canvas.addEventListener("mousemove", (e) => {
     }
 });
 canvas.addEventListener("mouseup", async (e) => {
+    if (_selBoxActive && selBox) {
+        _selBoxActive = false;
+        const { x1, y1, x2, y2 } = selBox;
+        const rx1 = Math.min(x1, x2), ry1 = Math.min(y1, y2);
+        const rx2 = Math.max(x1, x2), ry2 = Math.max(y1, y2);
+
+        // Skip tiny accidental boxes
+        if (rx2 - rx1 < 8 || ry2 - ry1 < 8) { selBox = null; redrawAll(); return; }
+
+        // Find markers inside box
+        const selectedIds = Object.entries(displayedMarkers).filter(([, { marker }]) => {
+            const pt = map.latLngToContainerPoint(marker.getLatLng());
+            // container point → canvas coords
+            const mapRect = document.getElementById("map").getBoundingClientRect();
+            const canvasRect = canvas.getBoundingClientRect();
+            const cx = pt.x + (mapRect.left - canvasRect.left);
+            const cy = pt.y + (mapRect.top  - canvasRect.top);
+            return cx >= rx1 && cx <= rx2 && cy >= ry1 && cy <= ry2;
+        }).map(([id]) => id);
+
+        // Find strokes inside box
+        const selectedStrokes = strokes.filter(s => {
+            if (!s.points?.length) return false;
+            return s.points.some(({ lat, lng }) => {
+                const [cx, cy] = llToCanvas(lat, lng);
+                return cx >= rx1 && cx <= rx2 && cy >= ry1 && cy <= ry2;
+            });
+        });
+
+        const totalCount = selectedIds.length + selectedStrokes.length;
+        selBox = null;
+        redrawAll();
+
+        if (totalCount === 0) return;
+
+        const ok = await showConfirm(`Delete ${totalCount} selected item${totalCount > 1 ? "s" : ""}?`, "DELETE");
+        if (!ok) return;
+
+        // Delete markers
+        for (const id of selectedIds) {
+            try { await deleteDoc(doc(db, "markers", id)); } catch (_) {}
+        }
+        // Delete strokes
+        for (const s of selectedStrokes) {
+            if (s.id) try { await deleteDoc(doc(db, "drawings", s.id)); } catch (_) {}
+        }
+        return;
+    }
     if (!drawMode || !isDrawing) return;
     isDrawing = false;
     const { offsetX: x, offsetY: y } = e;
@@ -1499,6 +1585,8 @@ function toggleRuler() {
         rulerTooltip.style.display = "none";
         rulerReadout.textContent   = "";
         redrawAll();
+        map3DState?.clearRuler3D();
+        arty3DState?.clearRuler3D();
     }
 }
 rulerBtn.addEventListener("click", toggleRuler);
@@ -1682,6 +1770,36 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
                 } catch (err) { console.error("3D drawing save:", err); }
             }
             _drawStartLL = null;
+        } else if (!drawMode && rulerMode && _ptrStart) {
+            // Ruler in 3D: click to place ruler points
+            const dx = e.clientX - _ptrStart.x, dy = e.clientY - _ptrStart.y;
+            _ptrStart = null;
+            if (Math.hypot(dx, dy) < 5) {
+                const pt = getHitOnPlane(e.clientX, e.clientY);
+                if (pt) {
+                    const lat = PH / 2 - pt.z, lng = pt.x + PW / 2;
+                    rulerPoints.push(L.latLng(lat, lng));
+                    if (rulerPoints.length >= 2) {
+                        const last = rulerPoints[rulerPoints.length - 1];
+                        const prev = rulerPoints[rulerPoints.length - 2];
+                        const distPx = Math.hypot(last.lat - prev.lat, last.lng - prev.lng);
+                        const distM  = pixelsToMeters(distPx);
+                        const settingsRulerUnits = JSON.parse(localStorage.getItem("deltaSettings") || "{}").rulerUnits || "m";
+                        const distStr = settingsRulerUnits === "km"
+                            ? (distM / 1000).toFixed(2) + " km"
+                            : Math.round(distM) + " m";
+                        if (rulerReadout) rulerReadout.textContent = distStr;
+                        if (rulerTooltip) {
+                            rulerTooltip.style.display = "block";
+                            rulerTooltip.style.left = e.clientX + "px";
+                            rulerTooltip.style.top  = (e.clientY - 28) + "px";
+                            rulerTooltip.textContent = distStr;
+                        }
+                        // Draw ruler line in 3D
+                        update3DRuler();
+                    }
+                }
+            }
         } else if (!drawMode && !rulerMode && _ptrStart) {
             const dx = e.clientX - _ptrStart.x, dy = e.clientY - _ptrStart.y;
             _ptrStart = null;
@@ -1825,6 +1943,7 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
 
         const spriteMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
         const sprite = new THREE.Sprite(spriteMat);
+        sprite.renderOrder = 1;  // placed markers render above G/T markers
         sprite.position.set(mx, POLE + 24, mz);
         sprite.scale.set(42, 52, 1);
         scene.add(sprite);
@@ -1951,10 +2070,101 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
         if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
         const spriteMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
         const sprite = new THREE.Sprite(spriteMat);
+        sprite.renderOrder = 0;  // G/T render below placed markers
         sprite.position.set(mx, 35, mz);
         sprite.scale.set(44, 44, 1);
         scene.add(sprite);
         markers3D[id] = { sprite, spriteMat, tex };  // no line/labelObj → removeMarker3D handles gracefully
+    }
+
+    // ── 3D Ruler ─────────────────────────────────────────────────────────────
+    let _rulerLine3D = null;
+
+    function update3DRuler() {
+        if (_rulerLine3D) { scene.remove(_rulerLine3D); _rulerLine3D.geometry.dispose(); _rulerLine3D.material.dispose(); _rulerLine3D = null; }
+        if (rulerPoints.length < 2) return;
+        const positions = [];
+        rulerPoints.forEach(({ lat, lng }) => {
+            const { x, z } = l2t(lat, lng);
+            positions.push(x, 8, z);
+        });
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        const mat = new THREE.LineBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.9, depthTest: false });
+        _rulerLine3D = new THREE.Line(geo, mat);
+        _rulerLine3D.renderOrder = 2;
+        scene.add(_rulerLine3D);
+    }
+
+    function clearRuler3D() {
+        if (_rulerLine3D) { scene.remove(_rulerLine3D); _rulerLine3D.geometry.dispose(); _rulerLine3D.material.dispose(); _rulerLine3D = null; }
+    }
+
+    // ── Ballistic trajectory ──────────────────────────────────────────────────
+    let _trajLine = null;
+    let _trajAnimId = null;
+    let _trajDot = null;
+
+    function updateTrajectory(calc) {
+        // Remove old trajectory
+        if (_trajLine) { scene.remove(_trajLine); _trajLine.geometry.dispose(); _trajLine.material.dispose(); _trajLine = null; }
+        if (_trajDot)  { scene.remove(_trajDot);  _trajDot.geometry.dispose();  _trajDot.material.dispose();  _trajDot  = null; }
+        if (_trajAnimId) { cancelAnimationFrame(_trajAnimId); _trajAnimId = null; }
+
+        if (!calc || calc.gLat == null || calc.tLat == null) return;
+
+        const { distM, v, elevDeg, tof, gLat, gLng, tLat, tLng, heightM = 0 } = calc;
+        const g = l2t(gLat, gLng);
+        const tgt = l2t(tLat, tLng);
+
+        // Build arc points using projectile kinematics
+        const N = 80;
+        const elevRad = elevDeg * Math.PI / 180;
+        const vx = v * Math.cos(elevRad);
+        const vy = v * Math.sin(elevRad);
+        const positions = [];
+
+        for (let i = 0; i <= N; i++) {
+            const t = (tof * i) / N;
+            const progress = i / N;
+            // Horizontal distance
+            const d = vx * t;
+            // Vertical component (y in game = height above gun level)
+            const height3D = vy * t - 0.5 * 9.81 * t * t;
+            // Interpolate X/Z from gun to target
+            const wx = g.x + (tgt.x - g.x) * progress;
+            const wz = g.z + (tgt.z - g.z) * progress;
+            // Convert height (meters) to 3D units — use same scale as terrain (rough)
+            const wy = 35 + Math.max(0, height3D * (800 / distM));
+            positions.push(wx, wy, wz);
+        }
+
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        const mat = new THREE.LineBasicMaterial({ color: 0xfbbf24, transparent: true, opacity: 0.75, depthTest: false });
+        _trajLine = new THREE.Line(geo, mat);
+        _trajLine.renderOrder = 2;
+        scene.add(_trajLine);
+
+        // Animated dot along arc
+        const dotGeo = new THREE.SphereGeometry(4, 8, 8);
+        const dotMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24, depthTest: false });
+        _trajDot = new THREE.Mesh(dotGeo, dotMat);
+        _trajDot.renderOrder = 3;
+        scene.add(_trajDot);
+
+        let startTime = null;
+        const ANIM_DURATION = Math.max(1500, tof * 800); // ms
+
+        function animStep(ts) {
+            if (!startTime) startTime = ts;
+            const elapsed = ts - startTime;
+            const progress = (elapsed % ANIM_DURATION) / ANIM_DURATION;
+            const idx = Math.min(Math.floor(progress * N), N) * 3;
+            _trajDot.position.set(positions[idx], positions[idx + 1], positions[idx + 2]);
+            _trajAnimId = requestAnimationFrame(animStep);
+        }
+        _trajAnimId = requestAnimationFrame(animStep);
     }
 
     // ── Expose ────────────────────────────────────────────────────────────────
@@ -1965,6 +2175,9 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
         addStroke3D,
         removeStroke3D,
         flyTo,
+        updateTrajectory,
+        update3DRuler,
+        clearRuler3D,
         /** Render one frame, draw onto oc at W×H, including projected marker labels */
         drawCapture(oc, W, H) {
             renderer.render(scene, camera);
@@ -2010,6 +2223,10 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
             spriteToId.clear();
             _clearPreview3D();
             cancelAnimationFrame(animId);
+            if (_trajAnimId) cancelAnimationFrame(_trajAnimId);
+            if (_trajLine)   { scene.remove(_trajLine); _trajLine.geometry.dispose(); _trajLine.material.dispose(); }
+            if (_trajDot)    { scene.remove(_trajDot);  _trajDot.geometry.dispose();  _trajDot.material.dispose();  }
+            if (_rulerLine3D){ scene.remove(_rulerLine3D); _rulerLine3D.geometry.dispose(); _rulerLine3D.material.dispose(); }
             ro.disconnect();
             controls.dispose();
             texture.dispose(); mat.dispose(); geo.dispose();
@@ -2071,6 +2288,7 @@ document.getElementById("artyDimToggle")?.addEventListener("click", async () => 
             // Sync G/T positions if already placed
             if (artyGunPx) arty3DState.addSimple("_gun", artyGunPx.lat, artyGunPx.lng, "G", "#4ade80");
             if (artyTgtPx) arty3DState.addSimple("_tgt", artyTgtPx.lat, artyTgtPx.lng, "T", "#f87171");
+            if (lastArtyCalc) arty3DState.updateTrajectory(lastArtyCalc);
             btn.textContent = "2D";
             btn.title = "Switch to 2D view";
             btn.classList.add("active");
@@ -2156,21 +2374,91 @@ document.getElementById("exportBtn")?.addEventListener("click", async () => {
     const drawCanvas = document.getElementById("drawCanvas");
     if (drawCanvas) oc.drawImage(drawCanvas, 0, 0);
 
-    // 3. Draw each marker SVG at its map screen position
+    // 3. Draw each marker SVG at its map screen position + data labels
     //    iconAnchor=[70,67] − mkr-icon offset=[47,44] → net offset [23,23]
     await Promise.all(Object.entries(displayedMarkers).map(([, { marker, data }]) =>
         new Promise(res => {
             const pt  = map.latLngToContainerPoint(marker.getLatLng());
+            const sx = pt.x, sy = pt.y;
             const svg = data.side === "friendly"
                 ? symbolSVGFriendly(data.type || "infantry_alive")
                 : symbolSVG(data.type || "infantry_alive");
             // Use data: URL instead of blob URL — avoids cross-origin canvas taint issues
             const img = new Image(46, 57);
-            img.onload  = () => { oc.drawImage(img, pt.x - 23, pt.y - 23, 46, 57); res(); };
+            img.onload  = () => {
+                oc.drawImage(img, sx - 23, sy - 23, 46, 57);
+
+                // Draw marker label boxes (mirrors CSS .ml layout)
+                const labels = [
+                    { text: data.date,   x: sx - 25, y: sy - 30, align: "right"  },
+                    { text: data.amount, x: sx,       y: sy - 34, align: "center" },
+                    { text: data.info,   x: sx + 25,  y: sy - 30, align: "left"   },
+                    { text: data.author, x: sx - 25,  y: sy + 40, align: "right"  },
+                    { text: data.source, x: sx + 25,  y: sy + 40, align: "left"   },
+                ];
+                oc.save();
+                oc.font = "bold 9px monospace";
+                labels.forEach(({ text, x, y, align }) => {
+                    if (!text) return;
+                    const str = String(text);
+                    oc.textAlign = align;
+                    oc.textBaseline = "middle";
+                    const metrics = oc.measureText(str);
+                    const tw = metrics.width + 6;
+                    const th = 12;
+                    const bx = align === "right" ? x - tw : align === "center" ? x - tw / 2 : x;
+                    oc.fillStyle = "rgba(12,15,20,0.82)";
+                    oc.fillRect(bx, y - th / 2, tw, th);
+                    oc.strokeStyle = "rgba(150,180,220,0.35)";
+                    oc.lineWidth = 0.5;
+                    oc.strokeRect(bx, y - th / 2, tw, th);
+                    oc.fillStyle = "#c8d8ee";
+                    oc.fillText(str, x, y);
+                });
+                oc.restore();
+                res();
+            };
             img.onerror = () => res();
             img.src = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
         })
     ));
+
+    // 4. Draw ruler if active
+    if (rulerMode && rulerPoints.length >= 2) {
+        oc.save();
+        oc.strokeStyle = "#22d3ee";
+        oc.lineWidth = 2;
+        oc.setLineDash([6, 4]);
+        oc.beginPath();
+        rulerPoints.forEach((ll, i) => {
+            const pt = map.latLngToContainerPoint(ll);
+            i === 0 ? oc.moveTo(pt.x, pt.y) : oc.lineTo(pt.x, pt.y);
+            // Circle at each point
+            oc.save();
+            oc.beginPath(); oc.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
+            oc.fillStyle = "#22d3ee"; oc.fill(); oc.restore();
+        });
+        oc.stroke();
+        // Distance label at midpoint between last two points
+        const last = rulerPoints[rulerPoints.length - 1];
+        const prev = rulerPoints[rulerPoints.length - 2];
+        const distPx = Math.hypot(last.lat - prev.lat, last.lng - prev.lng);
+        const distM  = pixelsToMeters(distPx);
+        const settings = JSON.parse(localStorage.getItem("deltaSettings") || "{}");
+        const distStr  = settings.rulerUnits === "km" ? (distM / 1000).toFixed(2) + " km" : Math.round(distM) + " m";
+        const lpt = map.latLngToContainerPoint(last);
+        const ppt = map.latLngToContainerPoint(prev);
+        const mx  = (lpt.x + ppt.x) / 2, my = (lpt.y + ppt.y) / 2;
+        oc.setLineDash([]);
+        oc.font = "bold 10px monospace";
+        const tw = oc.measureText(distStr).width + 8;
+        oc.fillStyle = "rgba(12,15,20,0.82)";
+        oc.fillRect(mx - tw / 2, my - 9, tw, 16);
+        oc.fillStyle = "#22d3ee";
+        oc.textAlign = "center"; oc.textBaseline = "middle";
+        oc.fillText(distStr, mx, my);
+        oc.restore();
+    }
 
     finishExport(out);
 });
@@ -2425,6 +2713,7 @@ let roomsData     = {};   // roomId → { id, name, order }
 let sessionsCache = {};   // userId → { callsign, role, room, docId, userId }
 let myCurrentRoom  = null; // own current room ID
 let currentChannel = "general"; // active chat channel: "general" | "room_1" … "room_10"
+const channelDrafts = {}; // draft text per channel, preserved across switches
 
 const myPeerId   = "peer_" + Math.random().toString(36).substr(2, 9);
 const myShortId  = myPeerId.slice(-6).toUpperCase();
@@ -3247,6 +3536,9 @@ document.getElementById("adminToggle")?.addEventListener("click", () => {
 
 // ─── KEYBOARD SHORTCUTS ────────────────────────────────────────────────────────
 document.addEventListener("keydown", async (e) => {
+    // Disable map drag while Ctrl is held (for selection box)
+    if (e.key === "Control") map.dragging.disable();
+
     const tag = document.activeElement?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
     // Undo/redo only operates on the main map — disable in arty calculator
@@ -3255,6 +3547,12 @@ document.addEventListener("keydown", async (e) => {
         const k = e.key.toLowerCase();   // "z" regardless of Shift case
         if (k === "z" && !e.shiftKey) { e.preventDefault(); await undoLast(); }
         if (k === "y" || (k === "z" && e.shiftKey)) { e.preventDefault(); await redoLast(); }
+    }
+});
+document.addEventListener("keyup", (e) => {
+    if (e.key === "Control") {
+        // Re-enable map drag unless draw mode is active (which disables it separately)
+        if (!drawMode) map.dragging.enable();
     }
 });
 
@@ -3811,6 +4109,26 @@ document.getElementById("vezhaChatInput").addEventListener("keydown", e => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); }
 });
 
+// ─── SCROLL-TO-BOTTOM ARROWS ──────────────────────────────────────────────────
+function setupScrollArrow(msgsEl) {
+    if (!msgsEl || msgsEl._scrollArrow) return;
+    const arrow = document.createElement("button");
+    arrow.className = "scroll-to-bottom";
+    arrow.title = "Scroll to latest";
+    arrow.innerHTML = "&#8595;";
+    const parent = msgsEl.parentElement;
+    if (parent) { parent.style.position = "relative"; parent.appendChild(arrow); }
+    const check = () => {
+        const atBottom = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 40;
+        arrow.classList.toggle("visible", !atBottom);
+    };
+    msgsEl.addEventListener("scroll", check);
+    arrow.addEventListener("click", () => { msgsEl.scrollTop = msgsEl.scrollHeight; });
+    msgsEl._scrollArrow = arrow;
+}
+setupScrollArrow(document.getElementById("vezhaChatMessages"));
+setupScrollArrow(document.getElementById("monitorChatMessages"));
+
 // ─── CHAT SEARCH ─────────────────────────────────────────────────────────────
 {
     const toggle    = document.getElementById("chatSearchToggle");
@@ -3954,13 +4272,22 @@ function enforceOwnerRole() {
         roleEl.disabled = false;
         // Hide owner option for non-owners
         if (ownerOpt) ownerOpt.style.display = "none";
-        // If somehow set to owner, reset to operator
-        if (roleEl.value === "owner") { roleEl.value = "operator"; localStorage.setItem("vezhaRole", "operator"); }
+        // Only reset if role is "owner" AND we're sure callsign is fully typed (not mid-input)
+        // Do NOT write to localStorage here — let the change event handle that
+        if (roleEl.value === "owner") { roleEl.value = "operator"; }
     }
 }
 document.getElementById("callsignInput")?.addEventListener("input", e => {
     localStorage.setItem("vezhaCallsign", e.target.value.trim());
+    // Only run owner enforcement; role is preserved — enforceOwnerRole no longer writes operator to localStorage
     enforceOwnerRole();
+});
+// Persist role on blur (after user finishes typing callsign)
+document.getElementById("callsignInput")?.addEventListener("blur", () => {
+    const roleEl = document.getElementById("roleSelect");
+    if (roleEl && roleEl.value !== "owner") {
+        localStorage.setItem("vezhaRole", roleEl.value);
+    }
 });
 document.getElementById("roleSelect")?.addEventListener("change", e => {
     if (e.target.value === "owner" && getCallsign() !== OWNER_CALLSIGN) {
@@ -4018,6 +4345,65 @@ function escHtml(s) {
 }
 
 // ─── THEME TOGGLE ────────────────────────────────────────────────────────────
+// ─── SETTINGS PANEL ──────────────────────────────────────────────────────────
+(function initSettingsPanel() {
+    const overlay     = document.getElementById("settingsOverlay");
+    const closeBtn    = document.getElementById("settingsClose");
+    const scaleSlider = document.getElementById("settingsMkrScale");
+    const scaleVal    = document.getElementById("settingsMkrScaleVal");
+    const rulerUnits  = document.getElementById("settingsRulerUnits");
+    const watermarkCb = document.getElementById("settingsWatermark");
+    const autoScrollCb= document.getElementById("settingsAutoScroll");
+    const coordFmt    = document.getElementById("settingsCoordFmt");
+    if (!overlay) return;
+
+    // Load saved settings
+    const saved = JSON.parse(localStorage.getItem("deltaSettings") || "{}");
+    const curScale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--mkr-scale").trim() || "0.82");
+    if (scaleSlider)  { scaleSlider.value = saved.mkrScale ?? curScale; scaleVal.textContent = scaleSlider.value; }
+    if (rulerUnits)   rulerUnits.value   = saved.rulerUnits   || "m";
+    if (watermarkCb)  watermarkCb.checked  = saved.watermark   !== false;
+    if (autoScrollCb) autoScrollCb.checked = saved.autoScroll  !== false;
+    if (coordFmt)     coordFmt.value       = saved.coordFmt    || "xy";
+
+    // Apply loaded settings
+    function applySettings() {
+        const s = JSON.parse(localStorage.getItem("deltaSettings") || "{}");
+        if (s.mkrScale) document.documentElement.style.setProperty("--mkr-scale", s.mkrScale);
+    }
+    applySettings();
+
+    // Slider live update
+    scaleSlider?.addEventListener("input", () => {
+        const v = parseFloat(scaleSlider.value);
+        scaleVal.textContent = v.toFixed(2);
+        document.documentElement.style.setProperty("--mkr-scale", v);
+        const s = JSON.parse(localStorage.getItem("deltaSettings") || "{}");
+        s.mkrScale = v; localStorage.setItem("deltaSettings", JSON.stringify(s));
+    });
+
+    // Save other settings on change
+    [rulerUnits, coordFmt].forEach(el => el?.addEventListener("change", saveSettings));
+    [watermarkCb, autoScrollCb].forEach(el => el?.addEventListener("change", saveSettings));
+
+    function saveSettings() {
+        const s = {
+            mkrScale:   parseFloat(scaleSlider?.value ?? 0.82),
+            rulerUnits: rulerUnits?.value  || "m",
+            watermark:  watermarkCb?.checked !== false,
+            autoScroll: autoScrollCb?.checked !== false,
+            coordFmt:   coordFmt?.value    || "xy",
+        };
+        localStorage.setItem("deltaSettings", JSON.stringify(s));
+    }
+
+    document.getElementById("settingsBtn")?.addEventListener("click", () => {
+        overlay.hidden = false;
+    });
+    closeBtn?.addEventListener("click", () => { overlay.hidden = true; });
+    overlay.addEventListener("click", e => { if (e.target === overlay) overlay.hidden = true; });
+})();
+
 const themeToggleBtn = document.getElementById("themeToggleBtn");
 themeToggleBtn.addEventListener("click", () => {
     isLightTheme = !isLightTheme;
@@ -4314,6 +4700,15 @@ document.getElementById("artyCalcBtn")?.addEventListener("click", () => {
     const tofLow  = artyCalcToF(lowElev,  v, distM);
     const tofHigh = (highElev !== null) ? artyCalcToF(highElev, v, distM) : null;
 
+    // Store for trajectory animation
+    lastArtyCalc = {
+        distM, v, elevDeg: lowElev, tof: tofLow,
+        gLat: artyGunPx?.lat, gLng: artyGunPx?.lng,
+        tLat: artyTgtPx?.lat, tLng: artyTgtPx?.lng,
+        heightM
+    };
+    if (arty3DState?.updateTrajectory) arty3DState.updateTrajectory(lastArtyCalc);
+
     // 2 decimal places; omit decimals when the value is a whole number
     const fmt2 = n => {
         if (n === null) return "---";
@@ -4378,6 +4773,8 @@ let artyLine        = null;
 // Raw Leaflet pixel coords of last gun/target placement (for the line and markers)
 let artyGunPx       = null;   // { lat, lng } in Leaflet map coords (px)
 let artyTgtPx       = null;
+// Latest calc result for trajectory animation
+let lastArtyCalc    = null;  // { distM, v, elevDeg, tof, gLat, gLng, tLat, tLng }
 
 function makeArtyIcon(label, color) {
     return L.divIcon({
@@ -4741,6 +5138,10 @@ function renderChannelTabs() {
         tab.className = "vc-channel-tab" + (ch.id === currentChannel ? " active" : "");
         tab.textContent = ch.label;
         tab.addEventListener("click", () => {
+            // Save current draft before switching
+            const inputEl = document.getElementById("vezhaChatInput");
+            if (inputEl) channelDrafts[currentChannel] = inputEl.value;
+
             currentChannel = ch.id;
             // Clear and re-render messages for the new channel
             const msgsEl = document.getElementById("vezhaChatMessages");
@@ -4748,8 +5149,8 @@ function renderChannelTabs() {
             container.querySelectorAll(".vc-channel-tab").forEach((t, i) => {
                 t.classList.toggle("active", channels[i].id === currentChannel);
             });
-            // Re-trigger the Firestore snapshot by forcing re-load
-            // (simple: just filter already-rendered messages if available)
+            // Restore draft for the new channel
+            if (inputEl) inputEl.value = channelDrafts[currentChannel] || "";
             // Messages will repopulate on next snapshot event.
         });
         container.appendChild(tab);
@@ -4802,4 +5203,86 @@ document.getElementById("deafBtn")?.addEventListener("click", () => {
         _isDeafened = btn?.classList.contains("active") === true;
         await updateMyVezhaStatus();
     }, 50);
+});
+
+// ─── ARTY EXPORT ──────────────────────────────────────────────────────────────
+document.getElementById("artyExportBtn")?.addEventListener("click", async () => {
+    // If 3D is active, export 3D view
+    if (arty3DState) {
+        try {
+            const artyEl = document.getElementById("arty3DContainer") || document.querySelector(".arty-map-wrap");
+            const W = artyEl?.clientWidth  || 900;
+            const H = artyEl?.clientHeight || 600;
+            const out = document.createElement("canvas");
+            out.width = W; out.height = H;
+            const oc = out.getContext("2d");
+            arty3DState.drawCapture(oc, W, H);
+            const link = document.createElement("a");
+            link.download = `arty_3d_${Date.now()}.png`;
+            link.href = out.toDataURL("image/png");
+            link.click();
+        } catch (err) { console.error("Arty 3D export failed", err); }
+        return;
+    }
+
+    // 2D arty map export
+    if (!artyMapInstance) return;
+    const mapEl = document.getElementById("artyMapEl");
+    const W = mapEl?.clientWidth  || 800;
+    const H = mapEl?.clientHeight || 600;
+    const out = document.createElement("canvas");
+    out.width = W; out.height = H;
+    const oc = out.getContext("2d");
+
+    // 1. Base map
+    await new Promise(res => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+            try {
+                const tl = artyMapInstance.latLngToContainerPoint([imageHeight, 0]);
+                const br = artyMapInstance.latLngToContainerPoint([0, imageWidth]);
+                oc.drawImage(img, tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+            } catch (_) { oc.drawImage(img, 0, 0, W, H); }
+            res();
+        };
+        img.onerror = () => res();
+        img.src = MAPS[currentMapIdx].file;
+    });
+
+    // 2. G marker
+    if (artyGunPx) {
+        const pt = artyMapInstance.latLngToContainerPoint([artyGunPx.lat, artyGunPx.lng]);
+        oc.beginPath(); oc.arc(pt.x, pt.y, 12, 0, Math.PI * 2);
+        oc.fillStyle = "#4ade80"; oc.fill();
+        oc.strokeStyle = "rgba(0,0,0,0.7)"; oc.lineWidth = 2; oc.stroke();
+        oc.font = "bold 11px monospace"; oc.fillStyle = "#111";
+        oc.textAlign = "center"; oc.textBaseline = "middle";
+        oc.fillText("G", pt.x, pt.y);
+    }
+
+    // 3. T marker
+    if (artyTgtPx) {
+        const pt = artyMapInstance.latLngToContainerPoint([artyTgtPx.lat, artyTgtPx.lng]);
+        oc.beginPath(); oc.arc(pt.x, pt.y, 12, 0, Math.PI * 2);
+        oc.fillStyle = "#f87171"; oc.fill();
+        oc.strokeStyle = "rgba(0,0,0,0.7)"; oc.lineWidth = 2; oc.stroke();
+        oc.font = "bold 11px monospace"; oc.fillStyle = "#111";
+        oc.textAlign = "center"; oc.textBaseline = "middle";
+        oc.fillText("T", pt.x, pt.y);
+    }
+
+    // 4. Line G→T
+    if (artyGunPx && artyTgtPx) {
+        const g = artyMapInstance.latLngToContainerPoint([artyGunPx.lat, artyGunPx.lng]);
+        const t = artyMapInstance.latLngToContainerPoint([artyTgtPx.lat, artyTgtPx.lng]);
+        oc.beginPath(); oc.moveTo(g.x, g.y); oc.lineTo(t.x, t.y);
+        oc.strokeStyle = "rgba(200,200,255,0.55)"; oc.lineWidth = 1.5;
+        oc.setLineDash([5, 3]); oc.stroke(); oc.setLineDash([]);
+    }
+
+    const link = document.createElement("a");
+    link.download = `arty_2d_${Date.now()}.png`;
+    link.href = out.toDataURL("image/png");
+    link.click();
 });
