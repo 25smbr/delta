@@ -2226,34 +2226,79 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
     }
 
     // ── 3D Ruler ─────────────────────────────────────────────────────────────
-    let _rulerLine3D = null;
+    let _rulerLine3D   = null;
+    let _rulerDots3D   = [];    // SphereGeometry meshes at each point
+    let _rulerLabels3D = [];    // CSS2DObjects with distance text
+
+    function _clearRuler3DObjects() {
+        if (_rulerLine3D) { scene.remove(_rulerLine3D); _rulerLine3D.geometry.dispose(); _rulerLine3D.material.dispose(); _rulerLine3D = null; }
+        _rulerDots3D.forEach(o => { scene.remove(o); o.geometry.dispose(); o.material.dispose(); });
+        _rulerDots3D = [];
+        _rulerLabels3D.forEach(o => scene.remove(o));
+        _rulerLabels3D = [];
+    }
 
     function update3DRuler() {
-        if (_rulerLine3D) { scene.remove(_rulerLine3D); _rulerLine3D.geometry.dispose(); _rulerLine3D.material.dispose(); _rulerLine3D = null; }
-        if (rulerPoints.length < 2) return;
-        const positions = [];
-        rulerPoints.forEach(pt => {
-            // rulerPoints can be {lat,lng} plain objects OR L.latLng instances
-            const lat = pt.lat, lng = pt.lng;
-            const { x, z } = l2t(lat, lng);
-            positions.push(x, DRAW_Y + 0.5, z);  // hug terrain like 2D
+        _clearRuler3DObjects();
+        if (rulerPoints.length < 1) return;
+
+        // Convert all ruler points to 3D scene coords
+        const pts3D = rulerPoints.map(pt => {
+            const { x, z } = l2t(pt.lat, pt.lng);
+            return { x, z, lat: pt.lat, lng: pt.lng };
         });
-        const geo = new THREE.BufferGeometry();
-        geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-        // Match 2D ruler style: yellow dashed
-        const mat = new THREE.LineDashedMaterial({
-            color: 0xffcc00, dashSize: 8, gapSize: 5,
-            transparent: true, opacity: 0.95, depthTest: false
+
+        // ── Solid yellow line (matches 2D style) ──────────────────────────
+        if (pts3D.length >= 2) {
+            const positions = [];
+            pts3D.forEach(p => positions.push(p.x, DRAW_Y + 0.5, p.z));
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+            const mat = new THREE.LineBasicMaterial({
+                color: 0xffcc00, transparent: true, opacity: 0.95, depthTest: false
+            });
+            _rulerLine3D = new THREE.Line(geo, mat);
+            _rulerLine3D.renderOrder = 2;
+            scene.add(_rulerLine3D);
+        }
+
+        // ── Dot + cumulative distance label at each point ─────────────────
+        pts3D.forEach((p, i) => {
+            // Yellow sphere dot (radius 3 — matches 2D circle radius ~4 px)
+            const dotGeo = new THREE.SphereGeometry(3, 8, 8);
+            const dotMat = new THREE.MeshBasicMaterial({ color: 0xffcc00, depthTest: false });
+            const dot    = new THREE.Mesh(dotGeo, dotMat);
+            dot.position.set(p.x, DRAW_Y + 0.5, p.z);
+            dot.renderOrder = 3;
+            scene.add(dot);
+            _rulerDots3D.push(dot);
+
+            // Distance label — shown at every point except the first
+            if (i > 0) {
+                let totalM = 0;
+                for (let ri = 1; ri <= i; ri++) {
+                    const a = rulerPoints[ri - 1], b = rulerPoints[ri];
+                    const rawPx = Math.hypot(b.lat - a.lat, b.lng - a.lng);
+                    totalM += (rawPx / PIXELS_PER_METER_DYNAMIC) * DIST_CORRECTION;
+                }
+                const labelDiv = document.createElement("div");
+                // Matches 2D style: dark bg, yellow text, monospace bold
+                labelDiv.style.cssText =
+                    "background:rgba(0,0,0,0.6);color:#ffcc00;" +
+                    "font:bold 11px 'Share Tech Mono',monospace;" +
+                    "padding:1px 5px;border-radius:2px;pointer-events:none;" +
+                    "white-space:nowrap;margin-left:8px;margin-top:-16px;";
+                labelDiv.textContent = formatDistance(totalM);
+                const labelObj = new CSS2DObject(labelDiv);
+                labelObj.position.set(p.x, DRAW_Y + 2, p.z);
+                labelObj.renderOrder = 3;
+                scene.add(labelObj);
+                _rulerLabels3D.push(labelObj);
+            }
         });
-        _rulerLine3D = new THREE.Line(geo, mat);
-        _rulerLine3D.computeLineDistances();  // required for dashed lines
-        _rulerLine3D.renderOrder = 2;
-        scene.add(_rulerLine3D);
     }
 
-    function clearRuler3D() {
-        if (_rulerLine3D) { scene.remove(_rulerLine3D); _rulerLine3D.geometry.dispose(); _rulerLine3D.material.dispose(); _rulerLine3D = null; }
-    }
+    function clearRuler3D() { _clearRuler3DObjects(); }
 
     // ── Ballistic trajectory ──────────────────────────────────────────────────
     let _trajLine = null;
@@ -2307,7 +2352,8 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
         scene.add(_trajDot);
 
         let startTime = null;
-        const ANIM_DURATION = Math.max(1500, tof * 800); // ms
+        // Duration matches real time-of-flight: 1 real second = 1 simulated second
+        const ANIM_DURATION = tof * 1000; // ms — accurate to calculated ToF
 
         function animStep(ts) {
             if (!startTime) startTime = ts;
