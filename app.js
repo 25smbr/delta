@@ -16,6 +16,7 @@ import {
     updateDoc,
     orderBy,
     limit,
+    limitToLast,
     startAfter
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 // ─── FIREBASE ───────────────────────────────────────────────────────────────
@@ -1420,8 +1421,13 @@ canvas.addEventListener("mouseup", async (e) => {
             zWrap.style.left = (cxPx - 60) + "px";
             zWrap.style.top  = (cyPx - 16) + "px";
             zField.value = ""; zField.focus();
+            let _zoneCommitted = false;
             const commitZone = async () => {
+                if (_zoneCommitted) return;
+                _zoneCommitted = true;
                 zWrap.style.display = "none";
+                zField.removeEventListener("keydown", onKey);
+                zField.removeEventListener("blur", commitZone);
                 const stroke = {
                     tool:     "zone",
                     color:    penColor,
@@ -1444,11 +1450,17 @@ canvas.addEventListener("mouseup", async (e) => {
                 }
             };
             const onKey = (e) => {
-                if (e.key === "Enter") { zField.removeEventListener("keydown", onKey); zField.removeEventListener("blur", commitZone); commitZone(); }
-                if (e.key === "Escape") { zWrap.style.display = "none"; zField.removeEventListener("keydown", onKey); zField.removeEventListener("blur", commitZone); redrawAll(); }
+                if (e.key === "Enter") { commitZone(); }
+                if (e.key === "Escape") {
+                    _zoneCommitted = true; // prevent blur from committing
+                    zWrap.style.display = "none";
+                    zField.removeEventListener("keydown", onKey);
+                    zField.removeEventListener("blur", commitZone);
+                    redrawAll();
+                }
             };
             zField.addEventListener("keydown", onKey);
-            zField.addEventListener("blur", commitZone, { once: true });
+            zField.addEventListener("blur", commitZone);
         }
     } else {
         const endLL = canvasToLL(x, y);
@@ -4011,7 +4023,7 @@ async function enterVezha() {
     chatMsgCache.length = 0;
     renderChannelTabs(); // initialise with "general" before rooms load
     chatUnsub = onSnapshot(
-        query(vezha_chat, orderBy("created", "asc"), limit(60)),
+        query(vezha_chat, orderBy("created", "asc"), limitToLast(60)),
         snapshot => {
             snapshot.docChanges().forEach(change => {
                 if (change.type === "added") {
@@ -4398,16 +4410,21 @@ applyLang();
     }
 
     // Send from monitor chat (same Firestore collection as Vezha chat)
+    const _monitorRenderedIds = new Set();
     async function sendMonitorChat() {
         const text = monitorInput?.value.trim();
         if (!text) return;
         monitorInput.value = "";
+        const msgData = {
+            userId: myPeerId, shortId: myShortId,
+            callsign: getCallsign(), role: getRole(),
+            text, created: Date.now()
+        };
+        // Render immediately — don't wait for Firestore roundtrip
+        renderMonitorMsg(msgData);
         try {
-            await addDoc(vezha_chat, {
-                userId: myPeerId, shortId: myShortId,
-                callsign: getCallsign(), role: getRole(),
-                text, created: Date.now()
-            });
+            const ref = await addDoc(vezha_chat, msgData);
+            _monitorRenderedIds.add(ref.id);
         } catch (err) { console.error("Monitor chat error:", err); }
     }
 
@@ -4421,10 +4438,13 @@ applyLang();
     window.__monitorRenderHook = renderMonitorMsg;
     let _monitorInitialLoad = true;
     onSnapshot(
-        query(vezha_chat, orderBy("created", "asc"), limit(60)),
+        query(vezha_chat, orderBy("created", "asc"), limitToLast(60)),
         snapshot => {
             snapshot.docChanges().forEach(change => {
-                if (change.type === "added") renderMonitorMsg(change.doc.data());
+                if (change.type === "added") {
+                    if (_monitorRenderedIds.has(change.doc.id)) { _monitorRenderedIds.delete(change.doc.id); return; }
+                    renderMonitorMsg(change.doc.data());
+                }
             });
             // After each batch (especially the initial load), scroll to bottom
             if (monitorMsgs) {
