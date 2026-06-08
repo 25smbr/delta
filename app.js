@@ -1797,10 +1797,44 @@ async function create3DScene(container, { withMarkers = false } = {}) {
         addStroke3D,
         removeStroke3D,
         flyTo,
-        /** Render one frame and return a data-URL for export */
-        capture() {
+        /** Render one frame, draw onto oc at W×H, including projected marker labels */
+        drawCapture(oc, W, H) {
             renderer.render(scene, camera);
-            return renderer.domElement.toDataURL("image/png");
+            oc.drawImage(renderer.domElement, 0, 0, W, H);
+            if (!withMarkers) return;
+            oc.save();
+            oc.font = "bold 9px 'Share Tech Mono',monospace";
+            oc.textBaseline = "middle";
+            Object.entries(markers3D).forEach(([id, m]) => {
+                if (!m.sprite) return;
+                const data = displayedMarkers[id]?.data;
+                if (!data) return;
+                const ndc = m.sprite.position.clone().project(camera);
+                if (ndc.z > 1) return; // behind camera
+                const sx = (ndc.x *  0.5 + 0.5) * W;
+                const sy = (ndc.y * -0.5 + 0.5) * H;
+                const rows = [
+                    { t: data.date   || "",         x: sx - 23, y: sy - 24, a: "right"  },
+                    { t: String(data.amount || ""), x: sx,      y: sy - 28, a: "center" },
+                    { t: data.info   || "",         x: sx + 23, y: sy - 24, a: "left"   },
+                    { t: data.author || "",         x: sx - 23, y: sy + 36, a: "right"  },
+                    { t: data.source || "",         x: sx + 23, y: sy + 36, a: "left"   },
+                ];
+                rows.forEach(({ t, x, y, a }) => {
+                    if (!t) return;
+                    oc.textAlign = a;
+                    const tw = oc.measureText(t).width;
+                    const bx = a === "right" ? x - tw - 8 : a === "center" ? x - tw / 2 - 4 : x;
+                    oc.fillStyle = "rgba(6,12,22,0.85)";
+                    oc.fillRect(bx - 2, y - 8, tw + 12, 15);
+                    oc.strokeStyle = "rgba(160,185,220,0.35)";
+                    oc.lineWidth = 0.5;
+                    oc.strokeRect(bx - 2, y - 8, tw + 12, 15);
+                    oc.fillStyle = "#d8e4f0";
+                    oc.fillText(t, x, y);
+                });
+            });
+            oc.restore();
         },
         dispose() {
             Object.keys(markers3D).forEach(removeMarker3D);
@@ -1892,7 +1926,7 @@ function cleanup3D() {
 }
 
 // ─── MAP EXPORT (PNG) ─────────────────────────────────────────────────────────
-document.getElementById("exportBtn")?.addEventListener("click", () => {
+document.getElementById("exportBtn")?.addEventListener("click", async () => {
     const now = new Date();
     const ts  = `DELTA MONITOR  ${now.toISOString().slice(0,16).replace("T"," ")} UTC`;
     const fname = `delta_monitor_${now.toISOString().slice(0,19).replace(/:/g,"-")}.png`;
@@ -1912,48 +1946,59 @@ document.getElementById("exportBtn")?.addEventListener("click", () => {
     }
 
     if (map3DState) {
-        // ── 3D export: capture WebGL canvas ──────────────────────────────────
-        const dataURL = map3DState.capture();
+        // ── 3D export: WebGL frame + projected marker labels ─────────────────
         const wrapper = document.getElementById("mapWrapper");
         const W = wrapper.clientWidth || 800, H = wrapper.clientHeight || 600;
         const out = document.createElement("canvas");
         out.width = W; out.height = H;
-        const oc = out.getContext("2d");
-        const img = new Image();
-        img.onload = () => { oc.drawImage(img, 0, 0, W, H); finishExport(out); };
-        img.src = dataURL;
+        map3DState.drawCapture(out.getContext("2d"), W, H);
+        finishExport(out);
         return;
     }
 
-    // ── 2D export: compose from map.png + draw canvas ─────────────────────────
+    // ── 2D export: map.png + drawings + marker icons ──────────────────────────
     const mapEl = document.getElementById("map");
     const W = mapEl.clientWidth || 800, H = mapEl.clientHeight || 600;
     const out = document.createElement("canvas");
     out.width = W; out.height = H;
     const oc = out.getContext("2d");
 
-    const baseImg = new Image();
-    baseImg.onload = () => {
-        try {
-            const topLeft     = map.latLngToContainerPoint([imageHeight, 0]);
-            const bottomRight = map.latLngToContainerPoint([0, imageWidth]);
-            oc.drawImage(baseImg, topLeft.x, topLeft.y,
-                         bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
-        } catch (e) {
-            // Fallback: fill the full canvas with the map image
-            oc.drawImage(baseImg, 0, 0, W, H);
-        }
-        const drawCanvas = document.getElementById("drawCanvas");
-        if (drawCanvas) oc.drawImage(drawCanvas, 0, 0);
-        finishExport(out);
-    };
-    baseImg.onerror = () => {
-        // If map.png fails, just export watermark + drawings
-        const drawCanvas = document.getElementById("drawCanvas");
-        if (drawCanvas) oc.drawImage(drawCanvas, 0, 0);
-        finishExport(out);
-    };
-    baseImg.src = "map.png";
+    // 1. Draw base map
+    await new Promise(res => {
+        const baseImg = new Image();
+        baseImg.onload = () => {
+            try {
+                const tl = map.latLngToContainerPoint([imageHeight, 0]);
+                const br = map.latLngToContainerPoint([0, imageWidth]);
+                oc.drawImage(baseImg, tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+            } catch (_) { oc.drawImage(baseImg, 0, 0, W, H); }
+            res();
+        };
+        baseImg.onerror = () => res();
+        baseImg.src = "map.png";
+    });
+
+    // 2. Draw strokes overlay
+    const drawCanvas = document.getElementById("drawCanvas");
+    if (drawCanvas) oc.drawImage(drawCanvas, 0, 0);
+
+    // 3. Draw each marker SVG at its map screen position
+    //    iconAnchor=[70,67] − mkr-icon offset=[47,44] → net offset [23,23]
+    await Promise.all(Object.entries(displayedMarkers).map(([, { marker, data }]) =>
+        new Promise(res => {
+            const pt  = map.latLngToContainerPoint(marker.getLatLng());
+            const svg = data.side === "friendly"
+                ? symbolSVGFriendly(data.type || "infantry_alive")
+                : symbolSVG(data.type || "infantry_alive");
+            const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+            const img = new Image(46, 57);
+            img.onload  = () => { oc.drawImage(img, pt.x - 23, pt.y - 23, 46, 57); URL.revokeObjectURL(url); res(); };
+            img.onerror = () => { URL.revokeObjectURL(url); res(); };
+            img.src = url;
+        })
+    ));
+
+    finishExport(out);
 });
 function mapDistancePixels(ll1, ll2) {
     const p1 = map.latLngToContainerPoint(ll1);
@@ -2198,9 +2243,13 @@ document.querySelectorAll(".section-collapse-btn").forEach((btn) => {
 // ════════════════════════════════════════════════════════════════════
 // VEZHA — LIVE STREAMING SYSTEM
 // ════════════════════════════════════════════════════════════════════
-const vezha_sessions = collection(db, "vezha_sessions");
-const vezha_signals  = collection(db, "vezha_signals");
-const vezha_chat     = collection(db, "vezha_chat");
+const vezha_sessions  = collection(db, "vezha_sessions");
+const vezha_signals   = collection(db, "vezha_signals");
+const vezha_chat      = collection(db, "vezha_chat");
+const vezha_rooms_col = collection(db, "vezha_rooms");
+let roomsData     = {};   // roomId → { id, name, order }
+let sessionsCache = {};   // userId → { callsign, role, room, docId, userId }
+let myCurrentRoom = null; // own current room ID
 
 const myPeerId   = "peer_" + Math.random().toString(36).substr(2, 9);
 const myShortId  = myPeerId.slice(-6).toUpperCase();
@@ -3071,6 +3120,130 @@ const brandModule  = document.getElementById("brandModule");
 mapViewBtn.addEventListener("click",   () => { if (vezhaActive)  exitVezha(); });
 vezhaViewBtn.addEventListener("click", () => { if (!vezhaActive) enterVezha(); });
 
+// ─── VEZHA ROOMS ─────────────────────────────────────────────────────────────
+async function initVezhaRooms() {
+    roomsData = {};
+    try {
+        const snap = await getDocs(vezha_rooms_col);
+        snap.forEach(d => { roomsData[d.id] = { id: d.id, ...d.data() }; });
+        const b = writeBatch(db); let dirty = false;
+        for (let i = 1; i <= 10; i++) {
+            const rid = `room_${i}`;
+            if (!roomsData[rid]) {
+                b.set(doc(db, "vezha_rooms", rid), { name: `ROOM ${i}`, order: i });
+                roomsData[rid] = { id: rid, name: `ROOM ${i}`, order: i };
+                dirty = true;
+            }
+        }
+        if (dirty) await b.commit();
+    } catch (e) { console.error("initVezhaRooms:", e); }
+}
+
+async function joinRoom(roomId) {
+    if (!mySessionRef) return;
+    const next = myCurrentRoom === roomId ? null : roomId;
+    myCurrentRoom = next;
+    try { await updateDoc(mySessionRef, { room: next }); } catch (e) { console.error("joinRoom:", e); }
+    renderRoomsPanel();
+}
+
+async function renameRoom(roomId, newName) {
+    const n = (newName || "").trim().toUpperCase().slice(0, 20) || `ROOM ${roomId.split("_")[1] || "?"}`;
+    try { await updateDoc(doc(db, "vezha_rooms", roomId), { name: n }); } catch (e) { console.error("renameRoom:", e); }
+}
+
+async function adminMoveUser(docId, targetRoomId) {
+    try { await updateDoc(doc(db, "vezha_sessions", docId), { room: targetRoomId }); } catch (e) { console.error("adminMoveUser:", e); }
+}
+
+function renderRoomsPanel() {
+    const list = document.getElementById("vezhaRoomsList");
+    if (!list) return;
+    const sorted  = Object.values(roomsData).sort((a, b) => (a.order || 0) - (b.order || 0));
+    const isAdmin = getCurrentUser()?.role === "owner";
+
+    // Map room → members
+    const byRoom = {};
+    sorted.forEach(r => { byRoom[r.id] = []; });
+    Object.values(sessionsCache).forEach(s => {
+        if (s.room && byRoom[s.room]) byRoom[s.room].push(s);
+    });
+
+    list.innerHTML = "";
+    sorted.forEach(room => {
+        const members = byRoom[room.id] || [];
+        const isMine  = myCurrentRoom === room.id;
+        const item    = document.createElement("div");
+        item.className = "vr-item" + (isMine ? " vr-mine" : "");
+
+        // Header
+        const hdr = document.createElement("div");
+        hdr.className = "vr-hdr";
+        hdr.innerHTML =
+            `<svg class="vr-icon" width="10" height="10" viewBox="0 0 10 10" fill="none">` +
+            `<path d="M1 2.5h8M1 5h8M1 7.5h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>` +
+            `<span class="vr-name" id="vrn_${room.id}">${escHtml(room.name)}</span>` +
+            (members.length ? `<span class="vr-cnt">${members.length}</span>` : "") +
+            `<button class="vr-edit-btn" data-rid="${room.id}" title="Rename">✎</button>`;
+
+        hdr.addEventListener("click", e => {
+            if (e.target.closest(".vr-edit-btn")) return;
+            joinRoom(room.id);
+        });
+        hdr.querySelector(".vr-edit-btn").addEventListener("click", e => {
+            e.stopPropagation();
+            const nameSpan = document.getElementById(`vrn_${room.id}`);
+            if (!nameSpan) return;
+            const inp = document.createElement("input");
+            inp.className = "vr-name-inp"; inp.value = room.name; inp.maxLength = 20;
+            nameSpan.replaceWith(inp); inp.focus(); inp.select();
+            const commit = () => {
+                const n = inp.value.trim().toUpperCase() || room.name;
+                renameRoom(room.id, n);
+                // nameSpan will be refreshed on next snapshot
+            };
+            inp.addEventListener("blur", commit);
+            inp.addEventListener("keydown", e2 => {
+                if (e2.key === "Enter") { e2.preventDefault(); commit(); }
+                if (e2.key === "Escape") inp.replaceWith(nameSpan);
+            });
+        });
+        item.appendChild(hdr);
+
+        // Members
+        if (members.length) {
+            const mWrap = document.createElement("div");
+            mWrap.className = "vr-members";
+            members.forEach(sess => {
+                const rc  = ROLE_COLORS[sess.role] || "#64697e";
+                const mRow = document.createElement("div");
+                mRow.className = "vr-member";
+                mRow.innerHTML =
+                    `<span class="vr-dot" style="background:${rc}"></span>` +
+                    `<span class="vr-mname">${escHtml(sess.callsign)}</span>`;
+                if (isAdmin && sess.userId !== myPeerId) {
+                    const mv = document.createElement("select");
+                    mv.className = "vr-move-sel"; mv.title = "Move to room";
+                    mv.innerHTML = `<option value="">⮕</option>` +
+                        sorted.map(r =>
+                            `<option value="${r.id}"${r.id === room.id ? " disabled" : ""}>${escHtml(r.name)}</option>`
+                        ).join("") +
+                        `<option value="__kick__">✕ KICK</option>`;
+                    mv.addEventListener("change", () => {
+                        const v = mv.value; mv.value = "";
+                        if (!v) return;
+                        adminMoveUser(sess.docId, v === "__kick__" ? null : v);
+                    });
+                    mRow.appendChild(mv);
+                }
+                mWrap.appendChild(mRow);
+            });
+            item.appendChild(mWrap);
+        }
+        list.appendChild(item);
+    });
+}
+
 async function enterVezha() {
     if (typeof artilleryActive !== "undefined" && artilleryActive) exitArtillery();
     // Clean up monitor map 3D scene — it's invisible when appBody is hidden
@@ -3139,12 +3312,25 @@ async function enterVezha() {
         snapshot.docChanges().forEach(change => {
             const data = change.doc.data();
             const uid  = data.userId;
-            if (uid === myPeerId) return;
             if (change.type === "added" || change.type === "modified") {
-                peerMeta[uid] = { callsign: data.callsign || uid.slice(-6).toUpperCase(), role: data.role || "operator" };
+                sessionsCache[uid] = {
+                    callsign: data.callsign || uid.slice(-6).toUpperCase(),
+                    role:     data.role     || "operator",
+                    room:     data.room     || null,
+                    docId:    change.doc.id,
+                    userId:   uid
+                };
+                if (uid === myPeerId) {
+                    myCurrentRoom = data.room || null;
+                } else {
+                    peerMeta[uid] = { callsign: sessionsCache[uid].callsign, role: sessionsCache[uid].role };
+                }
             }
-            if (change.type === "added"   && localStream) createOffer(uid);
-            if (change.type === "removed") { delete peerMeta[uid]; removePeer(uid); }
+            if (uid !== myPeerId) {
+                if (change.type === "added"   && localStream) createOffer(uid);
+                if (change.type === "removed") { delete peerMeta[uid]; removePeer(uid); }
+            }
+            if (change.type === "removed") delete sessionsCache[uid];
         });
         // Count only peers with a recent heartbeat
         const now = Date.now();
@@ -3157,8 +3343,20 @@ async function enterVezha() {
             }
         });
         document.getElementById("vezhaStatus").textContent = t("operators", count);
+        renderRoomsPanel();
     });
     vezhaUnsubs.push(unsubSess);
+
+    // ── Init + subscribe to rooms ─────────────────────────────────────────────
+    await initVezhaRooms();
+    const unsubRooms = onSnapshot(vezha_rooms_col, snap => {
+        snap.docChanges().forEach(ch => {
+            if (ch.type === "removed") delete roomsData[ch.doc.id];
+            else roomsData[ch.doc.id] = { id: ch.doc.id, ...ch.doc.data() };
+        });
+        renderRoomsPanel();
+    });
+    vezhaUnsubs.push(unsubRooms);
 
     // ── Subscribe to chat — fast load: last 60 msgs, then live tail ──
     document.getElementById("vezhaChatMessages").innerHTML = "";
@@ -3207,6 +3405,9 @@ async function exitVezha() {
     processedSigs.clear();
     Object.keys(peers).forEach(removePeer);
     Object.keys(peerMeta).forEach(k => delete peerMeta[k]);
+    sessionsCache = {}; roomsData = {}; myCurrentRoom = null;
+    const _rlist = document.getElementById("vezhaRoomsList");
+    if (_rlist) _rlist.innerHTML = "";
 
     document.getElementById("vezhaView").classList.remove("active");
     document.getElementById("appBody").style.display = "flex";
