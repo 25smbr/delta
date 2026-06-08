@@ -178,10 +178,19 @@ function t(key, ...args) {
     const v = (i18n[currentLang] || i18n.en)[key];
     return (typeof v === "function") ? v(...args) : (v !== undefined ? v : key);
 }
+// ─── MAP CONFIGURATIONS ──────────────────────────────────────────────────────
+const MAPS = [
+    { id: "map1", name: "MAP 1", file: "map.png",  width: 1204, height: 1290, ppm: 142/250 },
+    // Add more maps here — e.g.:
+    // { id: "map2", name: "MAP 2", file: "map2.png", width: 2000, height: 2000, ppm: 200/250 },
+];
+let currentMapIdx = parseInt(localStorage.getItem("currentMapIdx") || "0");
+if (currentMapIdx >= MAPS.length) currentMapIdx = 0;
+let imageWidth  = MAPS[currentMapIdx].width;
+let imageHeight = MAPS[currentMapIdx].height;
+let PIXELS_PER_METER_DYNAMIC = MAPS[currentMapIdx].ppm;
+
 // ─── MAP ─────────────────────────────────────────────────────────────────────
-// FIX #5: correct image dimensions — width 1204, height 1290
-const imageWidth  = 1204;
-const imageHeight = 1290;
 const map = L.map("map", {
     crs: L.CRS.Simple,
     minZoom: -3,
@@ -189,8 +198,28 @@ const map = L.map("map", {
     zoomControl: false,
     attributionControl: false
 });
+let _mapImageOverlay = null;
+function loadMapConfig(idx) {
+    currentMapIdx = Math.max(0, Math.min(MAPS.length - 1, idx));
+    localStorage.setItem("currentMapIdx", currentMapIdx);
+    const cfg = MAPS[currentMapIdx];
+    imageWidth  = cfg.width;
+    imageHeight = cfg.height;
+    PIXELS_PER_METER_DYNAMIC = cfg.ppm;
+    const b = [[0, 0], [imageHeight, imageWidth]];
+    if (_mapImageOverlay) map.removeLayer(_mapImageOverlay);
+    _mapImageOverlay = L.imageOverlay(cfg.file, b).addTo(map);
+    map.fitBounds(b);
+    map.setMaxBounds(b);
+    map.setView([imageHeight / 2, imageWidth / 2], 0);
+    // Update map selector label
+    const lbl = document.getElementById("mapSelLabel");
+    if (lbl) lbl.textContent = cfg.name;
+    buildMapSelectorDropdown();
+    if (typeof resizeCanvas === "function") setTimeout(resizeCanvas, 50);
+}
 const bounds = [[0, 0], [imageHeight, imageWidth]];
-L.imageOverlay("map.png", bounds).addTo(map);
+_mapImageOverlay = L.imageOverlay(MAPS[currentMapIdx].file, bounds).addTo(map);
 map.fitBounds(bounds);
 map.setMaxBounds(bounds);
 map.setView([imageHeight / 2, imageWidth / 2], 0);
@@ -257,7 +286,10 @@ let currentStroke = null;
 // ─── RULER STATE ─────────────────────────────────────────────────────────────
 // FIX #5: scale calibrated to correct image dimensions
 // The scale constant remains the same (142px = 250m at zoom 0) — keep original calibration
-const PIXELS_PER_METER = 142 / 250;
+// PIXELS_PER_METER is now dynamic — use PIXELS_PER_METER_DYNAMIC (set from MAPS config)
+// The const alias below allows all existing code that references PIXELS_PER_METER to keep working.
+// For live ruler calculations, pixelsToMeters() uses PIXELS_PER_METER_DYNAMIC directly.
+const PIXELS_PER_METER = 142 / 250; // fallback / arty default
 // Calibration correction factor (measured vs. real-world ground truth)
 const DIST_CORRECTION = 1.01346;
 let rulerMode   = false;
@@ -667,7 +699,8 @@ onSnapshot(markersCollection, (snapshot) => {
             }).addTo(map);
             displayedMarkers[id] = { marker, data };
             if (pendingEditMarkerId === id) pendingEditMarkerId = null;
-            if (map3DState) map3DState.addMarker3D(id, data);
+            if (map3DState)  map3DState.addMarker3D(id, data);
+            if (arty3DState) arty3DState.addMarker3D(id, data);
         } else if (change.type === "modified") {
             if (displayedMarkers[id]) {
                 displayedMarkers[id].marker.setIcon(
@@ -675,13 +708,15 @@ onSnapshot(markersCollection, (snapshot) => {
                 );
                 displayedMarkers[id].data = data;
             }
-            if (map3DState) map3DState.addMarker3D(id, data);   // rebuild 3D object
+            if (map3DState)  map3DState.addMarker3D(id, data);   // rebuild 3D object
+            if (arty3DState) arty3DState.addMarker3D(id, data);
         } else if (change.type === "removed") {
             if (displayedMarkers[id]) {
                 map.removeLayer(displayedMarkers[id].marker);
                 delete displayedMarkers[id];
             }
-            if (map3DState) map3DState.removeMarker3D(id);
+            if (map3DState)  map3DState.removeMarker3D(id);
+            if (arty3DState) arty3DState.removeMarker3D(id);
         }
     });
     document.getElementById("markerCount").textContent =
@@ -771,7 +806,7 @@ document.getElementById("map").addEventListener("contextmenu", async e => {
         e.preventDefault();
         // Stop propagation in capture phase so the coord popup never shows
         e.stopPropagation();
-        if (confirm("Delete this marker?")) {
+        if (await showConfirm("DELETE THIS MARKER?")) {
             await deleteDoc(doc(db, "markers", id));
             const idx = undoStack.findIndex(u => u.type === "marker" && u.id === id);
             if (idx !== -1) undoStack.splice(idx, 1);
@@ -1132,6 +1167,35 @@ function drawStroke(s) {
         ctx.shadowBlur  = 4;
         ctx.fillText(s.labelText || "", cx, cy);
         ctx.shadowBlur = 0;
+    } else if (s.tool === "zone") {
+        const [x1, y1] = llToCanvas(s.ll1.lat, s.ll1.lng);
+        const [x2, y2] = llToCanvas(s.ll2.lat, s.ll2.lng);
+        const rx = Math.min(x1, x2), ry = Math.min(y1, y2);
+        const rw = Math.abs(x2 - x1), rh = Math.abs(y2 - y1);
+        // Filled semi-transparent rect
+        ctx.globalAlpha = 0.18;
+        ctx.fillStyle = s.color;
+        ctx.fillRect(rx, ry, rw, rh);
+        ctx.globalAlpha = 1;
+        // Dashed border
+        ctx.strokeStyle = s.color;
+        ctx.lineWidth = Math.max(1, s.width || 2);
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(rx, ry, rw, rh);
+        ctx.setLineDash([]);
+        // Name label centered
+        if (s.zoneName) {
+            const cx2 = rx + rw / 2, cy2 = ry + rh / 2;
+            const fs2 = Math.max(10, Math.min(rh * 0.18, 22));
+            ctx.font = `700 ${fs2}px 'Share Tech Mono', monospace`;
+            ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            const tw = ctx.measureText(s.zoneName).width;
+            ctx.fillStyle = "rgba(6,12,22,0.72)";
+            ctx.fillRect(cx2 - tw / 2 - 6, cy2 - fs2 / 2 - 3, tw + 12, fs2 + 6);
+            ctx.fillStyle = s.color;
+            ctx.fillText(s.zoneName, cx2, cy2);
+            ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+        }
     }
     ctx.restore();
 }
@@ -1183,6 +1247,15 @@ function drawPreview(curX, curY) {
     } else if (activeTool === "rect") {
         ctx.beginPath();
         ctx.strokeRect(startCanvasX, startCanvasY, curX - startCanvasX, curY - startCanvasY);
+    } else if (activeTool === "zone") {
+        const rw = curX - startCanvasX, rh = curY - startCanvasY;
+        ctx.globalAlpha = 0.15;
+        ctx.fillStyle = penColor;
+        ctx.fillRect(startCanvasX, startCanvasY, rw, rh);
+        ctx.globalAlpha = 1;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(startCanvasX, startCanvasY, rw, rh);
+        ctx.setLineDash([]);
     }
     ctx.restore();
 }
@@ -1237,6 +1310,48 @@ canvas.addEventListener("mouseup", async (e) => {
             strokes.push({ ...strokeData, firestoreId: localId });
             undoStack.push({ type: "drawing", id: localId });
             redrawAll();
+        }
+    } else if (activeTool === "zone") {
+        const endLL = canvasToLL(x, y);
+        // Show zone name input at center of drawn zone
+        const cxPx = (startCanvasX + x) / 2;
+        const cyPx = (startCanvasY + y) / 2;
+        const zWrap = document.getElementById("zoneNameWrap");
+        const zField = document.getElementById("zoneNameField");
+        if (zWrap && zField) {
+            zWrap.style.display = "block";
+            zWrap.style.left = (cxPx - 60) + "px";
+            zWrap.style.top  = (cyPx - 16) + "px";
+            zField.value = ""; zField.focus();
+            const commitZone = async () => {
+                zWrap.style.display = "none";
+                const stroke = {
+                    tool:     "zone",
+                    color:    penColor,
+                    width:    penWidth,
+                    ll1:      { lat: startMapLL.lat, lng: startMapLL.lng },
+                    ll2:      { lat: endLL.lat,      lng: endLL.lng },
+                    zoneName: (zField.value.trim().toUpperCase() || "AOI"),
+                    created:  Date.now()
+                };
+                redrawAll();
+                try {
+                    const docRef = await addDoc(drawingsCollection, stroke);
+                    undoStack.push({ type: "drawing", id: docRef.id });
+                } catch (err) {
+                    console.error("Failed to save zone:", err);
+                    const localId = "_local_" + Date.now() + "_" + Math.random();
+                    strokes.push({ ...stroke, firestoreId: localId });
+                    undoStack.push({ type: "drawing", id: localId });
+                    redrawAll();
+                }
+            };
+            const onKey = (e) => {
+                if (e.key === "Enter") { zField.removeEventListener("keydown", onKey); zField.removeEventListener("blur", commitZone); commitZone(); }
+                if (e.key === "Escape") { zWrap.style.display = "none"; zField.removeEventListener("keydown", onKey); zField.removeEventListener("blur", commitZone); redrawAll(); }
+            };
+            zField.addEventListener("keydown", onKey);
+            zField.addEventListener("blur", commitZone, { once: true });
         }
     } else {
         const endLL = canvasToLL(x, y);
@@ -1396,7 +1511,7 @@ rulerBtn.addEventListener("click", toggleRuler);
 let map3DState  = null;   // active 3D instance for the monitor map
 let arty3DState = null;   // active 3D instance for the arty calculator
 
-async function create3DScene(container, { withMarkers = false } = {}) {
+async function create3DScene(container, { withMarkers = false, isArty = false } = {}) {
     const THREE = await import("three");
     const { OrbitControls } = await import("three/addons/controls/OrbitControls.js");
     const { CSS2DRenderer, CSS2DObject } = await import("three/addons/renderers/CSS2DRenderer.js");
@@ -1428,7 +1543,7 @@ async function create3DScene(container, { withMarkers = false } = {}) {
     const PW = imageWidth;    // 1204
     const PH = imageHeight;   // 1290
     const texture = await new Promise((res, rej) =>
-        new THREE.TextureLoader().load("map.png", res, undefined, rej)
+        new THREE.TextureLoader().load(MAPS[currentMapIdx].file, res, undefined, rej)
     );
     if (THREE.SRGBColorSpace) texture.colorSpace = THREE.SRGBColorSpace;
 
@@ -1571,16 +1686,31 @@ async function create3DScene(container, { withMarkers = false } = {}) {
             const dx = e.clientX - _ptrStart.x, dy = e.clientY - _ptrStart.y;
             _ptrStart = null;
             if (Math.hypot(dx, dy) < 5) {
-                // Check sprite (marker icon) hit first — opens edit popup
-                const hitId = hitSprite(e.clientX, e.clientY);
-                if (hitId && displayedMarkers[hitId]) {
-                    openMarkerEditPopup(hitId, displayedMarkers[hitId].marker, displayedMarkers[hitId].data);
-                } else {
+                if (isArty) {
+                    // LMB in arty 3D → place gun
                     const pt = getHitOnPlane(e.clientX, e.clientY);
                     if (pt) {
                         const lat = PH / 2 - pt.z, lng = pt.x + PW / 2;
-                        if (lat >= 0 && lat <= PH && lng >= 0 && lng <= PW) {
-                            await handleMapClickLatLng(lat, lng);
+                        artyGunPx = { lat, lng };
+                        const sx = Math.round(lng * ARTY_PX_TO_STUD);
+                        const sy = Math.round(lat * ARTY_PX_TO_STUD);
+                        const gxi = document.getElementById("artyGunX"); if (gxi) gxi.value = sx;
+                        const gyi = document.getElementById("artyGunY"); if (gyi) gyi.value = sy;
+                        addSimple("_gun", lat, lng, "G", "#4ade80");
+                        triggerArtyCalc();
+                    }
+                } else {
+                    // Check sprite (marker icon) hit first — opens edit popup
+                    const hitId = hitSprite(e.clientX, e.clientY);
+                    if (hitId && displayedMarkers[hitId]) {
+                        openMarkerEditPopup(hitId, displayedMarkers[hitId].marker, displayedMarkers[hitId].data);
+                    } else {
+                        const pt = getHitOnPlane(e.clientX, e.clientY);
+                        if (pt) {
+                            const lat = PH / 2 - pt.z, lng = pt.x + PW / 2;
+                            if (lat >= 0 && lat <= PH && lng >= 0 && lng <= PW) {
+                                await handleMapClickLatLng(lat, lng);
+                            }
                         }
                     }
                 }
@@ -1590,7 +1720,7 @@ async function create3DScene(container, { withMarkers = false } = {}) {
         }
     }, true);
 
-    // ── RMB click on sprite → delete marker ───────────────────────────────────
+    // ── RMB click on sprite → delete marker (monitor) / set target (arty) ───────
     let _rmbStart = null;
     canvas.addEventListener("pointerdown", (e) => {
         if (e.button === 2) _rmbStart = { x: e.clientX, y: e.clientY };
@@ -1600,10 +1730,25 @@ async function create3DScene(container, { withMarkers = false } = {}) {
         const dx = e.clientX - _rmbStart.x, dy = e.clientY - _rmbStart.y;
         _rmbStart = null;
         if (Math.hypot(dx, dy) >= 5) return;
+        if (isArty) {
+            // RMB in arty 3D → place target
+            const pt = getHitOnPlane(e.clientX, e.clientY);
+            if (!pt) return;
+            const lat = PH / 2 - pt.z, lng = pt.x + PW / 2;
+            e.preventDefault(); e.stopPropagation();
+            artyTgtPx = { lat, lng };
+            const sx = Math.round(lng * ARTY_PX_TO_STUD);
+            const sy = Math.round(lat * ARTY_PX_TO_STUD);
+            const txi = document.getElementById("artyTgtX"); if (txi) txi.value = sx;
+            const tyi = document.getElementById("artyTgtY"); if (tyi) tyi.value = sy;
+            addSimple("_tgt", lat, lng, "T", "#f87171");
+            triggerArtyCalc();
+            return;
+        }
         const hitId = hitSprite(e.clientX, e.clientY);
         if (!hitId || !displayedMarkers[hitId]) return;
         e.preventDefault(); e.stopPropagation();
-        if (confirm("Delete this marker?")) {
+        if (await showConfirm("DELETE THIS MARKER?")) {
             await deleteDoc(doc(db, "markers", hitId));
             const idx = undoStack.findIndex(u => u.type === "marker" && u.id === hitId);
             if (idx !== -1) undoStack.splice(idx, 1);
@@ -1790,10 +1935,33 @@ async function create3DScene(container, { withMarkers = false } = {}) {
         })();
     }
 
+    // ── Simple colored circle sprite (used for G/T arty markers) ──────────────
+    async function addSimple(id, lat, lng, label, hexColor) {
+        if (markers3D[id]) removeMarker3D(id);
+        const { x: mx, z: mz } = l2t(lat, lng);
+        const cv = document.createElement("canvas"); cv.width = 64; cv.height = 64;
+        const tc = cv.getContext("2d");
+        tc.beginPath(); tc.arc(32, 32, 28, 0, Math.PI * 2);
+        tc.fillStyle = hexColor; tc.fill();
+        tc.strokeStyle = "rgba(0,0,0,0.8)"; tc.lineWidth = 4; tc.stroke();
+        tc.font = "bold 24px monospace"; tc.fillStyle = "#111";
+        tc.textAlign = "center"; tc.textBaseline = "middle";
+        tc.fillText(label, 32, 33);
+        const tex = new THREE.CanvasTexture(cv);
+        if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+        const spriteMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+        const sprite = new THREE.Sprite(spriteMat);
+        sprite.position.set(mx, 35, mz);
+        sprite.scale.set(44, 44, 1);
+        scene.add(sprite);
+        markers3D[id] = { sprite, spriteMat, tex };  // no line/labelObj → removeMarker3D handles gracefully
+    }
+
     // ── Expose ────────────────────────────────────────────────────────────────
     return {
         addMarker3D,
         removeMarker3D,
+        addSimple,
         addStroke3D,
         removeStroke3D,
         flyTo,
@@ -1897,7 +2065,12 @@ document.getElementById("artyDimToggle")?.addEventListener("click", async () => 
         // Switch to 3D
         btn.disabled = true; btn.textContent = "…";
         try {
-            arty3DState = await create3DScene(document.querySelector(".arty-map-wrap"));
+            arty3DState = await create3DScene(document.querySelector(".arty-map-wrap"), { withMarkers: true, isArty: true });
+            // Sync existing displayedMarkers into arty 3D
+            Object.entries(displayedMarkers).forEach(([id, { data }]) => arty3DState.addMarker3D(id, data));
+            // Sync G/T positions if already placed
+            if (artyGunPx) arty3DState.addSimple("_gun", artyGunPx.lat, artyGunPx.lng, "G", "#4ade80");
+            if (artyTgtPx) arty3DState.addSimple("_tgt", artyTgtPx.lat, artyTgtPx.lng, "T", "#f87171");
             btn.textContent = "2D";
             btn.title = "Switch to 2D view";
             btn.classList.add("active");
@@ -1966,6 +2139,7 @@ document.getElementById("exportBtn")?.addEventListener("click", async () => {
     // 1. Draw base map
     await new Promise(res => {
         const baseImg = new Image();
+        baseImg.crossOrigin = "anonymous";
         baseImg.onload = () => {
             try {
                 const tl = map.latLngToContainerPoint([imageHeight, 0]);
@@ -1975,7 +2149,7 @@ document.getElementById("exportBtn")?.addEventListener("click", async () => {
             res();
         };
         baseImg.onerror = () => res();
-        baseImg.src = "map.png";
+        baseImg.src = MAPS[currentMapIdx].file;
     });
 
     // 2. Draw strokes overlay
@@ -1990,11 +2164,11 @@ document.getElementById("exportBtn")?.addEventListener("click", async () => {
             const svg = data.side === "friendly"
                 ? symbolSVGFriendly(data.type || "infantry_alive")
                 : symbolSVG(data.type || "infantry_alive");
-            const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+            // Use data: URL instead of blob URL — avoids cross-origin canvas taint issues
             const img = new Image(46, 57);
-            img.onload  = () => { oc.drawImage(img, pt.x - 23, pt.y - 23, 46, 57); URL.revokeObjectURL(url); res(); };
-            img.onerror = () => { URL.revokeObjectURL(url); res(); };
-            img.src = url;
+            img.onload  = () => { oc.drawImage(img, pt.x - 23, pt.y - 23, 46, 57); res(); };
+            img.onerror = () => res();
+            img.src = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
         })
     ));
 
@@ -2009,7 +2183,7 @@ function pixelsToMeters(pixelDist) {
     const zoom  = map.getZoom();
     const scale = Math.pow(2, zoom);
     const pxAt0 = pixelDist / scale;
-    return (pxAt0 / PIXELS_PER_METER) * DIST_CORRECTION;
+    return (pxAt0 / PIXELS_PER_METER_DYNAMIC) * DIST_CORRECTION;
 }
 function rulerTotalMeters() {
     let total = 0;
@@ -2249,7 +2423,8 @@ const vezha_chat      = collection(db, "vezha_chat");
 const vezha_rooms_col = collection(db, "vezha_rooms");
 let roomsData     = {};   // roomId → { id, name, order }
 let sessionsCache = {};   // userId → { callsign, role, room, docId, userId }
-let myCurrentRoom = null; // own current room ID
+let myCurrentRoom  = null; // own current room ID
+let currentChannel = "general"; // active chat channel: "general" | "room_1" … "room_10"
 
 const myPeerId   = "peer_" + Math.random().toString(36).substr(2, 9);
 const myShortId  = myPeerId.slice(-6).toUpperCase();
@@ -2415,13 +2590,7 @@ function restoreUserState(username) {
             if (cb) cb.classList.add("flipped");
             setTimeout(() => { map.invalidateSize({ animate: false }); resizeCanvas(); redrawAll(); }, 50);
         }
-        // Monitor chat
-        if (state.monitorChatCollapsed) {
-            const mc = document.getElementById("monitorChat");
-            const ch = document.getElementById("monitorChatChevron");
-            if (mc) mc.classList.add("collapsed");
-            if (ch) ch.innerHTML = `<polyline points="2,3 5,7 8,3" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
-        }
+        // Monitor chat — intentionally NOT restoring collapsed state: always open on load
     } catch (_) {}
 }
 
@@ -3145,6 +3314,16 @@ async function joinRoom(roomId) {
     myCurrentRoom = next;
     try { await updateDoc(mySessionRef, { room: next }); } catch (e) { console.error("joinRoom:", e); }
     renderRoomsPanel();
+    // Refresh stream visibility: remove tiles from users not in our room, keep our own
+    const grid = document.getElementById("vezhaGrid");
+    if (grid) {
+        grid.querySelectorAll(".vezha-tile:not(.vezha-tile-self)").forEach(tile => {
+            const uid = tile.id.replace("tile-", "");
+            const theirRoom = sessionsCache[uid]?.room;
+            if (next && theirRoom && theirRoom !== next) tile.remove();
+        });
+        if (typeof updateTileLayout === "function") updateTileLayout();
+    }
 }
 
 async function renameRoom(roomId, newName) {
@@ -3210,6 +3389,17 @@ function renderRoomsPanel() {
         });
         item.appendChild(hdr);
 
+        // Drag-over target on header
+        item.addEventListener("dragover", e => { e.preventDefault(); item.classList.add("drag-over"); });
+        item.addEventListener("dragleave", () => item.classList.remove("drag-over"));
+        item.addEventListener("drop", e => {
+            e.preventDefault(); item.classList.remove("drag-over");
+            const docId   = e.dataTransfer.getData("text/plain");
+            const fromRoom = e.dataTransfer.getData("application/x-room");
+            if (!docId) return;
+            if (fromRoom !== room.id) adminMoveUser(docId, room.id);
+        });
+
         // Members
         if (members.length) {
             const mWrap = document.createElement("div");
@@ -3218,23 +3408,23 @@ function renderRoomsPanel() {
                 const rc  = ROLE_COLORS[sess.role] || "#64697e";
                 const mRow = document.createElement("div");
                 mRow.className = "vr-member";
+                // Status icons: muted, deafened, streaming — visible to everyone
+                const muteIcon   = sess.muted    ? `<span class="vr-si si-muted"  title="Muted">🔇</span>`    : "";
+                const deafIcon   = sess.deafened ? `<span class="vr-si si-deaf"   title="Deafened">🔕</span>` : "";
+                const streamIcon = sess.streaming? `<span class="vr-si si-stream" title="Streaming">📡</span>`: "";
                 mRow.innerHTML =
                     `<span class="vr-dot" style="background:${rc}"></span>` +
-                    `<span class="vr-mname">${escHtml(sess.callsign)}</span>`;
+                    `<span class="vr-mname">${escHtml(sess.callsign)}</span>` +
+                    `<span class="vr-status-icons">${muteIcon}${deafIcon}${streamIcon}</span>`;
+                // Drag-to-move (any user can be dragged by admin)
                 if (isAdmin && sess.userId !== myPeerId) {
-                    const mv = document.createElement("select");
-                    mv.className = "vr-move-sel"; mv.title = "Move to room";
-                    mv.innerHTML = `<option value="">⮕</option>` +
-                        sorted.map(r =>
-                            `<option value="${r.id}"${r.id === room.id ? " disabled" : ""}>${escHtml(r.name)}</option>`
-                        ).join("") +
-                        `<option value="__kick__">✕ KICK</option>`;
-                    mv.addEventListener("change", () => {
-                        const v = mv.value; mv.value = "";
-                        if (!v) return;
-                        adminMoveUser(sess.docId, v === "__kick__" ? null : v);
+                    mRow.draggable = true;
+                    mRow.addEventListener("dragstart", e2 => {
+                        e2.dataTransfer.setData("text/plain", sess.docId);
+                        e2.dataTransfer.setData("application/x-room", room.id);
+                        mRow.classList.add("dragging");
                     });
-                    mRow.appendChild(mv);
+                    mRow.addEventListener("dragend", () => mRow.classList.remove("dragging"));
                 }
                 mWrap.appendChild(mRow);
             });
@@ -3314,11 +3504,14 @@ async function enterVezha() {
             const uid  = data.userId;
             if (change.type === "added" || change.type === "modified") {
                 sessionsCache[uid] = {
-                    callsign: data.callsign || uid.slice(-6).toUpperCase(),
-                    role:     data.role     || "operator",
-                    room:     data.room     || null,
-                    docId:    change.doc.id,
-                    userId:   uid
+                    callsign:  data.callsign  || uid.slice(-6).toUpperCase(),
+                    role:      data.role      || "operator",
+                    room:      data.room      || null,
+                    docId:     change.doc.id,
+                    userId:    uid,
+                    muted:     data.muted     || false,
+                    deafened:  data.deafened  || false,
+                    streaming: data.streaming || false,
                 };
                 if (uid === myPeerId) {
                     myCurrentRoom = data.room || null;
@@ -3355,17 +3548,22 @@ async function enterVezha() {
             else roomsData[ch.doc.id] = { id: ch.doc.id, ...ch.doc.data() };
         });
         renderRoomsPanel();
+        renderChannelTabs();
     });
     vezhaUnsubs.push(unsubRooms);
 
     // ── Subscribe to chat — fast load: last 60 msgs, then live tail ──
     document.getElementById("vezhaChatMessages").innerHTML = "";
+    renderChannelTabs(); // initialise with "general" before rooms load
     chatUnsub = onSnapshot(
         query(vezha_chat, orderBy("created", "asc"), limit(60)),
         snapshot => {
             snapshot.docChanges().forEach(change => {
                 if (change.type === "added") renderChatMessage(change.doc.data());
             });
+            // Scroll to latest after each batch
+            const msgsEl = document.getElementById("vezhaChatMessages");
+            if (msgsEl) requestAnimationFrame(() => { msgsEl.scrollTop = msgsEl.scrollHeight; });
         }
     );
 
@@ -3482,6 +3680,9 @@ function getOrCreatePeer(userId) {
         const cs       = meta.callsign || userId.slice(-6).toUpperCase();
         const roleKey  = meta.role || "operator";
         const roleDisp = roleKey === "owner" ? "ADMIN" : roleKey.toUpperCase();
+        // Only show stream if user is in the same room as us (or we're not in a room)
+        const theirRoom = sessionsCache[userId]?.room;
+        if (myCurrentRoom && theirRoom && theirRoom !== myCurrentRoom) return;
         addVideoTile(userId, stream, `${roleDisp} · ${cs}`);
     });
     pc.addEventListener("connectionstatechange", () => {
@@ -3723,12 +3924,17 @@ applyLang();
     // Mirror the shared vezha_chat stream into the monitor panel.
     // This listener runs immediately on page load regardless of Vezha state.
     window.__monitorRenderHook = renderMonitorMsg;
+    let _monitorInitialLoad = true;
     onSnapshot(
         query(vezha_chat, orderBy("created", "asc"), limit(60)),
         snapshot => {
             snapshot.docChanges().forEach(change => {
                 if (change.type === "added") renderMonitorMsg(change.doc.data());
             });
+            // After each batch (especially the initial load), scroll to bottom
+            if (monitorMsgs) {
+                requestAnimationFrame(() => { monitorMsgs.scrollTop = monitorMsgs.scrollHeight; });
+            }
         }
     );
 }
@@ -3774,16 +3980,21 @@ async function sendChat() {
     try {
         await addDoc(vezha_chat, {
             userId: myPeerId, shortId: myShortId,
-            callsign, role, text, created: Date.now()
+            callsign, role, text, created: Date.now(),
+            channel: currentChannel
         });
     } catch (err) { console.error("Chat error:", err); }
 }
 
 function renderChatMessage(data) {
+    // Filter by current channel — legacy messages without channel go to "general"
+    const msgChannel = data.channel || "general";
+    if (msgChannel !== currentChannel) return;
     const isMine   = data.userId === myPeerId;
     const msgs     = document.getElementById("vezhaChatMessages");
     const el       = document.createElement("div");
     el.className   = "chat-msg" + (isMine ? " chat-msg-mine" : "");
+    el.dataset.channel = msgChannel;
     const d   = new Date(data.created);
     const hh  = String(d.getHours()).padStart(2, "0");
     const mm  = String(d.getMinutes()).padStart(2, "0");
@@ -3799,7 +4010,7 @@ function renderChatMessage(data) {
       </div>
       <div class="chat-msg-text">${escHtml(data.text)}</div>`;
     msgs.appendChild(el);
-    msgs.scrollTop = msgs.scrollHeight;
+    requestAnimationFrame(() => { msgs.scrollTop = msgs.scrollHeight; });
 }
 
 function escHtml(s) {
@@ -4215,7 +4426,7 @@ function initArtyMap() {
         zoomControl: true, attributionControl: false
     });
     const artBounds = [[0, 0], [imageHeight, imageWidth]];
-    L.imageOverlay("map.png", artBounds).addTo(artyMapInstance);
+    L.imageOverlay(MAPS[currentMapIdx].file, artBounds).addTo(artyMapInstance);
     artyMapInstance.fitBounds(artBounds);
     // Force a second layout pass after the flex container finishes sizing
     setTimeout(() => {
@@ -4234,6 +4445,7 @@ function initArtyMap() {
         artyGunMarker = L.marker([e.latlng.lat, e.latlng.lng], {
             icon: makeArtyIcon("G", "#4ade80")
         }).addTo(artyMapInstance);
+        if (arty3DState) arty3DState.addSimple("_gun", artyGunPx.lat, artyGunPx.lng, "G", "#4ade80");
         updateArtyLine();
         triggerArtyCalc();
     });
@@ -4248,6 +4460,7 @@ function initArtyMap() {
         artyTgtMarker = L.marker([e.latlng.lat, e.latlng.lng], {
             icon: makeArtyIcon("T", "#f87171")
         }).addTo(artyMapInstance);
+        if (arty3DState) arty3DState.addSimple("_tgt", artyTgtPx.lat, artyTgtPx.lng, "T", "#f87171");
         updateArtyLine();
         triggerArtyCalc();
     });
@@ -4348,6 +4561,22 @@ function initArtyMap() {
                 gc.shadowColor = "rgba(0,0,0,0.8)"; gc.shadowBlur = 4;
                 gc.fillText(s.labelText || "", p.x, p.y);
                 gc.shadowBlur = 0;
+            } else if (s.tool === "zone") {
+                const p1 = llToP(s.ll1), p2 = llToP(s.ll2);
+                const rx = Math.min(p1.x, p2.x), ry = Math.min(p1.y, p2.y);
+                const rw = Math.abs(p2.x-p1.x), rh = Math.abs(p2.y-p1.y);
+                gc.globalAlpha = 0.16; gc.fillStyle = s.color; gc.fillRect(rx, ry, rw, rh); gc.globalAlpha = 1;
+                gc.setLineDash([5,4]); gc.strokeRect(rx, ry, rw, rh); gc.setLineDash([]);
+                if (s.zoneName) {
+                    const cx2 = rx+rw/2, cy2 = ry+rh/2;
+                    const fs2 = Math.max(9, Math.min(rh*0.18, 18));
+                    gc.font = `700 ${fs2}px 'Share Tech Mono', monospace`;
+                    gc.textAlign = "center"; gc.textBaseline = "middle";
+                    const tw = gc.measureText(s.zoneName).width;
+                    gc.fillStyle = "rgba(6,12,22,0.72)"; gc.fillRect(cx2-tw/2-5, cy2-fs2/2-2, tw+10, fs2+5);
+                    gc.fillStyle = s.color; gc.fillText(s.zoneName, cx2, cy2);
+                    gc.textAlign = "left"; gc.textBaseline = "alphabetic";
+                }
             }
             gc.restore();
         }
@@ -4418,3 +4647,159 @@ setTimeout(() => {
     const csi = document.getElementById("coordSearchInput");
     if (csi) { csi.value = ""; csi.setAttribute("readonly", ""); setTimeout(() => csi.removeAttribute("readonly"), 100); }
 }, 250);
+
+// ════════════════════════════════════════════════════════════════════
+// CUSTOM CONFIRM POPUP
+// ════════════════════════════════════════════════════════════════════
+function showConfirm(msg, okLabel = "DELETE") {
+    return new Promise(resolve => {
+        const overlay = document.getElementById("confirmPopup");
+        if (!overlay) { resolve(window.confirm(msg)); return; }
+        document.getElementById("confirmPopupMsg").textContent = msg;
+        document.getElementById("confirmPopupOk").textContent  = okLabel;
+        overlay.hidden = false;
+        const okBtn     = document.getElementById("confirmPopupOk");
+        const cancelBtn = document.getElementById("confirmPopupCancel");
+        function done(result) {
+            overlay.hidden = true;
+            okBtn.removeEventListener("click", onOk);
+            cancelBtn.removeEventListener("click", onCancel);
+            overlay.removeEventListener("click", onOverlay);
+            resolve(result);
+        }
+        function onOk()      { done(true);  }
+        function onCancel()  { done(false); }
+        function onOverlay(e){ if (e.target === overlay) done(false); }
+        okBtn.addEventListener("click",     onOk);
+        cancelBtn.addEventListener("click", onCancel);
+        overlay.addEventListener("click",   onOverlay);
+    });
+}
+
+// ════════════════════════════════════════════════════════════════════
+// MARKER SIZE CONTROL
+// ════════════════════════════════════════════════════════════════════
+let markerScale = parseFloat(localStorage.getItem("mkrScale") || "1");
+function setMarkerScale(s) {
+    markerScale = Math.max(0.25, Math.min(3, parseFloat(s.toFixed(2))));
+    document.documentElement.style.setProperty("--mkr-scale", markerScale);
+    localStorage.setItem("mkrScale", markerScale);
+}
+setMarkerScale(markerScale); // apply stored value on load
+document.getElementById("mkrSizeUp"  )?.addEventListener("click", () => setMarkerScale(markerScale + 0.15));
+document.getElementById("mkrSizeDown")?.addEventListener("click", () => setMarkerScale(markerScale - 0.15));
+
+// ════════════════════════════════════════════════════════════════════
+// MAP SELECTOR
+// ════════════════════════════════════════════════════════════════════
+function buildMapSelectorDropdown() {
+    const drop = document.getElementById("mapSelDropdown");
+    if (!drop) return;
+    drop.innerHTML = MAPS.map((m, i) =>
+        `<div class="map-sel-opt${i === currentMapIdx ? " active" : ""}" data-idx="${i}">
+           ${m.name}
+           <span class="map-sel-scale">${Math.round(1 / m.ppm)}m per pixel</span>
+         </div>`
+    ).join("");
+    drop.querySelectorAll(".map-sel-opt").forEach(opt => {
+        opt.addEventListener("click", () => {
+            const idx = parseInt(opt.dataset.idx);
+            drop.classList.remove("open");
+            if (idx !== currentMapIdx) loadMapConfig(idx);
+        });
+    });
+}
+buildMapSelectorDropdown();
+// Set initial label
+{
+    const lbl = document.getElementById("mapSelLabel");
+    if (lbl) lbl.textContent = MAPS[currentMapIdx].name;
+}
+document.getElementById("mapSelBtn")?.addEventListener("click", e => {
+    e.stopPropagation();
+    document.getElementById("mapSelDropdown")?.classList.toggle("open");
+});
+document.addEventListener("click", () => {
+    document.getElementById("mapSelDropdown")?.classList.remove("open");
+});
+
+// ════════════════════════════════════════════════════════════════════
+// TEXT CHANNELS (Vezha chat)
+// ════════════════════════════════════════════════════════════════════
+function renderChannelTabs() {
+    const container = document.getElementById("vcChannelTabs");
+    if (!container) return;
+    // Build list: general + one per room in roomsData
+    const channels = [{ id: "general", label: "# GENERAL" }];
+    Object.values(roomsData)
+        .sort((a, b) => (a.order || 0) - (b.order || 0))
+        .forEach(r => channels.push({ id: r.id, label: "# " + (r.name || r.id.replace("_", " ").toUpperCase()) }));
+
+    container.innerHTML = "";
+    channels.forEach(ch => {
+        const tab = document.createElement("button");
+        tab.className = "vc-channel-tab" + (ch.id === currentChannel ? " active" : "");
+        tab.textContent = ch.label;
+        tab.addEventListener("click", () => {
+            currentChannel = ch.id;
+            // Clear and re-render messages for the new channel
+            const msgsEl = document.getElementById("vezhaChatMessages");
+            if (msgsEl) msgsEl.innerHTML = "";
+            container.querySelectorAll(".vc-channel-tab").forEach((t, i) => {
+                t.classList.toggle("active", channels[i].id === currentChannel);
+            });
+            // Re-trigger the Firestore snapshot by forcing re-load
+            // (simple: just filter already-rendered messages if available)
+            // Messages will repopulate on next snapshot event.
+        });
+        container.appendChild(tab);
+    });
+}
+
+// ════════════════════════════════════════════════════════════════════
+// VEZHA STATUS SYNC (muted / deafened / streaming)
+// ════════════════════════════════════════════════════════════════════
+let _isMicMuted   = false;
+let _isDeafened   = false;
+let _isStreaming  = false;
+
+async function updateMyVezhaStatus() {
+    if (!mySessionRef) return;
+    try {
+        await updateDoc(mySessionRef, {
+            muted:     _isMicMuted,
+            deafened:  _isDeafened,
+            streaming: _isStreaming,
+        });
+    } catch (_) {}
+}
+
+// Patch shareScreen and stopSharing to update streaming status
+const _origShareScreen = shareScreen;
+const _origStopSharing = stopSharing;
+// (We hook at call sites instead since they're async functions defined earlier)
+document.getElementById("shareScreenBtn")?.addEventListener("click", async () => {
+    _isStreaming = true;
+    await updateMyVezhaStatus();
+}, true); // capture — runs before the existing listener
+document.getElementById("stopSharingBtn")?.addEventListener("click", async () => {
+    _isStreaming = false;
+    await updateMyVezhaStatus();
+}, true);
+
+// Patch mic/deafen toggles (search for existing listeners)
+document.getElementById("micBtn")?.addEventListener("click", () => {
+    // Toggle is determined by class — read state after a tick
+    setTimeout(async () => {
+        const btn = document.getElementById("micBtn");
+        _isMicMuted = btn?.classList.contains("active") === false; // active = unmuted
+        await updateMyVezhaStatus();
+    }, 50);
+});
+document.getElementById("deafBtn")?.addEventListener("click", () => {
+    setTimeout(async () => {
+        const btn = document.getElementById("deafBtn");
+        _isDeafened = btn?.classList.contains("active") === true;
+        await updateMyVezhaStatus();
+    }, 50);
+});
