@@ -1340,9 +1340,8 @@ document.addEventListener("mouseup", async (e) => {
     if (!_selBoxActive || !selBox) return;
     _selBoxActive = false;
     _selBoxConsumed = true;
-    // Disable canvas pointer-events again unless in drawMode
-    if (!drawMode && _drawCanvas) _drawCanvas.style.pointerEvents = "none";
-    map.dragging.enable();
+    _drawCanvas?.classList.remove("ctrl-select");
+    if (!drawMode) map.dragging.enable();
 
     const { x1, y1, x2, y2 } = selBox;
     const rx1 = Math.min(x1, x2), ry1 = Math.min(y1, y2);
@@ -1631,6 +1630,19 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
     labelRenderer.setSize(W, H);
     labelRenderer.domElement.style.cssText =
         "position:absolute;top:0;left:0;pointer-events:none;overflow:hidden;z-index:521;";
+
+    // ── Watermark overlay canvas ──────────────────────────────────────────────
+    const wmCanvas = document.createElement("canvas");
+    wmCanvas.style.cssText = "position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:522;";
+    wmCanvas.width  = W;
+    wmCanvas.height = H;
+    container.appendChild(wmCanvas);
+    function draw3DWatermark() {
+        const userId = getCurrentUser()?.userId || null;
+        if (!userId) { wmCanvas.getContext("2d").clearRect(0,0,wmCanvas.width,wmCanvas.height); return; }
+        _paintWatermark(wmCanvas.getContext("2d"), wmCanvas.width, wmCanvas.height, userId);
+    }
+    draw3DWatermark();
 
     // ── Scene / camera ────────────────────────────────────────────────────────
     const scene  = new THREE.Scene();
@@ -2246,7 +2258,11 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
                 });
             });
             oc.restore();
+            // Paint watermark on top of the exported frame
+            const userId = getCurrentUser()?.userId || null;
+            if (userId) _paintWatermark(oc, W, H, userId, true);
         },
+        refreshWatermark() { draw3DWatermark(); },
         dispose() {
             Object.keys(markers3D).forEach(removeMarker3D);
             Object.keys(strokes3D).forEach(removeStroke3D);
@@ -2264,6 +2280,7 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
             renderer.dispose();
             canvas.remove();
             labelRenderer.domElement.remove();
+            wmCanvas.remove();
         }
     };
 }
@@ -2315,6 +2332,8 @@ document.getElementById("artyDimToggle")?.addEventListener("click", async () => 
             arty3DState = await create3DScene(document.querySelector(".arty-map-wrap"), { withMarkers: true, isArty: true });
             // Sync existing displayedMarkers into arty 3D
             Object.entries(displayedMarkers).forEach(([id, { data }]) => arty3DState.addMarker3D(id, data));
+            // Sync existing strokes/drawings
+            strokes.forEach(s => { if (s.firestoreId) arty3DState.addStroke3D(s.firestoreId, s); });
             // Sync G/T positions if already placed
             if (artyGunPx) arty3DState.addSimple("_gun", artyGunPx.lat, artyGunPx.lng, "G", "#4ade80");
             if (artyTgtPx) arty3DState.addSimple("_tgt", artyTgtPx.lat, artyTgtPx.lng, "T", "#f87171");
@@ -2744,6 +2763,7 @@ let sessionsCache = {};   // userId → { callsign, role, room, docId, userId }
 let myCurrentRoom  = null; // own current room ID
 let currentChannel = "general"; // active chat channel: "general" | "room_1" … "room_10"
 const channelDrafts = {}; // draft text per channel, preserved across switches
+const chatMsgCache  = []; // local cache of all received chat messages { id, data }
 
 const myPeerId   = "peer_" + Math.random().toString(36).substr(2, 9);
 const myShortId  = myPeerId.slice(-6).toUpperCase();
@@ -2939,6 +2959,9 @@ function _paintWatermark(ctx, W, H, userId, skipClear = false) {
 }
 
 function drawWatermarkCanvas(userId) {
+    // Also refresh 3D watermarks if active
+    map3DState?.refreshWatermark();
+    arty3DState?.refreshWatermark();
     const canvas = document.getElementById("watermarkCanvas");
     if (!canvas) return;
     const draw = () => {
@@ -3567,10 +3590,11 @@ document.getElementById("adminToggle")?.addEventListener("click", () => {
 // ─── KEYBOARD SHORTCUTS ────────────────────────────────────────────────────────
 const _drawCanvas = document.getElementById("drawCanvas");
 document.addEventListener("keydown", async (e) => {
-    // Enable canvas pointer-events for Ctrl+drag selection
-    if (e.key === "Control") {
+    // Enable canvas pointer-events for Ctrl+drag selection (only when NOT already in draw mode)
+    if (e.key === "Control" && !drawMode) {
         map.dragging.disable();
-        if (_drawCanvas) _drawCanvas.style.pointerEvents = "auto";
+        // Add a temporary CSS class instead of inline style, so drawMode's .active class still works
+        _drawCanvas?.classList.add("ctrl-select");
     }
 
     const tag = document.activeElement?.tagName;
@@ -3584,9 +3608,8 @@ document.addEventListener("keydown", async (e) => {
 });
 document.addEventListener("keyup", (e) => {
     if (e.key === "Control") {
-        if (!drawMode && _drawCanvas) _drawCanvas.style.pointerEvents = "none";
+        _drawCanvas?.classList.remove("ctrl-select");
         if (!drawMode) map.dragging.enable();
-        // If selection was in progress but mouse released outside canvas
         if (_selBoxActive) {
             _selBoxActive = false;
             selBox = null;
@@ -3891,12 +3914,25 @@ async function enterVezha() {
 
     // ── Subscribe to chat — fast load: last 60 msgs, then live tail ──
     document.getElementById("vezhaChatMessages").innerHTML = "";
+    chatMsgCache.length = 0;
     renderChannelTabs(); // initialise with "general" before rooms load
     chatUnsub = onSnapshot(
         query(vezha_chat, orderBy("created", "asc"), limit(60)),
         snapshot => {
             snapshot.docChanges().forEach(change => {
-                if (change.type === "added") renderChatMessage(change.doc.data());
+                if (change.type === "added") {
+                    const docId = change.doc.id;
+                    const data  = change.doc.data();
+                    // Add to cache if not already present
+                    if (!chatMsgCache.find(m => m.id === docId)) {
+                        chatMsgCache.push({ id: docId, data });
+                    }
+                    renderChatMessage(data);
+                } else if (change.type === "removed") {
+                    const docId = change.doc.id;
+                    const idx = chatMsgCache.findIndex(m => m.id === docId);
+                    if (idx !== -1) chatMsgCache.splice(idx, 1);
+                }
             });
             // Scroll to latest after each batch
             const msgsEl = document.getElementById("vezhaChatMessages");
@@ -3937,6 +3973,7 @@ async function exitVezha() {
     if (mySessionRef) { deleteDoc(mySessionRef); mySessionRef = null; }
     vezhaUnsubs.forEach(u => u()); vezhaUnsubs = [];
     if (chatUnsub) { chatUnsub(); chatUnsub = null; }
+    chatMsgCache.length = 0;
     processedSigs.clear();
     Object.keys(peers).forEach(removePeer);
     Object.keys(peerMeta).forEach(k => delete peerMeta[k]);
@@ -5128,15 +5165,20 @@ function renderChannelTabs() {
             if (inputEl) channelDrafts[currentChannel] = inputEl.value;
 
             currentChannel = ch.id;
-            // Clear and re-render messages for the new channel
+            // Clear and re-render messages for the new channel from cache
             const msgsEl = document.getElementById("vezhaChatMessages");
-            if (msgsEl) msgsEl.innerHTML = "";
+            if (msgsEl) {
+                msgsEl.innerHTML = "";
+                chatMsgCache
+                    .filter(m => (m.data.channel || "general") === currentChannel)
+                    .forEach(m => renderChatMessage(m.data));
+                requestAnimationFrame(() => { msgsEl.scrollTop = msgsEl.scrollHeight; });
+            }
             container.querySelectorAll(".vc-channel-tab").forEach((t, i) => {
                 t.classList.toggle("active", channels[i].id === currentChannel);
             });
             // Restore draft for the new channel
             if (inputEl) inputEl.value = channelDrafts[currentChannel] || "";
-            // Messages will repopulate on next snapshot event.
         });
         container.appendChild(tab);
     });
