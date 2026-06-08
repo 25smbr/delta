@@ -503,6 +503,10 @@ body.in-arty    .monitor-chat { display: none; }
 .status-sep  { color: var(--border-light); }
 
 /*  LEAFLET OVERRIDES  */
+/* Remove the stacking context from leaflet-map-pane so each pane's z-index
+   competes directly in the parent context. This lets #drawCanvas (z=500) sit
+   between overlayPane (400) and markerPane (600), keeping markers above drawings. */
+.leaflet-map-pane { z-index: auto !important; }
 .leaflet-container { background: #0a0c10 !important; font-family: var(--font-ui) !important; }
 .leaflet-control-zoom { display: none; }
 .leaflet-bar { display: none; }
