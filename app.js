@@ -666,6 +666,7 @@ onSnapshot(markersCollection, (snapshot) => {
             }).addTo(map);
             displayedMarkers[id] = { marker, data };
             if (pendingEditMarkerId === id) pendingEditMarkerId = null;
+            if (map3DState) map3DState.addMarker3D(id, data);
         } else if (change.type === "modified") {
             if (displayedMarkers[id]) {
                 displayedMarkers[id].marker.setIcon(
@@ -673,11 +674,13 @@ onSnapshot(markersCollection, (snapshot) => {
                 );
                 displayedMarkers[id].data = data;
             }
+            if (map3DState) map3DState.addMarker3D(id, data);   // rebuild 3D object
         } else if (change.type === "removed") {
             if (displayedMarkers[id]) {
                 map.removeLayer(displayedMarkers[id].marker);
                 delete displayedMarkers[id];
             }
+            if (map3DState) map3DState.removeMarker3D(id);
         }
     });
     document.getElementById("markerCount").textContent =
@@ -1331,7 +1334,7 @@ rulerBtn.addEventListener("click", toggleRuler);
 let map3DState  = null;   // active 3D instance for the monitor map
 let arty3DState = null;   // active 3D instance for the arty calculator
 
-async function create3DScene(container) {
+async function create3DScene(container, { withMarkers = false } = {}) {
     // Dynamic import — resolved via the importmap in index.html
     const THREE = await import("three");
     const { OrbitControls } = await import("three/addons/controls/OrbitControls.js");
@@ -1349,12 +1352,10 @@ async function create3DScene(container) {
 
     // ── Scene ──
     const scene = new THREE.Scene();
-    // Background matches app dark theme (#060c16)
     scene.background = new THREE.Color(0x060c16);
 
     // ── Camera ──
     const camera = new THREE.PerspectiveCamera(50, W / H, 1, 8000);
-    // Start position: above and slightly south of centre, looking down at angle
     camera.position.set(0, 900, 650);
 
     // ── Map plane ──
@@ -1368,30 +1369,30 @@ async function create3DScene(container) {
     const geo  = new THREE.PlaneGeometry(PW, PH);
     const mat  = new THREE.MeshBasicMaterial({ map: texture });
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.rotation.x = -Math.PI / 2;   // lay flat on XZ plane
+    mesh.rotation.x = -Math.PI / 2;
     scene.add(mesh);
 
-    // Thin accent border around the map edge
+    // Thin accent border
     const borderGeo = new THREE.EdgesGeometry(geo);
     const borderMat = new THREE.LineBasicMaterial({ color: 0x4fa3ff, transparent: true, opacity: 0.35 });
     const border = new THREE.LineSegments(borderGeo, borderMat);
     border.rotation.x = -Math.PI / 2;
-    border.position.y = 1;           // lift slightly above plane to avoid z-fighting
+    border.position.y = 1;
     scene.add(border);
 
     // ── OrbitControls ──
     const controls = new OrbitControls(camera, canvas);
     controls.enableDamping      = true;
     controls.dampingFactor      = 0.06;
-    controls.screenSpacePanning = true;   // RMB pan moves in screen space
+    controls.screenSpacePanning = true;
     controls.minDistance        = 60;
     controls.maxDistance        = 4000;
-    controls.maxPolarAngle      = Math.PI / 2 - 0.01;  // stop at ground level
-    // Middle-click drag = orbit, right-click drag = pan, scroll = zoom
+    controls.maxPolarAngle      = Math.PI / 2 - 0.01;
+    // Left-drag = pan, middle-drag = orbit, right-drag = zoom (dolly)
     controls.mouseButtons = {
-        LEFT:   null,                    // left click: disabled (no accidental orbit)
+        LEFT:   THREE.MOUSE.PAN,         // LMB drag: pan
         MIDDLE: THREE.MOUSE.ROTATE,      // MMB drag: orbit
-        RIGHT:  THREE.MOUSE.PAN          // RMB drag: pan
+        RIGHT:  THREE.MOUSE.DOLLY        // RMB drag: zoom
     };
     controls.target.set(0, 0, 0);
     controls.update();
@@ -1415,8 +1416,100 @@ async function create3DScene(container) {
     });
     ro.observe(container);
 
+    // ── 3D Markers (only for monitor map) ──────────────────────────────────────
+    const markers3D = {};  // id → { line, lineGeo, lineMat, sprite?, tex?, spriteMat? }
+
+    // Convert Leaflet (lat=y, lng=x) to Three.js world coords on the XZ plane
+    function l2t(lat, lng) {
+        return { x: lng - PW / 2, z: PH / 2 - lat };
+    }
+
+    // Build a CanvasTexture from an SVG string (returns Promise<THREE.CanvasTexture>)
+    function svgToTex(svgStr) {
+        return new Promise(resolve => {
+            const SX = 2;  // super-sample scale
+            const CW = 46 * SX, CH = 57 * SX;
+            const cv  = document.createElement("canvas");
+            cv.width  = CW; cv.height = CH;
+            const ctx = cv.getContext("2d");
+            const blob = new Blob([svgStr], { type: "image/svg+xml" });
+            const url  = URL.createObjectURL(blob);
+            const img  = new Image(CW, CH);
+            img.onload = () => {
+                URL.revokeObjectURL(url);
+                ctx.drawImage(img, 0, 0, CW, CH);
+                const t = new THREE.CanvasTexture(cv);
+                t.needsUpdate = true;
+                resolve(t);
+            };
+            img.onerror = () => {
+                URL.revokeObjectURL(url);
+                // Fallback: simple coloured shape
+                ctx.fillStyle = "#f87171";
+                ctx.beginPath();
+                ctx.moveTo(CW/2, 4); ctx.lineTo(CW-4, CH/2);
+                ctx.lineTo(CW/2, CH-4); ctx.lineTo(4, CH/2);
+                ctx.closePath(); ctx.fill();
+                const t = new THREE.CanvasTexture(cv);
+                t.needsUpdate = true;
+                resolve(t);
+            };
+            img.src = url;
+        });
+    }
+
+    async function addMarker3D(id, data) {
+        removeMarker3D(id);
+        if (!withMarkers) return;
+
+        const { x: mx, z: mz } = l2t(data.y, data.x);
+        const POLE = 65;
+
+        // Vertical pole from ground to icon base
+        const pts = new Float32Array([mx, 2, mz,  mx, POLE, mz]);
+        const lineGeo = new THREE.BufferGeometry();
+        lineGeo.setAttribute("position", new THREE.BufferAttribute(pts, 3));
+        const lineMat = new THREE.LineBasicMaterial({ color: 0xbcccdd, transparent: true, opacity: 0.85 });
+        const line = new THREE.Line(lineGeo, lineMat);
+        scene.add(line);
+
+        // Store immediately so removeMarker3D can clean up even during async texture load
+        markers3D[id] = { line, lineGeo, lineMat };
+
+        // Build SVG texture then attach sprite
+        const type = data.type || "infantry_alive";
+        const svgStr = (data.side === "friendly") ? symbolSVGFriendly(type) : symbolSVG(type);
+        const tex = await svgToTex(svgStr);
+
+        // Might have been removed while texture was loading
+        if (!markers3D[id]) { tex.dispose(); return; }
+
+        const spriteMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+        const sprite = new THREE.Sprite(spriteMat);
+        sprite.position.set(mx, POLE + 24, mz);
+        sprite.scale.set(42, 52, 1);
+        scene.add(sprite);
+
+        Object.assign(markers3D[id], { sprite, tex, spriteMat });
+    }
+
+    function removeMarker3D(id) {
+        const m = markers3D[id];
+        if (!m) return;
+        if (m.line)     { scene.remove(m.line);   m.lineGeo?.dispose(); m.lineMat?.dispose(); }
+        if (m.sprite)   { scene.remove(m.sprite);  m.tex?.dispose();    m.spriteMat?.dispose(); }
+        delete markers3D[id];
+    }
+
+    function clearMarkers3D() {
+        Object.keys(markers3D).forEach(removeMarker3D);
+    }
+
     return {
+        addMarker3D,
+        removeMarker3D,
         dispose() {
+            clearMarkers3D();
             cancelAnimationFrame(animId);
             ro.disconnect();
             controls.dispose();
@@ -1449,9 +1542,11 @@ document.getElementById("map3DBtn")?.addEventListener("click", async () => {
     btn.disabled = true;
     btn.textContent = "…";
     try {
-        map3DState = await create3DScene(document.getElementById("mapWrapper"));
+        map3DState = await create3DScene(document.getElementById("mapWrapper"), { withMarkers: true });
         document.getElementById("map3DBtn").classList.add("active");
         document.getElementById("map2DBtn").classList.remove("active");
+        // Populate existing 2D markers into the 3D scene
+        Object.entries(displayedMarkers).forEach(([id, { data }]) => map3DState.addMarker3D(id, data));
     } catch (e) {
         console.error("3D init error:", e);
     }
