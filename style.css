@@ -1271,6 +1271,8 @@ body.lang-ua .danger-btn { font-size: 9px; letter-spacing: 0.5px; }
   cursor: grab;
 }
 .view-3d-canvas:active { cursor: grabbing; }
+.draw-mode-3d .view-3d-canvas,
+.draw-mode-3d .view-3d-canvas:active { cursor: crosshair !important; }
 
 /* ── 2D / 3D pill buttons inside the arty map ── */
 .map-dim-group {
