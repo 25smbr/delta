@@ -53,6 +53,18 @@
     </div>
     <div class="topBar-right">
       <div class="status-pill live"><span class="pulse-dot"></span>LIVE</div>
+      <!-- Map selector -->
+      <div class="map-selector" id="mapSelectorWrap">
+        <button class="map-sel-btn" id="mapSelBtn" title="Select map">
+          <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+            <path d="M1 2l3-1 3 1 3-1v8l-3 1-3-1-3 1V2z" stroke="currentColor" stroke-width="1.2" fill="none"/>
+            <line x1="4" y1="1" x2="4" y2="9" stroke="currentColor" stroke-width="0.9"/>
+            <line x1="7" y1="2" x2="7" y2="10" stroke="currentColor" stroke-width="0.9"/>
+          </svg>
+          <span id="mapSelLabel">MAP 1</span>
+        </button>
+        <div class="map-sel-dropdown" id="mapSelDropdown"></div>
+      </div>
       <!-- Language switcher -->
       <div class="lang-switcher">
         <button class="lang-btn" data-lang="en">EN</button>
@@ -244,6 +256,12 @@
               <button class="drawToolBtn" data-tool="label" title="Text Label">
                 <svg width="18" height="18" viewBox="0 0 18 18"><text x="2" y="14" font-family="monospace" font-size="13" font-weight="700" fill="currentColor">T</text></svg>
               </button>
+              <button class="drawToolBtn" data-tool="zone" title="Area of Interest Zone">
+                <svg width="18" height="18" viewBox="0 0 18 18">
+                  <rect x="2" y="3" width="14" height="12" rx="1" stroke="currentColor" stroke-width="1.5" fill="currentColor" fill-opacity="0.18"/>
+                  <text x="9" y="12.5" font-family="monospace" font-size="6" font-weight="700" fill="currentColor" text-anchor="middle">AOI</text>
+                </svg>
+              </button>
             </div>
             <div class="slider-row">
               <span class="slider-label" data-i18n="width">WIDTH</span>
@@ -284,6 +302,14 @@
                       padding:3px 7px;outline:none;min-width:120px;"
                placeholder="Type label, Enter to place"/>
       </div>
+      <!-- floating input for AOI zone name -->
+      <div id="zoneNameWrap" style="display:none;position:absolute;z-index:900;">
+        <input id="zoneNameField" type="text" maxlength="20"
+               style="font-family:var(--font-mono);font-size:12px;background:rgba(6,12,22,0.88);
+                      color:#d8e4f0;border:1px solid rgba(160,185,220,0.5);border-radius:3px;
+                      padding:3px 9px;outline:none;min-width:100px;"
+               placeholder="Zone name, Enter to place"/>
+      </div>
       <div id="coordPopup" class="coord-popup">
         <div class="coord-popup-header">
           <svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" stroke="#4fa3ff" stroke-width="1" fill="none"/><line x1="5" y1="2" x2="5" y2="5" stroke="#4fa3ff" stroke-width="1.2"/><circle cx="5" cy="7" r="0.8" fill="#4fa3ff"/></svg>
@@ -315,6 +341,21 @@
       </button>
       <button class="rightBtn" title="Undo last action" id="undoBtn">
         <svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 8a5 5 0 1 1 1.5 3.5" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M3 4v4h4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+      </button>
+      <div class="right-divider"></div>
+      <!-- Marker size controls -->
+      <button class="rightBtn" id="mkrSizeUp" title="Larger markers">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+          <circle cx="7.5" cy="7.5" r="5.5" stroke="currentColor" stroke-width="1.4"/>
+          <line x1="7.5" y1="4" x2="7.5" y2="11" stroke="currentColor" stroke-width="1.5"/>
+          <line x1="4" y1="7.5" x2="11" y2="7.5" stroke="currentColor" stroke-width="1.5"/>
+        </svg>
+      </button>
+      <button class="rightBtn" id="mkrSizeDown" title="Smaller markers">
+        <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+          <circle cx="5.5" cy="5.5" r="4" stroke="currentColor" stroke-width="1.4"/>
+          <line x1="3" y1="5.5" x2="8" y2="5.5" stroke="currentColor" stroke-width="1.5"/>
+        </svg>
       </button>
       <div class="right-divider"></div>
       <button class="rightBtn" title="Ruler — measure distance" id="rulerBtn">
@@ -420,6 +461,9 @@
             <option value="crewman"   data-i18n-opt="roleCrewman">CREWMAN</option>
             <option value="intel"     data-i18n-opt="roleIntel">INTEL</option>
           </select>
+        </div>
+        <div id="vcChannelTabs" class="vc-channel-tabs">
+          <!-- Populated by renderChannelTabs() in JS -->
         </div>
         <div class="vezha-chat-header">
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
@@ -803,6 +847,17 @@
       <div class="auth-pending-title">REQUEST SUBMITTED</div>
       <div class="auth-pending-msg">Your registration request has been sent to an admin. You will be able to log in once your account is approved.</div>
       <button class="auth-btn auth-btn-outline" id="authPendingBack">← BACK TO LOGIN</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ CUSTOM CONFIRM POPUP ═══ -->
+<div id="confirmPopup" class="confirm-overlay" hidden>
+  <div class="confirm-box">
+    <div class="confirm-msg" id="confirmPopupMsg">Are you sure?</div>
+    <div class="confirm-btns">
+      <button class="confirm-btn confirm-btn-cancel" id="confirmPopupCancel">CANCEL</button>
+      <button class="confirm-btn confirm-btn-ok"     id="confirmPopupOk">DELETE</button>
     </div>
   </div>
 </div>
