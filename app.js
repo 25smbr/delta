@@ -1137,6 +1137,7 @@ document.querySelectorAll(".drawToolBtn").forEach((btn) => {
             btn.classList.add("active");
             canvas.dataset.tool = activeTool;
         }
+        updateCanvasActive();
     });
 });
 // No tool selected by default
@@ -1146,11 +1147,15 @@ function applyDrawMode() {
     if (drawMode && rulerMode) toggleRuler();
     toggleBtn.textContent = drawMode ? "ON" : "OFF";
     toggleBtn.classList.toggle("on", drawMode);
-    canvas.classList.toggle("active", drawMode);
     document.getElementById("mapWrapper")?.classList.toggle("draw-mode-3d", drawMode);
     map.dragging[drawMode ? "disable" : "enable"]();
     // Scroll-wheel zoom stays enabled in draw mode so users can zoom while drawing
     document.getElementById("drawModeStatus").textContent = t(drawMode ? "drawOn" : "drawOff");
+    updateCanvasActive();
+}
+// Canvas captures pointer events (crosshair) only when draw mode is on AND a tool is selected
+function updateCanvasActive() {
+    canvas.classList.toggle("active", drawMode && activeTool !== null);
 }
 toggleBtn.addEventListener("click", () => {
     drawMode = !drawMode;
@@ -1853,7 +1858,7 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
 
     canvas.addEventListener("pointerdown", (e) => {
         if (e.button !== 0) return;
-        if (drawMode) {
+        if (drawMode && activeTool) {
             e.stopPropagation();   // block OrbitControls while drawing
             _draw3D = true;
             const pt = getHitOnPlane(e.clientX, e.clientY);
@@ -1869,7 +1874,7 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
     }, true);
 
     canvas.addEventListener("pointermove", (e) => {
-        if (!_draw3D || !drawMode) return;
+        if (!_draw3D || !drawMode || !activeTool) return;
         e.stopPropagation();
         const pt = getHitOnPlane(e.clientX, e.clientY);
         if (!pt) return;
