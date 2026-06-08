@@ -56,6 +56,8 @@ const i18n = {
         roleOperator: "OPERATOR", roleCommander: "COMMANDER",
         roleDrone: "DRONE PILOT", roleCrewman: "CREWMAN",
         roleIntel: "INTEL",
+        errPassNum: "Password must contain at least 1 number.",
+        errPassSym: "Password must contain at least 1 symbol (!@#$…)",
         accountTitle: "ACCOUNT",
         login: "LOGIN", register: "REGISTER",
         username: "USERNAME", password: "PASSWORD", confirmPassword: "CONFIRM PASSWORD",
@@ -793,7 +795,7 @@ function openMarkerEditPopup(markerId, markerLeaflet, data) {
         </div>
         <div class="mep-row">
           <label class="mep-label" for="mep-inf">INFO</label>
-          <input class="mep-inp" id="mep-inf" type="text" maxlength="120"
+          <input class="mep-inp" id="mep-inf" type="text"
                  value="${escHtml(data.info || "")}" placeholder="Enter information…"/>
         </div>
         <button class="mep-save" id="mep-save">SAVE</button>
@@ -809,21 +811,27 @@ function openMarkerEditPopup(markerId, markerLeaflet, data) {
         </div>
         <div class="mep-row">
           <label class="mep-label" for="mep-amt">AMT</label>
-          <input class="mep-inp" id="mep-amt" type="text" maxlength="20"
+          <input class="mep-inp" id="mep-amt" type="text"
                  value="${escHtml(String(data.amount || ""))}"/>
         </div>
         <div class="mep-row">
           <label class="mep-label" for="mep-inf">INFO</label>
-          <input class="mep-inp" id="mep-inf" type="text" maxlength="60"
+          <input class="mep-inp" id="mep-inf" type="text"
                  value="${escHtml(data.info || "")}"/>
         </div>
         <div class="mep-row">
           <label class="mep-label" for="mep-src">SRC</label>
-          <input class="mep-inp" id="mep-src" type="text" maxlength="60"
+          <input class="mep-inp" id="mep-src" type="text"
                  value="${escHtml(data.source || "")}"/>
         </div>
         <button class="mep-save" id="mep-save">SAVE</button>
       </div>`;
+
+    // In 3D mode Leaflet popups are hidden under the canvas — use a fixed panel instead
+    if (map3DState) {
+        _show3DMarkerPanel(markerId, isInfo, data);
+        return;
+    }
 
     // Close any previously opened popup, then open a fresh standalone one
     map.closePopup();
@@ -843,6 +851,59 @@ function openMarkerEditPopup(markerId, markerLeaflet, data) {
             map.closePopup();
         });
     });
+}
+
+// ── Fixed-position marker editor for 3D mode ─────────────────────────────────
+function _show3DMarkerPanel(markerId, isInfo, data) {
+    document.getElementById("_mep3d")?.remove();
+    const panel = document.createElement("div");
+    panel.id = "_mep3d";
+    panel.className = "mep-popup mep-popup-3d";
+    const amtRow = isInfo ? "" : `
+      <div class="mep-row">
+        <label class="mep-label" for="mep3d-amt">AMT</label>
+        <input class="mep-inp" id="mep3d-amt" type="text" value="${escHtml(String(data.amount||""))}"/>
+      </div>`;
+    const srcRow = isInfo ? "" : `
+      <div class="mep-row">
+        <label class="mep-label" for="mep3d-src">SRC</label>
+        <input class="mep-inp" id="mep3d-src" type="text" value="${escHtml(data.source||"")}"/>
+      </div>`;
+    panel.innerHTML = `
+      <button class="mep-close3d" id="_mep3dX">✕</button>
+      <div class="mep-row">
+        <span class="mep-label">DATE</span>
+        <span class="mep-date">${escHtml(data.date||"")}</span>
+      </div>
+      <div class="mep-row">
+        <span class="mep-label">BY</span>
+        <span class="mep-date">${escHtml(data.author||"—")}</span>
+      </div>
+      ${amtRow}
+      <div class="mep-row">
+        <label class="mep-label" for="mep3d-inf">INFO</label>
+        <input class="mep-inp" id="mep3d-inf" type="text" value="${escHtml(data.info||"")}"
+               placeholder="${isInfo ? "Enter information…" : ""}"/>
+      </div>
+      ${srcRow}
+      <button class="mep-save" id="_mep3dSave">SAVE</button>`;
+    document.body.appendChild(panel);
+
+    const close = () => panel.remove();
+    document.getElementById("_mep3dX").addEventListener("click", close);
+    document.getElementById("_mep3dSave").addEventListener("click", async () => {
+        const amt = document.getElementById("mep3d-amt")?.value ?? "";
+        const inf = document.getElementById("mep3d-inf")?.value ?? "";
+        const src = document.getElementById("mep3d-src")?.value ?? "";
+        const update = isInfo ? { info: inf } : { amount: amt, info: inf, source: src };
+        await updateDoc(doc(db, "markers", markerId), update);
+        close();
+    });
+    // Click outside to close
+    setTimeout(() => {
+        const onOut = (e) => { if (!panel.contains(e.target)) { close(); document.removeEventListener("pointerdown", onOut, true); } };
+        document.addEventListener("pointerdown", onOut, true);
+    }, 150);
 }
 // ─── RIGHT-CLICK COORDINATE POPUP ────────────────────────────────────────────
 const coordPopup = document.getElementById("coordPopup");
@@ -1863,7 +1924,7 @@ document.getElementById("exportBtn")?.addEventListener("click", () => {
         if (drawCanvas) oc.drawImage(drawCanvas, 0, 0);
         finishExport(out);
     };
-    baseImg.src = "map.png?" + Date.now();   // cache-bust to avoid tainted-canvas
+    baseImg.src = "map.png";
 });
 function mapDistancePixels(ll1, ll2) {
     const p1 = map.latLngToContainerPoint(ll1);
@@ -2462,25 +2523,74 @@ function startAdminListeners() {
         });
     }
 
+    const CHANGEABLE_ROLES = ["operator","commander","drone","crewman","intel"];
     function renderAccountsList() {
         const el = document.getElementById("adminAccountsList");
         if (!el) return;
         const approved = allAccounts.filter(a => a.status !== "pending");
         el.innerHTML = "";
         approved.sort((a, b) => a.username.localeCompare(b.username)).forEach(acct => {
-            const online  = onlineUsers.has(acct.username);
-            const roleLabel = (acct.role === "owner" ? "ADMIN" : (acct.role||"OPERATOR")).toUpperCase();
+            const online    = onlineUsers.has(acct.username);
+            const isOwner   = acct.role === "owner" || acct.username === OWNER_CALLSIGN;
+            const roleLabel = isOwner ? "ADMIN" : (acct.role || "operator").toUpperCase();
             const row = document.createElement("div");
             row.className = "admin-row";
-            row.innerHTML = `
-              <span class="presence-dot ${online ? "online" : "offline"}"></span>
-              <span class="admin-row-name">${escHtml(acct.username)}</span>
-              <span class="admin-row-role">${roleLabel}</span>`;
+            if (isOwner) {
+                row.innerHTML = `
+                  <span class="presence-dot ${online ? "online" : "offline"}"></span>
+                  <span class="admin-row-name">${escHtml(acct.username)}</span>
+                  <span class="admin-row-role">${roleLabel}</span>`;
+            } else {
+                const opts = CHANGEABLE_ROLES.map(r =>
+                    `<option value="${r}" ${acct.role===r?"selected":""}>${r.toUpperCase()}</option>`
+                ).join("");
+                row.innerHTML = `
+                  <span class="presence-dot ${online ? "online" : "offline"}"></span>
+                  <span class="admin-row-name">${escHtml(acct.username)}</span>
+                  <select class="admin-role-select" data-user="${escHtml(acct.username)}">${opts}</select>`;
+                row.querySelector(".admin-role-select").addEventListener("change", async (e) => {
+                    await updateDoc(doc(db, "accounts", acct.username), { role: e.target.value });
+                });
+            }
             el.appendChild(row);
         });
     }
 
+    function renderDebugPanel() {
+        const el = document.getElementById("debugPanelContent");
+        if (!el) return;
+        const u = getCurrentUser();
+        const lines = [
+            `── USER ──────────────────────────`,
+            `Username : ${u?.username || "—"}`,
+            `Role     : ${u?.role || "—"}`,
+            `Callsign : ${u?.callsign || "—"}`,
+            `UserId   : ${u?.userId || "—"}`,
+            `── APP STATE ─────────────────────`,
+            `Markers  : ${Object.keys(displayedMarkers).length}`,
+            `Strokes  : ${strokes.length}`,
+            `3D active: ${!!map3DState}`,
+            `Arty 3D  : ${!!arty3DState}`,
+            `Vezha    : ${typeof vezhaActive !== "undefined" ? vezhaActive : "—"}`,
+            `── FIREBASE ──────────────────────`,
+            `Accounts : ${allAccounts.length}`,
+            `Online   : ${onlineUsers.size}`,
+            `── RUNTIME ───────────────────────`,
+            `UA       : ${navigator.userAgent.slice(0,60)}`,
+            `Time     : ${new Date().toISOString()}`,
+        ];
+        el.textContent = lines.join("\n");
+    }
+
     adminUnsubs.push(unsubPresence, unsubAccounts);
+
+    // Debug panel refresh
+    document.getElementById("debugRefreshBtn")?.addEventListener("click", renderDebugPanel);
+    document.getElementById("debugCopyBtn")?.addEventListener("click", () => {
+        const txt = document.getElementById("debugPanelContent")?.textContent || "";
+        navigator.clipboard?.writeText(txt).catch(() => {});
+    });
+    renderDebugPanel();
 }
 
 // ─── ACCOUNT MODAL — AUTH (Firestore-backed, cross-device) ───────────────────
@@ -2630,8 +2740,10 @@ async function doLogin(username, pw, errEl, busyBtnId) {
 async function doRegister(username, pw, confirm, role, errEl, busyBtnId, onPending) {
     errEl.textContent = "";
     if (!username || !pw || !confirm) { errEl.textContent = t("errFillAll"); return; }
-    if (pw.length < 8)  { errEl.textContent = t("errPassLen"); return; }
-    if (pw !== confirm) { errEl.textContent = t("errPassMatch"); return; }
+    if (pw.length < 8)        { errEl.textContent = t("errPassLen"); return; }
+    if (!/[0-9]/.test(pw))    { errEl.textContent = t("errPassNum"); return; }
+    if (!/[^a-zA-Z0-9]/.test(pw)) { errEl.textContent = t("errPassSym"); return; }
+    if (pw !== confirm)        { errEl.textContent = t("errPassMatch"); return; }
     setAuthBusy(busyBtnId, true);
     try {
         const ref  = doc(db, "accounts", username);
@@ -2742,6 +2854,14 @@ document.getElementById("accountModal")?.addEventListener("click", e => {
             if (!syncedUser.userId) {
                 syncedUser.userId = generateUserId();
                 try { await updateDoc(doc(db, "accounts", user.username), { userId: syncedUser.userId }); } catch (_) {}
+            }
+            // One-time: regenerate PLAYFRA's userId to clear any legacy value
+            if (user.username === OWNER_CALLSIGN && !localStorage.getItem("_ownerIdRegen1")) {
+                syncedUser.userId = generateUserId();
+                try {
+                    await updateDoc(doc(db, "accounts", OWNER_CALLSIGN), { userId: syncedUser.userId });
+                    localStorage.setItem("_ownerIdRegen1", "1");
+                } catch (_) {}
             }
             localStorage.setItem("deltaCurrentUser", JSON.stringify(syncedUser));
 
