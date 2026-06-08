@@ -1173,9 +1173,7 @@ canvas.addEventListener("wheel", (e) => {
     }));
     e.preventDefault();
 }, { passive: false });
-// Start with draw mode on
-drawMode = true;
-applyDrawMode();
+
 // ─── COLOR SWATCHES ───────────────────────────────────────────────────────────
 document.querySelectorAll(".swatch").forEach((sw) => {
     sw.addEventListener("click", () => {
