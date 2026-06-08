@@ -1966,13 +1966,26 @@ body:not(.in-vezha) .vezha-rooms-panel { display: none; }
 .map-sel-btn:hover { border-color: var(--accent); color: var(--accent); }
 .map-sel-dropdown {
   position: absolute; top: calc(100% + 4px); left: 0;
-  min-width: 170px;
+  min-width: 190px; max-height: 320px;
   background: var(--bg-panel); border: 1px solid var(--border-light);
   border-radius: 5px; z-index: 5000;
   box-shadow: 0 6px 24px rgba(0,0,0,.6);
-  display: none;
+  display: none; flex-direction: column;
 }
-.map-sel-dropdown.open { display: block; }
+.map-sel-dropdown.open { display: flex; }
+.map-sel-search-wrap {
+  padding: 6px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.map-sel-search {
+  width: 100%; box-sizing: border-box;
+  background: var(--bg-section); border: 1px solid var(--border);
+  border-radius: 3px; color: var(--text-primary);
+  font-family: var(--font-mono); font-size: 9px; letter-spacing: .5px;
+  padding: 4px 7px; outline: none;
+}
+.map-sel-search:focus { border-color: var(--accent); }
+#mapSelList { overflow-y: auto; flex: 1; }
+.map-sel-empty { padding: 10px 12px; font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); }
 .map-sel-opt {
   padding: 8px 12px; font-family: var(--font-mono); font-size: 9px;
   letter-spacing: 1px; color: var(--text-dim); cursor: pointer;
