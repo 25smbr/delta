@@ -285,8 +285,9 @@ let strokes       = [];
 let currentStroke = null;
 let map3DState    = null;   // active 3D instance for the monitor map
 let arty3DState   = null;   // active 3D instance for the arty calculator
-let selBox        = null;   // { x1,y1,x2,y2 } for ctrl+lmb selection
-let _selBoxActive = false;
+let selBox          = null;   // { x1,y1,x2,y2 } for ctrl+lmb selection
+let _selBoxActive   = false;
+let _selBoxConsumed = false;  // blocks Leaflet click after selection completes
 // ─── RULER STATE ─────────────────────────────────────────────────────────────
 // FIX #5: scale calibrated to correct image dimensions
 // The scale constant remains the same (142px = 250m at zoom 0) — keep original calibration
@@ -775,6 +776,8 @@ async function handleMapClickLatLng(lat, lng) {
 
 // ─── ADD MARKERS — LMB (mobile: long-tap, see below) ─────────────────────────
 map.on("click", async (e) => {
+    // Block click if a Ctrl+selection was just completed
+    if (_selBoxConsumed) { _selBoxConsumed = false; return; }
     if (e.latlng.lng < 0 || e.latlng.lng > imageWidth ||
         e.latlng.lat < 0 || e.latlng.lat > imageHeight) return;
     await handleMapClickLatLng(e.latlng.lat, e.latlng.lng);
@@ -1287,7 +1290,9 @@ canvas.addEventListener("mousedown", (e) => {
     // Ctrl+LMB: selection box (works regardless of drawMode)
     if (e.ctrlKey && e.button === 0) {
         e.preventDefault();
+        e.stopPropagation();
         _selBoxActive = true;
+        _selBoxConsumed = false;
         const rect = canvas.getBoundingClientRect();
         const x = e.clientX - rect.left, y = e.clientY - rect.top;
         selBox = { x1: x, y1: y, x2: x, y2: y };
@@ -1309,14 +1314,17 @@ canvas.addEventListener("mousedown", (e) => {
         };
     }
 });
+// Document-level handlers for selection box (work even outside canvas)
+document.addEventListener("mousemove", (e) => {
+    if (!_selBoxActive || !selBox) return;
+    const rect = canvas.getBoundingClientRect();
+    selBox.x2 = e.clientX - rect.left;
+    selBox.y2 = e.clientY - rect.top;
+    redrawAll();
+});
+
 canvas.addEventListener("mousemove", (e) => {
-    if (_selBoxActive && selBox) {
-        const rect = canvas.getBoundingClientRect();
-        selBox.x2 = e.clientX - rect.left;
-        selBox.y2 = e.clientY - rect.top;
-        redrawAll(); // will draw selection box on top
-        return;
-    }
+    if (_selBoxActive) return; // handled by document listener
     if (!drawMode || !isDrawing) return;
     const { offsetX: x, offsetY: y } = e;
     if (activeTool === "pen" || activeTool === "eraser") {
@@ -1327,55 +1335,58 @@ canvas.addEventListener("mousemove", (e) => {
         drawPreview(x, y);
     }
 });
-canvas.addEventListener("mouseup", async (e) => {
-    if (_selBoxActive && selBox) {
-        _selBoxActive = false;
-        const { x1, y1, x2, y2 } = selBox;
-        const rx1 = Math.min(x1, x2), ry1 = Math.min(y1, y2);
-        const rx2 = Math.max(x1, x2), ry2 = Math.max(y1, y2);
+// Document-level mouseup handles selection box completion
+document.addEventListener("mouseup", async (e) => {
+    if (!_selBoxActive || !selBox) return;
+    _selBoxActive = false;
+    _selBoxConsumed = true;
+    // Disable canvas pointer-events again unless in drawMode
+    if (!drawMode && _drawCanvas) _drawCanvas.style.pointerEvents = "none";
+    map.dragging.enable();
 
-        // Skip tiny accidental boxes
-        if (rx2 - rx1 < 8 || ry2 - ry1 < 8) { selBox = null; redrawAll(); return; }
+    const { x1, y1, x2, y2 } = selBox;
+    const rx1 = Math.min(x1, x2), ry1 = Math.min(y1, y2);
+    const rx2 = Math.max(x1, x2), ry2 = Math.max(y1, y2);
+    selBox = null;
+    redrawAll();
 
-        // Find markers inside box
-        const selectedIds = Object.entries(displayedMarkers).filter(([, { marker }]) => {
-            const pt = map.latLngToContainerPoint(marker.getLatLng());
-            // container point → canvas coords
-            const mapRect = document.getElementById("map").getBoundingClientRect();
-            const canvasRect = canvas.getBoundingClientRect();
-            const cx = pt.x + (mapRect.left - canvasRect.left);
-            const cy = pt.y + (mapRect.top  - canvasRect.top);
+    if (rx2 - rx1 < 8 || ry2 - ry1 < 8) return; // tiny accidental box
+
+    // Find markers inside box
+    const selectedIds = Object.entries(displayedMarkers).filter(([, { marker }]) => {
+        const pt = map.latLngToContainerPoint(marker.getLatLng());
+        const mapRect = document.getElementById("map").getBoundingClientRect();
+        const canvasRect = canvas.getBoundingClientRect();
+        const cx = pt.x + (mapRect.left - canvasRect.left);
+        const cy = pt.y + (mapRect.top  - canvasRect.top);
+        return cx >= rx1 && cx <= rx2 && cy >= ry1 && cy <= ry2;
+    }).map(([id]) => id);
+
+    // Find strokes inside box
+    const selectedStrokes = strokes.filter(s => {
+        if (!s.points?.length) return false;
+        return s.points.some(({ lat, lng }) => {
+            const [cx, cy] = llToCanvas(lat, lng);
             return cx >= rx1 && cx <= rx2 && cy >= ry1 && cy <= ry2;
-        }).map(([id]) => id);
-
-        // Find strokes inside box
-        const selectedStrokes = strokes.filter(s => {
-            if (!s.points?.length) return false;
-            return s.points.some(({ lat, lng }) => {
-                const [cx, cy] = llToCanvas(lat, lng);
-                return cx >= rx1 && cx <= rx2 && cy >= ry1 && cy <= ry2;
-            });
         });
+    });
 
-        const totalCount = selectedIds.length + selectedStrokes.length;
-        selBox = null;
-        redrawAll();
+    const totalCount = selectedIds.length + selectedStrokes.length;
+    if (totalCount === 0) return;
 
-        if (totalCount === 0) return;
+    const ok = await showConfirm(`Delete ${totalCount} selected item${totalCount > 1 ? "s" : ""}?`, "DELETE");
+    if (!ok) return;
 
-        const ok = await showConfirm(`Delete ${totalCount} selected item${totalCount > 1 ? "s" : ""}?`, "DELETE");
-        if (!ok) return;
-
-        // Delete markers
-        for (const id of selectedIds) {
-            try { await deleteDoc(doc(db, "markers", id)); } catch (_) {}
-        }
-        // Delete strokes
-        for (const s of selectedStrokes) {
-            if (s.id) try { await deleteDoc(doc(db, "drawings", s.id)); } catch (_) {}
-        }
-        return;
+    for (const id of selectedIds) {
+        try { await deleteDoc(doc(db, "markers", id)); } catch (_) {}
     }
+    for (const s of selectedStrokes) {
+        if (s.id) try { await deleteDoc(doc(db, "drawings", s.id)); } catch (_) {}
+    }
+});
+
+canvas.addEventListener("mouseup", async (e) => {
+    if (_selBoxActive) return; // handled by document listener
     if (!drawMode || !isDrawing) return;
     isDrawing = false;
     const { offsetX: x, offsetY: y } = e;
@@ -1782,13 +1793,16 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
                     if (rulerPoints.length >= 2) {
                         const last = rulerPoints[rulerPoints.length - 1];
                         const prev = rulerPoints[rulerPoints.length - 2];
-                        const distPx = Math.hypot(last.lat - prev.lat, last.lng - prev.lng);
-                        const distM  = pixelsToMeters(distPx);
-                        const settingsRulerUnits = JSON.parse(localStorage.getItem("deltaSettings") || "{}").rulerUnits || "m";
-                        const distStr = settingsRulerUnits === "km"
-                            ? (distM / 1000).toFixed(2) + " km"
-                            : Math.round(distM) + " m";
-                        if (rulerReadout) rulerReadout.textContent = distStr;
+                        // Compute TOTAL ruler distance (all segments), using direct px→m conversion
+                        // (bypasses map zoom scaling since 3D coords are already in zoom-0 pixels)
+                        let totalM = 0;
+                        for (let ri = 1; ri < rulerPoints.length; ri++) {
+                            const a = rulerPoints[ri - 1], b = rulerPoints[ri];
+                            const rawPx = Math.hypot(b.lat - a.lat, b.lng - a.lng);
+                            totalM += (rawPx / PIXELS_PER_METER_DYNAMIC) * DIST_CORRECTION;
+                        }
+                        const distStr = formatDistance(totalM);
+                        if (rulerReadout) rulerReadout.textContent = `TOTAL: ${distStr}`;
                         if (rulerTooltip) {
                             rulerTooltip.style.display = "block";
                             rulerTooltip.style.left = e.clientX + "px";
@@ -2008,7 +2022,7 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
                     return new THREE.Vector3(cx + rx * Math.cos(t), DRAW_Y, cz + rz * Math.sin(t));
                 });
             }
-            if (data.tool === "rect") {
+            if (data.tool === "rect" || data.tool === "zone") {
                 return [
                     new THREE.Vector3(a.x, DRAW_Y, a.z), new THREE.Vector3(b.x, DRAW_Y, a.z),
                     new THREE.Vector3(b.x, DRAW_Y, b.z), new THREE.Vector3(a.x, DRAW_Y, b.z),
@@ -2058,6 +2072,16 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
     async function addSimple(id, lat, lng, label, hexColor) {
         if (markers3D[id]) removeMarker3D(id);
         const { x: mx, z: mz } = l2t(lat, lng);
+
+        // Pole line: ground to sprite
+        const GT_POLE = 55;
+        const poleGeo = new THREE.BufferGeometry();
+        poleGeo.setAttribute("position", new THREE.BufferAttribute(
+            new Float32Array([mx, 2, mz, mx, GT_POLE, mz]), 3));
+        const poleMat = new THREE.LineBasicMaterial({ color: 0x000000, opacity: 0.8, transparent: true });
+        const poleObj = new THREE.Line(poleGeo, poleMat);
+        scene.add(poleObj);
+
         const cv = document.createElement("canvas"); cv.width = 64; cv.height = 64;
         const tc = cv.getContext("2d");
         tc.beginPath(); tc.arc(32, 32, 28, 0, Math.PI * 2);
@@ -2071,10 +2095,11 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
         const spriteMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
         const sprite = new THREE.Sprite(spriteMat);
         sprite.renderOrder = 0;  // G/T render below placed markers
-        sprite.position.set(mx, 35, mz);
-        sprite.scale.set(44, 44, 1);
+        sprite.position.set(mx, GT_POLE + 18, mz);
+        sprite.scale.set(38, 38, 1);
         scene.add(sprite);
-        markers3D[id] = { sprite, spriteMat, tex };  // no line/labelObj → removeMarker3D handles gracefully
+        // Store poleGeo/poleMat as lineGeo/lineMat so removeMarker3D disposes them
+        markers3D[id] = { sprite, spriteMat, tex, line: poleObj, lineGeo: poleGeo, lineMat: poleMat };
     }
 
     // ── 3D Ruler ─────────────────────────────────────────────────────────────
@@ -2084,14 +2109,21 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
         if (_rulerLine3D) { scene.remove(_rulerLine3D); _rulerLine3D.geometry.dispose(); _rulerLine3D.material.dispose(); _rulerLine3D = null; }
         if (rulerPoints.length < 2) return;
         const positions = [];
-        rulerPoints.forEach(({ lat, lng }) => {
+        rulerPoints.forEach(pt => {
+            // rulerPoints can be {lat,lng} plain objects OR L.latLng instances
+            const lat = pt.lat, lng = pt.lng;
             const { x, z } = l2t(lat, lng);
-            positions.push(x, 8, z);
+            positions.push(x, DRAW_Y + 0.5, z);  // hug terrain like 2D
         });
         const geo = new THREE.BufferGeometry();
         geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-        const mat = new THREE.LineBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.9, depthTest: false });
+        // Match 2D ruler style: yellow dashed
+        const mat = new THREE.LineDashedMaterial({
+            color: 0xffcc00, dashSize: 8, gapSize: 5,
+            transparent: true, opacity: 0.95, depthTest: false
+        });
         _rulerLine3D = new THREE.Line(geo, mat);
+        _rulerLine3D.computeLineDistances();  // required for dashed lines
         _rulerLine3D.renderOrder = 2;
         scene.add(_rulerLine3D);
     }
@@ -2120,22 +2152,20 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
         // Build arc points using projectile kinematics
         const N = 80;
         const elevRad = elevDeg * Math.PI / 180;
-        const vx = v * Math.cos(elevRad);
-        const vy = v * Math.sin(elevRad);
+        // Visual parabola: start and end at ground (Y=2), peak height proportional to elevation
+        // distIn3D = horizontal distance in world units (pixels)
+        const distIn3D = Math.hypot(tgt.x - g.x, tgt.z - g.z);
+        // Visual max height: scales with elevation angle, capped for aesthetics
+        const H_visual = Math.max(20, distIn3D * Math.tan(elevRad) * 0.35);
         const positions = [];
 
         for (let i = 0; i <= N; i++) {
-            const t = (tof * i) / N;
             const progress = i / N;
-            // Horizontal distance
-            const d = vx * t;
-            // Vertical component (y in game = height above gun level)
-            const height3D = vy * t - 0.5 * 9.81 * t * t;
-            // Interpolate X/Z from gun to target
+            // Interpolate X/Z from gun to target along the ground
             const wx = g.x + (tgt.x - g.x) * progress;
             const wz = g.z + (tgt.z - g.z) * progress;
-            // Convert height (meters) to 3D units — use same scale as terrain (rough)
-            const wy = 35 + Math.max(0, height3D * (800 / distM));
+            // Parabolic height: 0 at start, peak at midpoint, 0 at end
+            const wy = 2 + 4 * H_visual * progress * (1 - progress);
             positions.push(wx, wy, wz);
         }
 
@@ -3535,24 +3565,33 @@ document.getElementById("adminToggle")?.addEventListener("click", () => {
 });
 
 // ─── KEYBOARD SHORTCUTS ────────────────────────────────────────────────────────
+const _drawCanvas = document.getElementById("drawCanvas");
 document.addEventListener("keydown", async (e) => {
-    // Disable map drag while Ctrl is held (for selection box)
-    if (e.key === "Control") map.dragging.disable();
+    // Enable canvas pointer-events for Ctrl+drag selection
+    if (e.key === "Control") {
+        map.dragging.disable();
+        if (_drawCanvas) _drawCanvas.style.pointerEvents = "auto";
+    }
 
     const tag = document.activeElement?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-    // Undo/redo only operates on the main map — disable in arty calculator
     if (artilleryActive) return;
     if (e.ctrlKey || e.metaKey) {
-        const k = e.key.toLowerCase();   // "z" regardless of Shift case
+        const k = e.key.toLowerCase();
         if (k === "z" && !e.shiftKey) { e.preventDefault(); await undoLast(); }
         if (k === "y" || (k === "z" && e.shiftKey)) { e.preventDefault(); await redoLast(); }
     }
 });
 document.addEventListener("keyup", (e) => {
     if (e.key === "Control") {
-        // Re-enable map drag unless draw mode is active (which disables it separately)
+        if (!drawMode && _drawCanvas) _drawCanvas.style.pointerEvents = "none";
         if (!drawMode) map.dragging.enable();
+        // If selection was in progress but mouse released outside canvas
+        if (_selBoxActive) {
+            _selBoxActive = false;
+            selBox = null;
+            redrawAll();
+        }
     }
 });
 
@@ -4108,6 +4147,10 @@ document.getElementById("vezhaChatSend").addEventListener("click", sendChat);
 document.getElementById("vezhaChatInput").addEventListener("keydown", e => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); }
 });
+// Save draft on every keystroke so renderChannelTabs rebuild never loses it
+document.getElementById("vezhaChatInput").addEventListener("input", e => {
+    channelDrafts[currentChannel] = e.target.value;
+});
 
 // ─── SCROLL-TO-BOTTOM ARROWS ──────────────────────────────────────────────────
 function setupScrollArrow(msgsEl) {
@@ -4345,64 +4388,6 @@ function escHtml(s) {
 }
 
 // ─── THEME TOGGLE ────────────────────────────────────────────────────────────
-// ─── SETTINGS PANEL ──────────────────────────────────────────────────────────
-(function initSettingsPanel() {
-    const overlay     = document.getElementById("settingsOverlay");
-    const closeBtn    = document.getElementById("settingsClose");
-    const scaleSlider = document.getElementById("settingsMkrScale");
-    const scaleVal    = document.getElementById("settingsMkrScaleVal");
-    const rulerUnits  = document.getElementById("settingsRulerUnits");
-    const watermarkCb = document.getElementById("settingsWatermark");
-    const autoScrollCb= document.getElementById("settingsAutoScroll");
-    const coordFmt    = document.getElementById("settingsCoordFmt");
-    if (!overlay) return;
-
-    // Load saved settings
-    const saved = JSON.parse(localStorage.getItem("deltaSettings") || "{}");
-    const curScale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--mkr-scale").trim() || "0.82");
-    if (scaleSlider)  { scaleSlider.value = saved.mkrScale ?? curScale; scaleVal.textContent = scaleSlider.value; }
-    if (rulerUnits)   rulerUnits.value   = saved.rulerUnits   || "m";
-    if (watermarkCb)  watermarkCb.checked  = saved.watermark   !== false;
-    if (autoScrollCb) autoScrollCb.checked = saved.autoScroll  !== false;
-    if (coordFmt)     coordFmt.value       = saved.coordFmt    || "xy";
-
-    // Apply loaded settings
-    function applySettings() {
-        const s = JSON.parse(localStorage.getItem("deltaSettings") || "{}");
-        if (s.mkrScale) document.documentElement.style.setProperty("--mkr-scale", s.mkrScale);
-    }
-    applySettings();
-
-    // Slider live update
-    scaleSlider?.addEventListener("input", () => {
-        const v = parseFloat(scaleSlider.value);
-        scaleVal.textContent = v.toFixed(2);
-        document.documentElement.style.setProperty("--mkr-scale", v);
-        const s = JSON.parse(localStorage.getItem("deltaSettings") || "{}");
-        s.mkrScale = v; localStorage.setItem("deltaSettings", JSON.stringify(s));
-    });
-
-    // Save other settings on change
-    [rulerUnits, coordFmt].forEach(el => el?.addEventListener("change", saveSettings));
-    [watermarkCb, autoScrollCb].forEach(el => el?.addEventListener("change", saveSettings));
-
-    function saveSettings() {
-        const s = {
-            mkrScale:   parseFloat(scaleSlider?.value ?? 0.82),
-            rulerUnits: rulerUnits?.value  || "m",
-            watermark:  watermarkCb?.checked !== false,
-            autoScroll: autoScrollCb?.checked !== false,
-            coordFmt:   coordFmt?.value    || "xy",
-        };
-        localStorage.setItem("deltaSettings", JSON.stringify(s));
-    }
-
-    document.getElementById("settingsBtn")?.addEventListener("click", () => {
-        overlay.hidden = false;
-    });
-    closeBtn?.addEventListener("click", () => { overlay.hidden = true; });
-    overlay.addEventListener("click", e => { if (e.target === overlay) overlay.hidden = true; });
-})();
 
 const themeToggleBtn = document.getElementById("themeToggleBtn");
 themeToggleBtn.addEventListener("click", () => {
