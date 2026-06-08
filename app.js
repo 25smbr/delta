@@ -1299,6 +1299,11 @@ canvas.addEventListener("mousedown", (e) => {
         selBox = { x1: x, y1: y, x2: x, y2: y };
         return;
     }
+    // Block new drawing while zone-name or label popup is open
+    const _znw = document.getElementById("zoneNameWrap");
+    const _lbw = document.getElementById("labelInputWrap");
+    if ((_znw && _znw.style.display !== "none") ||
+        (_lbw && _lbw.style.display !== "none")) return;
     if (!drawMode) return;
     isDrawing = true;
     const { offsetX: x, offsetY: y } = e;
