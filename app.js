@@ -283,6 +283,10 @@ let startMapLL   = null;
 // strokes is the live local copy, synced from Firestore via incremental updates
 let strokes       = [];
 let currentStroke = null;
+let map3DState    = null;   // active 3D instance for the monitor map
+let arty3DState   = null;   // active 3D instance for the arty calculator
+let selBox        = null;   // { x1,y1,x2,y2 } for ctrl+lmb selection
+let _selBoxActive = false;
 // ─── RULER STATE ─────────────────────────────────────────────────────────────
 // FIX #5: scale calibrated to correct image dimensions
 // The scale constant remains the same (142px = 250m at zoom 0) — keep original calibration
@@ -1263,9 +1267,6 @@ function drawPreview(curX, curY) {
 }
 // ─── MOUSE EVENTS ────────────────────────────────────────────────────────────
 // ─── CTRL+LMB SELECTION BOX ──────────────────────────────────────────────────
-let selBox = null; // { x1,y1,x2,y2 }
-let _selBoxActive = false;
-
 function drawSelectionBox(ctx, x1, y1, x2, y2) {
     const rx = Math.min(x1,x2), ry = Math.min(y1,y2);
     const rw = Math.abs(x2-x1), rh = Math.abs(y2-y1);
@@ -1596,8 +1597,7 @@ rulerBtn.addEventListener("click", toggleRuler);
 // Uses Three.js (loaded on demand) to render the map as a flat textured plane.
 // Controls: scroll = zoom, middle-drag = orbit, right-drag = pan.
 
-let map3DState  = null;   // active 3D instance for the monitor map
-let arty3DState = null;   // active 3D instance for the arty calculator
+// map3DState and arty3DState declared at top of file
 
 async function create3DScene(container, { withMarkers = false, isArty = false } = {}) {
     const THREE = await import("three");
