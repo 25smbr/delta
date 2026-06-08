@@ -1755,6 +1755,101 @@ body.lang-ua .danger-btn { font-size: 9px; letter-spacing: 0.5px; }
   color: var(--text-dim); cursor: pointer; font-size: 12px; line-height: 1;
 }
 .mep-close3d:hover { color: var(--accent); }
+/* ─── VEZHA ROOMS / CHANNELS PANEL ─────────────────────────────────────────── */
+.vezha-rooms-panel {
+  width: 190px; flex-shrink: 0;
+  background: var(--bg-panel); border-left: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  transition: background 0.3s, border-color 0.3s;
+}
+.vrp-header {
+  display: flex; align-items: center; gap: 7px;
+  padding: 0 12px; height: 38px; flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 2px; color: var(--text-dim); text-transform: uppercase;
+}
+.vrp-list {
+  flex: 1; overflow-y: auto; padding: 6px 0;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+.vrp-list::-webkit-scrollbar       { width: 4px; }
+.vrp-list::-webkit-scrollbar-track { background: transparent; }
+.vrp-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* Room item */
+.vr-item { border-radius: 3px; margin: 1px 6px; }
+.vr-hdr {
+  display: flex; align-items: center; gap: 5px;
+  padding: 5px 7px; border-radius: 3px;
+  cursor: pointer; transition: background 0.12s;
+}
+.vr-hdr:hover  { background: var(--bg-hover); }
+.vr-item.vr-mine > .vr-hdr {
+  background: var(--accent-dim); border-left: 2px solid var(--accent);
+  padding-left: 5px;
+}
+.vr-icon { color: var(--text-dim); flex-shrink: 0; }
+.vr-item.vr-mine > .vr-hdr .vr-icon { color: var(--accent); }
+
+.vr-name {
+  flex: 1; font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 1px; color: var(--text-dim); text-transform: uppercase;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.vr-item.vr-mine > .vr-hdr .vr-name { color: var(--accent); }
+
+.vr-cnt {
+  font-family: var(--font-mono); font-size: 8px; color: var(--text-dim);
+  background: var(--bg-section); border-radius: 8px;
+  padding: 1px 5px; flex-shrink: 0;
+}
+.vr-edit-btn {
+  background: transparent; border: none; color: var(--text-dim);
+  font-size: 10px; cursor: pointer; padding: 0 2px; opacity: 0;
+  transition: opacity 0.12s, color 0.12s;
+  flex-shrink: 0;
+}
+.vr-hdr:hover .vr-edit-btn { opacity: 1; }
+.vr-edit-btn:hover { color: var(--accent); }
+
+/* Inline rename input */
+.vr-name-inp {
+  flex: 1; background: var(--bg-section); border: 1px solid var(--accent);
+  border-radius: 3px; color: var(--text-primary);
+  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 1px; padding: 1px 4px; outline: none;
+  text-transform: uppercase;
+}
+
+/* Members list inside a room */
+.vr-members {
+  padding: 2px 7px 5px 20px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.vr-member {
+  display: flex; align-items: center; gap: 5px;
+  font-family: var(--font-mono); font-size: 8.5px;
+  color: var(--text-dim); letter-spacing: 0.5px;
+}
+.vr-dot {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  box-shadow: 0 0 4px rgba(0,0,0,0.4);
+}
+.vr-mname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Admin move dropdown */
+.vr-move-sel {
+  background: var(--bg-section); border: 1px solid var(--border);
+  border-radius: 3px; color: var(--text-dim);
+  font-family: var(--font-mono); font-size: 7px; padding: 1px 2px;
+  cursor: pointer; flex-shrink: 0; max-width: 60px;
+}
+.vr-move-sel:focus { outline: 1px solid var(--accent); }
+
+/* Hide rooms panel in non-vezha views */
+body:not(.in-vezha) .vezha-rooms-panel { display: none; }
+
 .presence-dot {
   width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
 }
