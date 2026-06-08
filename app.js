@@ -221,6 +221,7 @@ function loadMapConfig(idx) {
     imageWidth  = cfg.width;
     imageHeight = cfg.height;
     PIXELS_PER_METER_DYNAMIC = cfg.ppm;
+    if (typeof updateArtyScale === "function") updateArtyScale();
     const b = [[0, 0], [imageHeight, imageWidth]];
     if (_mapImageOverlay) map.removeLayer(_mapImageOverlay);
     _mapImageOverlay = L.imageOverlay(cfg.file, b).addTo(map);
@@ -1381,13 +1382,30 @@ document.addEventListener("mouseup", async (e) => {
         return cx >= rx1 && cx <= rx2 && cy >= ry1 && cy <= ry2;
     }).map(([id]) => id);
 
-    // Find strokes inside box
+    // Find strokes/shapes/text/AOIs inside box
     const selectedStrokes = strokes.filter(s => {
-        if (!s.points?.length) return false;
-        return s.points.some(({ lat, lng }) => {
-            const [cx, cy] = llToCanvas(lat, lng);
+        // Freehand pen/eraser: check if any point is inside box
+        if (s.points?.length) {
+            return s.points.some(({ lat, lng }) => {
+                const [cx, cy] = llToCanvas(lat, lng);
+                return cx >= rx1 && cx <= rx2 && cy >= ry1 && cy <= ry2;
+            });
+        }
+        // Shapes (line, rect, circle, arrow, zone) and text: use ll1/ll2 bounding box
+        if (s.ll1 && s.ll2) {
+            const [ax1, ay1] = llToCanvas(s.ll1.lat, s.ll1.lng);
+            const [ax2, ay2] = llToCanvas(s.ll2.lat, s.ll2.lng);
+            const sMinX = Math.min(ax1, ax2), sMaxX = Math.max(ax1, ax2);
+            const sMinY = Math.min(ay1, ay2), sMaxY = Math.max(ay1, ay2);
+            // Intersect: selection box overlaps shape bounding box
+            return sMinX <= rx2 && sMaxX >= rx1 && sMinY <= ry2 && sMaxY >= ry1;
+        }
+        // Label with single point (ll1 only)
+        if (s.ll1) {
+            const [cx, cy] = llToCanvas(s.ll1.lat, s.ll1.lng);
             return cx >= rx1 && cx <= rx2 && cy >= ry1 && cy <= ry2;
-        });
+        }
+        return false;
     });
 
     const totalCount = selectedIds.length + selectedStrokes.length;
@@ -1400,7 +1418,7 @@ document.addEventListener("mouseup", async (e) => {
         try { await deleteDoc(doc(db, "markers", id)); } catch (_) {}
     }
     for (const s of selectedStrokes) {
-        if (s.id) try { await deleteDoc(doc(db, "drawings", s.id)); } catch (_) {}
+        if (s.firestoreId) try { await deleteDoc(doc(db, "drawings", s.firestoreId)); } catch (_) {}
     }
 });
 
@@ -4099,7 +4117,8 @@ async function enterVezha() {
                         chatMsgCache.push({ id: docId, data });
                     }
                     // Skip if we already rendered it optimistically in sendChat
-                    if (_chatRenderedIds.has(docId)) { _chatRenderedIds.delete(docId); return; }
+                    const fp = _chatFP(data);
+                    if (_chatOptimisticFPs.has(fp)) { _chatOptimisticFPs.delete(fp); return; }
                     renderChatMessage(data);
                 } else if (change.type === "removed") {
                     const docId = change.doc.id;
@@ -4147,7 +4166,7 @@ async function exitVezha() {
     vezhaUnsubs.forEach(u => u()); vezhaUnsubs = [];
     if (chatUnsub) { chatUnsub(); chatUnsub = null; }
     chatMsgCache.length = 0;
-    _chatRenderedIds.clear();
+    _chatOptimisticFPs.clear();
     processedSigs.clear();
     Object.keys(peers).forEach(removePeer);
     Object.keys(peerMeta).forEach(k => delete peerMeta[k]);
@@ -4475,7 +4494,8 @@ applyLang();
     }
 
     // Send from monitor chat (same Firestore collection as Vezha chat)
-    const _monitorRenderedIds = new Set();
+    const _monitorOptimisticFPs = new Set();
+    function _monitorFP(d) { return `${d.userId}|${d.created}|${d.text}`; }
     async function sendMonitorChat() {
         const text = monitorInput?.value.trim();
         if (!text) return;
@@ -4485,11 +4505,11 @@ applyLang();
             callsign: getCallsign(), role: getRole(),
             text, created: Date.now()
         };
-        // Render immediately — don't wait for Firestore roundtrip
+        // Register fingerprint BEFORE addDoc so the optimistic snapshot skips it
+        _monitorOptimisticFPs.add(_monitorFP(msgData));
         renderMonitorMsg(msgData);
         try {
-            const ref = await addDoc(vezha_chat, msgData);
-            _monitorRenderedIds.add(ref.id);
+            await addDoc(vezha_chat, msgData);
         } catch (err) { console.error("Monitor chat error:", err); }
     }
 
@@ -4507,8 +4527,10 @@ applyLang();
         snapshot => {
             snapshot.docChanges().forEach(change => {
                 if (change.type === "added") {
-                    if (_monitorRenderedIds.has(change.doc.id)) { _monitorRenderedIds.delete(change.doc.id); return; }
-                    renderMonitorMsg(change.doc.data());
+                    const _mdata = change.doc.data();
+                    const _mfp = _monitorFP(_mdata);
+                    if (_monitorOptimisticFPs.has(_mfp)) { _monitorOptimisticFPs.delete(_mfp); return; }
+                    renderMonitorMsg(_mdata);
                 }
             });
             // After each batch (especially the initial load), scroll to bottom
@@ -4559,8 +4581,11 @@ document.getElementById("roleSelect")?.addEventListener("change", e => {
 });
 enforceOwnerRole();
 
-// Track doc IDs already rendered (optimistic) to skip Firestore echo
-const _chatRenderedIds = new Set();
+// Fingerprint-based dedup: keyed on userId|created|text, set BEFORE addDoc so
+// the optimistic Firestore snapshot (which fires before await resolves) is caught.
+const _chatOptimisticFPs = new Set();
+
+function _chatFP(data) { return `${data.userId}|${data.created}|${data.text}`; }
 
 async function sendChat() {
     const input    = document.getElementById("vezhaChatInput");
@@ -4575,13 +4600,12 @@ async function sendChat() {
         callsign, role, text, created: Date.now(),
         channel: currentChannel
     };
-    // Render immediately (optimistic) — don't wait for Firestore roundtrip
+    // Register fingerprint BEFORE addDoc so the optimistic snapshot skips it
+    _chatOptimisticFPs.add(_chatFP(msgData));
+    // Render immediately
     renderChatMessage(msgData);
     try {
         const ref = await addDoc(vezha_chat, msgData);
-        // Mark this doc so the snapshot doesn't render it again
-        _chatRenderedIds.add(ref.id);
-        // Also add to cache so channel-switch re-render includes it
         chatMsgCache.push({ id: ref.id, data: msgData });
     } catch (err) { console.error("Chat error:", err); }
 }
@@ -4967,9 +4991,14 @@ document.getElementById("artyCalcBtn")?.addEventListener("click", () => {
 });
 
 // ─── Artillery Map (Leaflet instance inside ARTY view) ───────────────────────
-// 1 stud = 1 m; 1 pixel = (1/PIXELS_PER_METER) metres × calibration correction
-const ARTY_PX_TO_STUD = (1 / PIXELS_PER_METER) * DIST_CORRECTION;  // ≈ 1.785 m/px
-const ARTY_STUD_TO_PX = 1 / ARTY_PX_TO_STUD;
+// These are recomputed whenever the map changes (loadMapConfig calls updateArtyScale).
+// Using PIXELS_PER_METER_DYNAMIC so each map's calibration ppm is respected.
+let ARTY_PX_TO_STUD = (1 / PIXELS_PER_METER_DYNAMIC) * DIST_CORRECTION;
+let ARTY_STUD_TO_PX = 1 / ARTY_PX_TO_STUD;
+function updateArtyScale() {
+    ARTY_PX_TO_STUD = (1 / PIXELS_PER_METER_DYNAMIC) * DIST_CORRECTION;
+    ARTY_STUD_TO_PX = 1 / ARTY_PX_TO_STUD;
+}
 
 let artyMapInstance = null;
 let artyGunMarker   = null;
