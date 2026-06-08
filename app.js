@@ -1324,6 +1324,182 @@ function toggleRuler() {
 rulerBtn.addEventListener("click", toggleRuler);
 
 
+// ─── 3D VIEW ──────────────────────────────────────────────────────────────────
+// Uses Three.js (loaded on demand) to render the map as a flat textured plane.
+// Controls: scroll = zoom, middle-drag = orbit, right-drag = pan.
+
+let map3DState  = null;   // active 3D instance for the monitor map
+let arty3DState = null;   // active 3D instance for the arty calculator
+
+async function create3DScene(container) {
+    // Dynamic import so Three.js is only fetched when the user first clicks 3D
+    const THREE = await import("https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js");
+    const { OrbitControls } = await import("https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/controls/OrbitControls.js");
+
+    const W = container.clientWidth  || 800;
+    const H = container.clientHeight || 600;
+
+    // ── Renderer ──
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(W, H);
+    const canvas = renderer.domElement;
+    canvas.className = "view-3d-canvas";
+    container.appendChild(canvas);
+
+    // ── Scene ──
+    const scene = new THREE.Scene();
+    // Background matches app dark theme (#060c16)
+    scene.background = new THREE.Color(0x060c16);
+
+    // ── Camera ──
+    const camera = new THREE.PerspectiveCamera(50, W / H, 1, 8000);
+    // Start position: above and slightly south of centre, looking down at angle
+    camera.position.set(0, 900, 650);
+
+    // ── Map plane ──
+    const PW = imageWidth;   // 1204
+    const PH = imageHeight;  // 1290
+    const texture = await new Promise((res, rej) =>
+        new THREE.TextureLoader().load("map.png", res, undefined, rej)
+    );
+    if (THREE.SRGBColorSpace) texture.colorSpace = THREE.SRGBColorSpace;
+
+    const geo  = new THREE.PlaneGeometry(PW, PH);
+    const mat  = new THREE.MeshBasicMaterial({ map: texture });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.rotation.x = -Math.PI / 2;   // lay flat on XZ plane
+    scene.add(mesh);
+
+    // Thin accent border around the map edge
+    const borderGeo = new THREE.EdgesGeometry(geo);
+    const borderMat = new THREE.LineBasicMaterial({ color: 0x4fa3ff, transparent: true, opacity: 0.35 });
+    const border = new THREE.LineSegments(borderGeo, borderMat);
+    border.rotation.x = -Math.PI / 2;
+    border.position.y = 1;           // lift slightly above plane to avoid z-fighting
+    scene.add(border);
+
+    // ── OrbitControls ──
+    const controls = new OrbitControls(camera, canvas);
+    controls.enableDamping      = true;
+    controls.dampingFactor      = 0.06;
+    controls.screenSpacePanning = true;   // RMB pan moves in screen space
+    controls.minDistance        = 60;
+    controls.maxDistance        = 4000;
+    controls.maxPolarAngle      = Math.PI / 2 - 0.01;  // stop at ground level
+    // Middle-click drag = orbit, right-click drag = pan, scroll = zoom
+    controls.mouseButtons = {
+        LEFT:   null,                    // left click: disabled (no accidental orbit)
+        MIDDLE: THREE.MOUSE.ROTATE,      // MMB drag: orbit
+        RIGHT:  THREE.MOUSE.PAN          // RMB drag: pan
+    };
+    controls.target.set(0, 0, 0);
+    controls.update();
+
+    // ── Render loop ──
+    let animId;
+    const animate = () => {
+        animId = requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+    };
+    animate();
+
+    // ── Resize observer ──
+    const ro = new ResizeObserver(() => {
+        const w = container.clientWidth, h = container.clientHeight;
+        if (!w || !h) return;
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+    });
+    ro.observe(container);
+
+    return {
+        dispose() {
+            cancelAnimationFrame(animId);
+            ro.disconnect();
+            controls.dispose();
+            texture.dispose();
+            mat.dispose();
+            geo.dispose();
+            borderGeo.dispose();
+            borderMat.dispose();
+            renderer.dispose();
+            canvas.remove();
+        }
+    };
+}
+
+// ── Monitor map 2D/3D toggle ──
+document.getElementById("map2DBtn")?.addEventListener("click", async () => {
+    if (!map3DState) return;  // already 2D
+    map3DState.dispose();
+    map3DState = null;
+    document.getElementById("map2DBtn").classList.add("active");
+    document.getElementById("map3DBtn").classList.remove("active");
+    map.invalidateSize({ animate: false });
+    resizeCanvas();
+    drawWatermarkCanvas(getCurrentUser()?.userId || null);
+});
+
+document.getElementById("map3DBtn")?.addEventListener("click", async () => {
+    if (map3DState) return;   // already 3D
+    const btn = document.getElementById("map3DBtn");
+    btn.disabled = true;
+    btn.textContent = "…";
+    try {
+        map3DState = await create3DScene(document.getElementById("mapWrapper"));
+        document.getElementById("map3DBtn").classList.add("active");
+        document.getElementById("map2DBtn").classList.remove("active");
+    } catch (e) {
+        console.error("3D init error:", e);
+    }
+    btn.disabled = false;
+    btn.textContent = "3D";
+});
+
+// ── Arty calculator 2D/3D toggle ──
+document.getElementById("arty2DBtn")?.addEventListener("click", async () => {
+    if (!arty3DState) return;
+    arty3DState.dispose();
+    arty3DState = null;
+    document.getElementById("arty2DBtn").classList.add("active");
+    document.getElementById("arty3DBtn").classList.remove("active");
+    if (artyMapInstance) artyMapInstance.invalidateSize({ animate: false });
+});
+
+document.getElementById("arty3DBtn")?.addEventListener("click", async () => {
+    if (arty3DState) return;
+    const btn = document.getElementById("arty3DBtn");
+    btn.disabled = true;
+    btn.textContent = "…";
+    try {
+        const container = document.querySelector(".arty-map-wrap");
+        arty3DState = await create3DScene(container);
+        document.getElementById("arty3DBtn").classList.add("active");
+        document.getElementById("arty2DBtn").classList.remove("active");
+    } catch (e) {
+        console.error("3D arty init error:", e);
+    }
+    btn.disabled = false;
+    btn.textContent = "3D";
+});
+
+// Clean up 3D scenes when navigating away
+function cleanup3D() {
+    if (map3DState) {
+        map3DState.dispose(); map3DState = null;
+        document.getElementById("map2DBtn")?.classList.add("active");
+        document.getElementById("map3DBtn")?.classList.remove("active");
+    }
+    if (arty3DState) {
+        arty3DState.dispose(); arty3DState = null;
+        document.getElementById("arty2DBtn")?.classList.add("active");
+        document.getElementById("arty3DBtn")?.classList.remove("active");
+    }
+}
+
 // ─── MAP EXPORT (PNG) ─────────────────────────────────────────────────────────
 document.getElementById("exportBtn")?.addEventListener("click", () => {
     const mapEl = document.getElementById("map");
@@ -2430,6 +2606,12 @@ vezhaViewBtn.addEventListener("click", () => { if (!vezhaActive) enterVezha(); }
 
 async function enterVezha() {
     if (typeof artilleryActive !== "undefined" && artilleryActive) exitArtillery();
+    // Clean up monitor map 3D scene — it's invisible when appBody is hidden
+    if (map3DState) {
+        map3DState.dispose(); map3DState = null;
+        document.getElementById("map2DBtn")?.classList.add("active");
+        document.getElementById("map3DBtn")?.classList.remove("active");
+    }
     vezhaActive    = true;
     vezhaEnterTime = Date.now();
     document.body.classList.add("in-vezha"); document.body.classList.remove("in-arty");
@@ -3532,6 +3714,12 @@ function enterArtillery() {
 }
 
 function exitArtillery() {
+    // Clean up arty 3D scene if active
+    if (arty3DState) {
+        arty3DState.dispose(); arty3DState = null;
+        document.getElementById("arty2DBtn")?.classList.add("active");
+        document.getElementById("arty3DBtn")?.classList.remove("active");
+    }
     artilleryActive = false;
     document.body.classList.remove("in-arty");
     document.getElementById("artilleryView").classList.remove("active");
