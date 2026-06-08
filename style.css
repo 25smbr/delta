@@ -1238,8 +1238,13 @@ body.lang-ua .danger-btn { font-size: 9px; letter-spacing: 0.5px; }
   padding: 16px;
   display: flex; flex-direction: column; gap: 12px;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
   transition: background 0.3s, border-color 0.3s;
 }
+.arty-sidebar::-webkit-scrollbar       { width: 4px; }
+.arty-sidebar::-webkit-scrollbar-track { background: transparent; }
+.arty-sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 /* Map wrapper */
 .arty-map-wrap {
   flex: 1; min-width: 0;
@@ -1862,7 +1867,7 @@ body:not(.in-vezha) .vezha-rooms-panel { display: none; }
 /* ═══════════════════════════════════════════════════════════
    MARKER SCALE
 ═══════════════════════════════════════════════════════════ */
-:root { --mkr-scale: 1; }
+:root { --mkr-scale: 0.82; }
 .mkr-wrap {
   transform: scale(var(--mkr-scale));
   transform-origin: 70px 67px;
@@ -1997,3 +2002,23 @@ body:not(.in-vezha) .vezha-rooms-panel { display: none; }
   position: absolute; inset: 0; pointer-events: none;
   z-index: 5; opacity: 1;
 }
+
+
+/* ═══════════════════════════════════════════════════════════
+   SCROLL-TO-BOTTOM ARROW
+═══════════════════════════════════════════════════════════ */
+.scroll-to-bottom {
+  position: absolute; bottom: 52px; right: 8px;
+  width: 26px; height: 26px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-light);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; z-index: 20;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.18s;
+  color: var(--accent);
+  font-size: 13px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+}
+.scroll-to-bottom.visible { opacity: 1; pointer-events: auto; }
