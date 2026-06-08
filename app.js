@@ -804,8 +804,7 @@ function subscribeToMap(mapId) {
         (error) => console.error("Drawings sync error:", error)
     );
 }
-// Initial subscription for the current map
-subscribeToMap(MAPS[currentMapIdx].id);
+// (initial subscribeToMap call is deferred to after ctx is ready — see below)
 // ─── ADD MARKERS — shared handler (called by Leaflet click AND 3D canvas) ────
 async function handleMapClickLatLng(lat, lng) {
     if (drawMode || rulerMode) return;
@@ -1090,6 +1089,8 @@ coordSearchInput.addEventListener("keydown", (e) => { if (e.key === "Enter") goT
 // ════════════════════════════════════════════════════════════════════
 const canvas = document.getElementById("drawCanvas");
 const ctx    = canvas.getContext("2d");
+// Initial subscription — must come after ctx is declared (subscribeToMap calls redrawAll)
+subscribeToMap(MAPS[currentMapIdx].id);
 // ─── CANVAS SIZING ───────────────────────────────────────────────────────────
 function resizeCanvas() {
     const wrapper = document.getElementById("mapWrapper");
