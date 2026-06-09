@@ -946,63 +946,24 @@ document.addEventListener("pause", e => {
     if (btn) btn.innerHTML = `<svg viewBox="0 0 16 16"><polygon points="3,1 13,8 3,15" fill="currentColor"/></svg>`;
 }, true);
 
-// Try to resolve a Medal clip to a direct video URL via oEmbed
-async function _tryMedalVideoUrl(clipUrl) {
-    try {
-        const oe = await fetch(
-            `https://medal.tv/api/content/oembed?url=${encodeURIComponent(clipUrl)}&format=json`,
-            { mode: "cors", signal: AbortSignal.timeout(4000) }
-        );
-        if (!oe.ok) return null;
-        const json = await oe.json();
-        // Some oEmbed responses include a direct video url
-        if (json.video_url && /https?:\/\//i.test(json.video_url)) return json.video_url;
-        if (json.url      && /\.(mp4|webm)/i.test(json.url))       return json.url;
-        // Parse embed HTML for a src that points to a CDN video
-        if (json.html) {
-            const m = json.html.match(/src="([^"]*cdn[^"]*\.(?:mp4|webm)[^"]*)"/i);
-            if (m) return m[1];
-        }
-        return null;
-    } catch { return null; }
-}
-
-// Delegated handler for .clip-card clicks
-document.addEventListener("click", async e => {
+// Delegated handler for .clip-card clicks — opens a small popup window
+document.addEventListener("click", e => {
     const card = e.target.closest(".clip-card");
     if (!card) return;
     const url = card.dataset.clipUrl;
-    if (!url) return;
-
-    // Show a loading state
-    card.innerHTML = `<div style="color:var(--text-dim);font-family:var(--font-mono);font-size:10px;letter-spacing:1px;">LOADING…</div>`;
-
-    // Try Medal oEmbed first
-    if (/medal\.tv/i.test(url)) {
-        const videoUrl = await _tryMedalVideoUrl(url);
-        if (videoUrl) {
-            card.outerHTML = _videoPlayerHtml(videoUrl);
-            return;
-        }
-    }
-    // Fallback: open in a small popup window
-    window.open(url, "delta_clip", "width=960,height=600,menubar=no,toolbar=no,location=no,status=no,resizable=yes");
-    // Restore the card
-    card.outerHTML = `
-      <div class="clip-card" data-clip-url="${escHtml(url)}">
-        ${_clipCardInner(url)}
-      </div>`;
+    if (url) window.open(url, "delta_clip",
+        "width=960,height=600,menubar=no,toolbar=no,location=no,status=no,resizable=yes");
 });
 
 function _clipCardInner(url) {
-    const safe = escHtml(url);
-    const label = url.length > 38 ? url.slice(0, 36) + "…" : url;
+    const label = url.length > 46 ? url.slice(0, 44) + "…" : url;
     return `
       <svg class="clip-card-play" viewBox="0 0 64 64" fill="none">
         <circle cx="32" cy="32" r="30" fill="rgba(255,255,255,.08)" stroke="rgba(255,255,255,.3)" stroke-width="1.5"/>
         <polygon points="25,17 49,32 25,47" fill="rgba(255,255,255,.9)"/>
       </svg>
-      <div class="clip-card-label">${escHtml(label)}</div>`;
+      <div class="clip-card-label">${escHtml(label)}</div>
+      <div class="clip-card-hint">CLICK TO OPEN IN POPUP</div>`;
 }
 
 function _clipPreviewHtml(url) {
