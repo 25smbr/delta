@@ -1044,7 +1044,7 @@ document.addEventListener("input", e => {
 document.addEventListener("loadedmetadata", e => {
     if (e.target.tagName !== "VIDEO" || !e.target.dataset.last3) return;
     const v = e.target;
-    v.currentTime = Math.max(0, v.duration - 3);
+    v.currentTime = Math.max(0, v.duration - 5);
     v.play().catch(() => {});
 }, true);
 document.addEventListener("timeupdate", e => {
@@ -1057,7 +1057,7 @@ document.addEventListener("timeupdate", e => {
     if (time) time.textContent = `${_fmtTime(v.currentTime)} / ${_fmtTime(v.duration)}`;
     // last-3 loop: when near end, jump back to 3 s before end
     if (v.dataset.last3 && isFinite(v.duration) && v.currentTime >= v.duration - 0.15) {
-        v.currentTime = Math.max(0, v.duration - 3);
+        v.currentTime = Math.max(0, v.duration - 5);
     }
 }, true);
 document.addEventListener("play", e => {
