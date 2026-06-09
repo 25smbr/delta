@@ -876,51 +876,91 @@ document.getElementById("map").addEventListener("contextmenu", async e => {
     }
 }, true);  // ← capture phase
 
+// ─── CLIP OVERLAY ────────────────────────────────────────────────────────────
+function _clipEmbedHtml(url) {
+    if (!url) return "";
+    // Direct image URLs
+    if (/\.(jpe?g|png|gif|webp)(\?|$)/i.test(url) || /cdn\.medal\.tv.*\.(jpe?g|png|webp)/i.test(url)) {
+        return `<img src="${escHtml(url)}" alt="clip"/>`;
+    }
+    // Medal clip → iframe embed
+    const m = url.match(/medal\.tv\/(?:games\/[^/?#]+\/)?clips\/([^/?#]+)/i);
+    if (m) {
+        const embedUrl = `https://medal.tv/clips/${m[1]}?loop=1&autoplay=1&muted=1&cta=0`;
+        return `<iframe src="${escHtml(embedUrl)}" allowfullscreen allow="autoplay; fullscreen"></iframe>`;
+    }
+    // Generic video file
+    if (/\.(mp4|webm|mov)(\?|$)/i.test(url)) {
+        return `<video src="${escHtml(url)}" controls autoplay muted loop style="width:100%;height:100%;object-fit:contain"></video>`;
+    }
+    // Fallback: iframe any URL
+    return `<iframe src="${escHtml(url)}" allowfullscreen></iframe>`;
+}
+function _openClipOverlay(url, label) {
+    const overlay = document.getElementById("clipOverlay");
+    const body    = document.getElementById("clipOverlayBody");
+    const title   = document.getElementById("clipOverlayTitle");
+    if (!overlay || !body) return;
+    body.innerHTML  = _clipEmbedHtml(url);
+    title.textContent = label ? `CLIP — ${label}` : "CLIP";
+    overlay.style.display = "flex";
+}
+document.getElementById("clipOverlayClose")?.addEventListener("click", () => {
+    const overlay = document.getElementById("clipOverlay");
+    overlay.style.display = "none";
+    document.getElementById("clipOverlayBody").innerHTML = "";
+});
+document.getElementById("clipOverlay")?.addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) {
+        e.currentTarget.style.display = "none";
+        document.getElementById("clipOverlayBody").innerHTML = "";
+    }
+});
 // ─── MARKER EDIT POPUP ───────────────────────────────────────────────────────
 // Uses a standalone L.popup (not bound to marker) so it can be reopened anytime.
 function openMarkerEditPopup(markerId, markerLeaflet, data) {
     const isInfo = (data.type || "").startsWith("info");
-    const popupContent = isInfo ? `
-      <div class="mep-popup">
+    const clipVal = escHtml(data.clip || "");
+    const viewBtn = data.clip
+        ? `<button class="mep-clip-btn" id="mep-clip-view">▶ VIEW</button>` : "";
+    const clipRow = `
         <div class="mep-row">
-          <span class="mep-label">DATE</span>
-          <span class="mep-date">${escHtml(data.date || "")}</span>
-        </div>
-        <div class="mep-row">
-          <span class="mep-label">BY</span>
-          <span class="mep-date">${escHtml(data.author || "—")}</span>
-        </div>
-        <div class="mep-row">
-          <label class="mep-label" for="mep-inf">INFO</label>
-          <input class="mep-inp" id="mep-inf" type="text"
-                 value="${escHtml(data.info || "")}" placeholder="Enter information…"/>
-        </div>
-        <button class="mep-save" id="mep-save">SAVE</button>
-      </div>` : `
-      <div class="mep-popup">
-        <div class="mep-row">
-          <span class="mep-label">DATE</span>
-          <span class="mep-date">${escHtml(data.date || "")}</span>
-        </div>
-        <div class="mep-row">
-          <span class="mep-label">BY</span>
-          <span class="mep-date">${escHtml(data.author || "—")}</span>
-        </div>
+          <label class="mep-label" for="mep-clip">CLIP</label>
+          <input class="mep-inp" id="mep-clip" type="text"
+                 value="${clipVal}" placeholder="medal.tv/clips/…"/>
+          ${viewBtn}
+        </div>`;
+    const amtRow = isInfo ? "" : `
         <div class="mep-row">
           <label class="mep-label" for="mep-amt">AMT</label>
           <input class="mep-inp" id="mep-amt" type="text"
                  value="${escHtml(String(data.amount || ""))}"/>
-        </div>
-        <div class="mep-row">
-          <label class="mep-label" for="mep-inf">INFO</label>
-          <input class="mep-inp" id="mep-inf" type="text"
-                 value="${escHtml(data.info || "")}"/>
-        </div>
+        </div>`;
+    const srcRow = isInfo ? "" : `
         <div class="mep-row">
           <label class="mep-label" for="mep-src">SRC</label>
           <input class="mep-inp" id="mep-src" type="text"
                  value="${escHtml(data.source || "")}"/>
+        </div>`;
+    const popupContent = `
+      <div class="mep-popup">
+        <div class="mep-row">
+          <span class="mep-label">DATE</span>
+          <span class="mep-date">${escHtml(data.date || "")}</span>
         </div>
+        <div class="mep-row">
+          <span class="mep-label">BY</span>
+          <span class="mep-date">${escHtml(data.author || "—")}</span>
+        </div>
+        ${amtRow}
+        <div class="mep-row">
+          <label class="mep-label" for="mep-inf">INFO</label>
+          <input class="mep-inp" id="mep-inf" type="text"
+                 value="${escHtml(data.info || "")}"
+                 placeholder="${isInfo ? "Enter information…" : ""}"/>
+        </div>
+        ${srcRow}
+        ${clipRow}
         <button class="mep-save" id="mep-save">SAVE</button>
       </div>`;
 
@@ -932,18 +972,24 @@ function openMarkerEditPopup(markerId, markerLeaflet, data) {
 
     // Close any previously opened popup, then open a fresh standalone one
     map.closePopup();
-    const popup = L.popup({ className: "mep-outer", maxWidth: 230, minWidth: 200, autoPan: true, offset: L.point(160, 40) })
+    const popup = L.popup({ className: "mep-outer", maxWidth: 260, minWidth: 220, autoPan: true, offset: L.point(160, 40) })
         .setLatLng(markerLeaflet.getLatLng())
         .setContent(popupContent)
         .openOn(map);
 
-    // Wait one animation frame for Leaflet to insert the DOM, then wire the button
+    // Wait one animation frame for Leaflet to insert the DOM, then wire buttons
     requestAnimationFrame(() => {
+        document.getElementById("mep-clip-view")?.addEventListener("click", () => {
+            _openClipOverlay(data.clip, data.info || data.type);
+        });
         document.getElementById("mep-save")?.addEventListener("click", async () => {
-            const amt = document.getElementById("mep-amt")?.value ?? "";
-            const inf = document.getElementById("mep-inf")?.value ?? "";
-            const src = document.getElementById("mep-src")?.value ?? "";
-            const update = isInfo ? { info: inf } : { amount: amt, info: inf, source: src };
+            const amt  = document.getElementById("mep-amt")?.value  ?? "";
+            const inf  = document.getElementById("mep-inf")?.value  ?? "";
+            const src  = document.getElementById("mep-src")?.value  ?? "";
+            const clip = document.getElementById("mep-clip")?.value.trim() || null;
+            const update = isInfo
+                ? { info: inf, ...(clip !== null && { clip }) }
+                : { amount: amt, info: inf, source: src, ...(clip !== null && { clip }) };
             await updateDoc(doc(db, "markers", markerId), update);
             map.closePopup();
         });
@@ -966,6 +1012,15 @@ function _show3DMarkerPanel(markerId, isInfo, data) {
         <label class="mep-label" for="mep3d-src">SRC</label>
         <input class="mep-inp" id="mep3d-src" type="text" value="${escHtml(data.source||"")}"/>
       </div>`;
+    const viewBtn = data.clip
+        ? `<button class="mep-clip-btn" id="mep3d-clip-view">▶ VIEW</button>` : "";
+    const clipRow = `
+      <div class="mep-row">
+        <label class="mep-label" for="mep3d-clip">CLIP</label>
+        <input class="mep-inp" id="mep3d-clip" type="text"
+               value="${escHtml(data.clip||"")}" placeholder="medal.tv/clips/…"/>
+        ${viewBtn}
+      </div>`;
     panel.innerHTML = `
       <button class="mep-close3d" id="_mep3dX">✕</button>
       <div class="mep-row">
@@ -983,22 +1038,33 @@ function _show3DMarkerPanel(markerId, isInfo, data) {
                placeholder="${isInfo ? "Enter information…" : ""}"/>
       </div>
       ${srcRow}
+      ${clipRow}
       <button class="mep-save" id="_mep3dSave">SAVE</button>`;
     document.body.appendChild(panel);
 
     const close = () => panel.remove();
     document.getElementById("_mep3dX").addEventListener("click", close);
+    document.getElementById("mep3d-clip-view")?.addEventListener("click", () => {
+        _openClipOverlay(data.clip, data.info || data.type);
+    });
     document.getElementById("_mep3dSave").addEventListener("click", async () => {
-        const amt = document.getElementById("mep3d-amt")?.value ?? "";
-        const inf = document.getElementById("mep3d-inf")?.value ?? "";
-        const src = document.getElementById("mep3d-src")?.value ?? "";
-        const update = isInfo ? { info: inf } : { amount: amt, info: inf, source: src };
+        const amt  = document.getElementById("mep3d-amt")?.value  ?? "";
+        const inf  = document.getElementById("mep3d-inf")?.value  ?? "";
+        const src  = document.getElementById("mep3d-src")?.value  ?? "";
+        const clip = document.getElementById("mep3d-clip")?.value.trim() || null;
+        const update = isInfo
+            ? { info: inf, ...(clip !== null && { clip }) }
+            : { amount: amt, info: inf, source: src, ...(clip !== null && { clip }) };
         await updateDoc(doc(db, "markers", markerId), update);
         close();
     });
     // Click outside to close
     setTimeout(() => {
-        const onOut = (e) => { if (!panel.contains(e.target)) { close(); document.removeEventListener("pointerdown", onOut, true); } };
+        const onOut = (e) => {
+            if (!panel.contains(e.target) && !document.getElementById("clipOverlay")?.contains(e.target)) {
+                close(); document.removeEventListener("pointerdown", onOut, true);
+            }
+        };
         document.addEventListener("pointerdown", onOut, true);
     }, 150);
 }
