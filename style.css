@@ -1969,8 +1969,10 @@ body.lang-ua .danger-btn { font-size: 9px; letter-spacing: 0.5px; }
   padding: 5px 7px; background: var(--bg-section); border-radius: 3px;
   font-family: var(--font-mono); font-size: 9px;
 }
-.admin-row-name { color: var(--text-primary); font-weight: 700; flex: 1; letter-spacing: 0.8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-row-name { color: var(--text-primary); font-weight: 700; letter-spacing: 0.8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; max-width: 90px; }
+.admin-row-callsign { color: var(--accent); font-size: 8.5px; letter-spacing: 0.5px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .admin-row-role { color: var(--text-dim); font-size: 8px; letter-spacing: 0.3px; flex-shrink: 0; }
+.admin-btn-rename { font-size: 12px; padding: 2px 6px; }
 .admin-btn {
   background: none; border: 1px solid; border-radius: 3px;
   font-family: var(--font-mono); font-size: 8px; font-weight: 700;
