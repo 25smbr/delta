@@ -914,10 +914,12 @@ document.getElementById("map").addEventListener("click", e => {
     // Stop the event in capture phase so Leaflet never sees it → no new marker placed
     e.stopPropagation();
 }, true);  // ← capture phase
-// When a 3D scene is active the canvas handler already suppresses the browser menu,
-// but events can still reach the underlying Leaflet container — block them here too.
+// Block the browser context menu across the entire map wrapper, always.
+// Our own right-click actions (delete marker, coord popup, arty target) are
+// all JavaScript-driven and don't need the browser's native menu.
 document.getElementById("mapWrapper").addEventListener("contextmenu", (e) => {
-    if (map3DState || arty3DState) { e.preventDefault(); e.stopPropagation(); }
+    e.preventDefault();
+    e.stopPropagation();
 }, true);
 
 document.getElementById("map").addEventListener("contextmenu", async e => {
@@ -3631,14 +3633,24 @@ function startAdminListeners() {
                 const opts = CHANGEABLE_ROLES.map(r =>
                     `<option value="${r}" ${acct.role===r?"selected":""}>${r.toUpperCase()}</option>`
                 ).join("");
+                const callsign = acct.callsign || acct.username;
                 row.innerHTML = `
                   <span class="presence-dot ${online ? "online" : "offline"}"></span>
                   <span class="admin-row-name">${escHtml(acct.username)}</span>
+                  <span class="admin-row-callsign" title="Callsign / nickname">${escHtml(callsign)}</span>
                   <select class="admin-role-select" data-user="${escHtml(acct.username)}">${opts}</select>
+                  <button class="admin-btn admin-btn-neutral admin-btn-rename" title="Rename callsign">✎</button>
                   <button class="admin-btn admin-btn-deny admin-btn-kick"
                           data-id="${escHtml(acct.username)}">KICK</button>`;
                 row.querySelector(".admin-role-select").addEventListener("change", async (e) => {
                     await updateDoc(doc(db, "accounts", acct.username), { role: e.target.value });
+                });
+                row.querySelector(".admin-btn-rename").addEventListener("click", async () => {
+                    const cur = acct.callsign || acct.username;
+                    const next = window.prompt(`Rename callsign for "${acct.username}":`, cur);
+                    if (!next || next.trim() === "" || next.trim() === cur) return;
+                    const trimmed = next.trim();
+                    await updateDoc(doc(db, "accounts", acct.username), { callsign: trimmed });
                 });
                 row.querySelector(".admin-btn-kick").addEventListener("click", async () => {
                     if (confirm(`Kick "${acct.username}"? This deletes their account.`)) {
@@ -3889,6 +3901,9 @@ async function doLogin(username, pw, errEl, busyBtnId) {
 async function doRegister(username, pw, confirm, role, errEl, busyBtnId, onPending) {
     errEl.textContent = "";
     if (!username || !pw || !confirm) { errEl.textContent = t("errFillAll"); return; }
+    if (!/^[A-Z0-9_]+$/.test(username)) {
+        errEl.textContent = "USERNAME MAY ONLY CONTAIN LATIN LETTERS, DIGITS AND UNDERSCORES."; return;
+    }
     if (pw.length < 8)        { errEl.textContent = t("errPassLen"); return; }
     if (!/[0-9]/.test(pw))    { errEl.textContent = t("errPassNum"); return; }
     if (!/[^a-zA-Z0-9]/.test(pw)) { errEl.textContent = t("errPassSym"); return; }
@@ -4075,6 +4090,15 @@ document.getElementById("authLoginUser")?.addEventListener("keydown", e => {
 });
 document.getElementById("authLoginPass")?.addEventListener("keydown", e => {
     if (e.key === "Enter") document.getElementById("authLoginBtn")?.click();
+});
+
+// Strip non-latin characters from username fields in real-time
+["authRegUser", "authLoginUser"].forEach(id => {
+    document.getElementById(id)?.addEventListener("input", function() {
+        const cur = this.value;
+        const clean = cur.replace(/[^A-Za-z0-9_]/g, "");
+        if (clean !== cur) { const s = this.selectionStart - (cur.length - clean.length); this.value = clean; this.setSelectionRange(s, s); }
+    });
 });
 
 document.getElementById("authRegBtn")?.addEventListener("click", async () => {
@@ -5616,6 +5640,7 @@ function reloadArtyMapImage() {
     if (artyTgtMarker) { artyTgtMarker.remove(); artyTgtMarker = null; }
     if (artyLine)      { artyLine.remove();      artyLine      = null; }
     artyGunPx = null; artyTgtPx = null;
+    _savedArtyGunPx = null; _savedArtyTgtPx = null;  // clear saved positions on map change
     document.getElementById("artyGunX").value = "";
     document.getElementById("artyGunY").value = "";
     document.getElementById("artyTgtX").value = "";
@@ -5810,6 +5835,10 @@ function initArtyMap() {
 let artilleryActive = false;
 const artilleryViewBtn = document.getElementById("artilleryViewBtn");
 
+// Saved G/T positions survive view switches (cleared only on map change)
+let _savedArtyGunPx = null;
+let _savedArtyTgtPx = null;
+
 function enterArtillery() {
     if (vezhaActive) exitVezha();
     artilleryActive = true;
@@ -5823,11 +5852,40 @@ function enterArtillery() {
     artilleryViewBtn.classList.add("active");
     setTimeout(() => {
         initArtyMap();
+        // Restore saved G/T positions after the map is ready
+        if (_savedArtyGunPx || _savedArtyTgtPx) {
+            setTimeout(() => {
+                if (_savedArtyGunPx && artyMapInstance) {
+                    artyGunPx = _savedArtyGunPx;
+                    if (artyGunMarker) artyGunMarker.remove();
+                    artyGunMarker = L.marker([artyGunPx.lat, artyGunPx.lng], {
+                        icon: L.divIcon({ className: "", html: `<div style="background:#4ade80;color:#000;font-family:monospace;font-size:10px;font-weight:700;padding:2px 5px;border-radius:3px;white-space:nowrap;">G</div>`, iconAnchor: [10, 10] })
+                    }).addTo(artyMapInstance);
+                    const ARTY_PX_TO_STUD = MAPS[currentMapIdx].ppm > 0 ? 1 / MAPS[currentMapIdx].ppm : 1;
+                    document.getElementById("artyGunX").value = Math.round(artyGunPx.lng * ARTY_PX_TO_STUD);
+                    document.getElementById("artyGunY").value = Math.round(artyGunPx.lat * ARTY_PX_TO_STUD);
+                }
+                if (_savedArtyTgtPx && artyMapInstance) {
+                    artyTgtPx = _savedArtyTgtPx;
+                    if (artyTgtMarker) artyTgtMarker.remove();
+                    artyTgtMarker = L.marker([artyTgtPx.lat, artyTgtPx.lng], {
+                        icon: L.divIcon({ className: "", html: `<div style="background:#f87171;color:#000;font-family:monospace;font-size:10px;font-weight:700;padding:2px 5px;border-radius:3px;white-space:nowrap;">T</div>`, iconAnchor: [8, 10] })
+                    }).addTo(artyMapInstance);
+                    const ARTY_PX_TO_STUD = MAPS[currentMapIdx].ppm > 0 ? 1 / MAPS[currentMapIdx].ppm : 1;
+                    document.getElementById("artyTgtX").value = Math.round(artyTgtPx.lng * ARTY_PX_TO_STUD);
+                    document.getElementById("artyTgtY").value = Math.round(artyTgtPx.lat * ARTY_PX_TO_STUD);
+                }
+                if (artyGunPx && artyTgtPx) triggerArtyCalc();
+            }, 120);
+        }
         drawArtyWatermark(getCurrentUser()?.userId || null);
     }, 50);
 }
 
 function exitArtillery() {
+    // Save current G/T positions before leaving
+    _savedArtyGunPx = artyGunPx ? { ...artyGunPx } : null;
+    _savedArtyTgtPx = artyTgtPx ? { ...artyTgtPx } : null;
     // Clean up arty 3D scene if active
     if (arty3DState) {
         arty3DState.dispose(); arty3DState = null;
