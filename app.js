@@ -3602,6 +3602,45 @@ function startAdminListeners() {
         });
     }
 
+    // ── DB usage counter ─────────────────────────────────────────────────────
+    async function refreshDbUsage() {
+        const el = document.getElementById("adminDbUsage");
+        if (!el) return;
+        el.textContent = "Counting…";
+        try {
+            // Count documents across main collections
+            const [markersSnap, drawingsSnap, accountsSnap, chatSnap] = await Promise.all([
+                getDocs(collection(db, "markers")),
+                getDocs(collection(db, "drawings")),
+                getDocs(collection(db, "accounts")),
+                getDocs(collection(db, "chat")).catch(() => ({ size: 0, docs: [] })),
+            ]);
+            const counts = {
+                markers:  markersSnap.size,
+                drawings: drawingsSnap.size,
+                accounts: accountsSnap.size,
+                chat:     chatSnap.size,
+            };
+            const total = Object.values(counts).reduce((s, v) => s + v, 0);
+            // Firestore Spark free tier: 1 GiB stored, 50k reads/day, 20k writes/day
+            // We can only estimate by doc count (no byte API in client SDK)
+            // Rough heuristic: ~1 KB per doc average
+            const estKB   = total * 1;
+            const limitKB = 1024 * 1024; // 1 GiB in KB
+            const pct     = Math.min(100, (estKB / limitKB * 100)).toFixed(2);
+            el.innerHTML =
+                `<span class="db-usage-row"><b>DOCUMENTS</b> — ${total.toLocaleString()} total</span>` +
+                `<span class="db-usage-row">markers: ${counts.markers} &nbsp;|&nbsp; drawings: ${counts.drawings} &nbsp;|&nbsp; accounts: ${counts.accounts} &nbsp;|&nbsp; chat: ${counts.chat}</span>` +
+                `<span class="db-usage-row"><b>EST. SIZE</b> ~${estKB < 1024 ? estKB + " KB" : (estKB/1024).toFixed(1) + " MB"} / 1 GiB &nbsp;(${pct}% of Spark limit)</span>` +
+                `<span class="db-usage-bar-wrap"><span class="db-usage-bar" style="width:${pct}%"></span></span>` +
+                `<span class="db-usage-note">* Spark plan: 1 GiB storage · 50k reads/day · 20k writes/day · 1k daily free deletes</span>`;
+        } catch (err) {
+            el.textContent = "Error: " + err.message;
+        }
+    }
+    document.getElementById("adminDbRefreshBtn")?.addEventListener("click", refreshDbUsage);
+    refreshDbUsage();
+
     function renderDebugPanel() {
         const el = document.getElementById("debugPanelContent");
         if (!el) return;
@@ -4655,6 +4694,15 @@ document.getElementById("chatCollapseBtn")?.addEventListener("click", () => {
     btn.textContent = collapsed ? "›" : "‹";
 });
 
+// ─── CHANNELS COLLAPSE ───────────────────────────────────────────────────────
+document.getElementById("channelsCollapseBtn")?.addEventListener("click", () => {
+    const panel = document.getElementById("vezhaRoomsPanel");
+    const btn   = document.getElementById("channelsCollapseBtn");
+    if (!panel) return;
+    const collapsed = panel.classList.toggle("channels-collapsed");
+    btn.textContent = collapsed ? "‹" : "›";
+});
+
 // ─── CHAT ─────────────────────────────────────────────────────────────────────
 document.getElementById("vezhaChatSend").addEventListener("click", sendChat);
 document.getElementById("vezhaChatInput").addEventListener("keydown", e => {
@@ -4925,11 +4973,17 @@ function escHtml(s) {
 }
 
 // ─── TUTORIAL ────────────────────────────────────────────────────────────────
-const TUT_STEPS = [
+const TUT_STEPS = {
+  en: [
     {
         icon: "🛡",
         title: "WELCOME TO DELTA",
-        body:  "DELTA is a real-time tactical coordination platform. It has three views: <b>MONITOR</b> (tactical map), <b>VEZHA</b> (voice &amp; video comms), and <b>ARTY</b> (artillery calculator). Switch between them using the icons in the top-left bar."
+        body:  "DELTA is a real-time tactical coordination system for the <b>25th Brigade</b> in <b>Roblox MTC4</b>. It is <b>private and confidential</b> — do <b>NOT</b> share any content, screenshots, or data from this site with anyone outside the brigade or publish it online without admin approval."
+    },
+    {
+        icon: "🗺️",
+        title: "THE THREE VIEWS",
+        body:  "DELTA has three views: <b>MONITOR</b> (tactical map with markers &amp; drawings), <b>VEZHA</b> (voice/video comms and chat), and <b>ARTY</b> (artillery firing calculator). Switch between them using the icons in the top-left bar."
     },
     {
         icon: "📍",
@@ -4947,11 +5001,6 @@ const TUT_STEPS = [
         body:  "Click the ruler icon (right toolbar) to measure distances. Click the map to add points — the running total appears in the top-right. <b>Double-click</b> or click the ruler button again to finish. Works in both 2D and 3D."
     },
     {
-        icon: "🗺",
-        title: "MAP SELECTOR",
-        body:  "Click the map name in the top-right bar to open the map selector. Search by name or scroll the list. Each map has its own independent set of markers and drawings — switching maps loads that map's data automatically."
-    },
-    {
         icon: "📡",
         title: "VEZHA — COMMS",
         body:  "VEZHA is the communications hub. Create or join a <b>room</b> to start a voice/video call with your team. The chat panel is shared with the Monitor comms window. You can attach a <b>Medal.tv clip link</b> to any marker using the CLIP field in the edit popup."
@@ -4961,13 +5010,92 @@ const TUT_STEPS = [
         title: "ARTY CALCULATOR",
         body:  "Switch to the <b>ARTY</b> view for firing solutions. <b>Left-click</b> the map to place your gun, <b>right-click</b> to place the target. Results show azimuth, elevation, and time-of-flight for each shell type. The 3D panel shows the ballistic trajectory."
     }
-];
+  ],
+  ru: [
+    {
+        icon: "🛡",
+        title: "ДОБРО ПОЖАЛОВАТЬ В DELTA",
+        body:  "DELTA — система тактической координации в реальном времени для <b>25-й Бригады</b> в <b>Roblox MTC4</b>. Система <b>частная и конфиденциальная</b> — <b>ЗАПРЕЩЕНО</b> делиться материалами, скриншотами или данными этого сайта с кем-либо вне бригады или публиковать их в сети без разрешения администратора."
+    },
+    {
+        icon: "🗺️",
+        title: "ТРИ РЕЖИМА",
+        body:  "DELTA имеет три режима: <b>МОНИТОР</b> (тактическая карта с метками и рисунками), <b>ВЕЖА</b> (голос/видео и чат) и <b>АРТА</b> (калькулятор артиллерийского огня). Переключайтесь между ними через иконки в левой части верхней панели."
+    },
+    {
+        icon: "📍",
+        title: "РАЗМЕЩЕНИЕ МЕТОК",
+        body:  "Убедитесь, что режим рисования <b>ВЫКЛЮЧЕН</b>, затем <b>кликните левой кнопкой</b> по карте, чтобы поставить метку. Сначала выберите тип и сторону в левой панели. <b>Клик</b> по метке открывает редактирование. <b>Правый клик</b> — удаление."
+    },
+    {
+        icon: "✏️",
+        title: "ИНСТРУМЕНТЫ РИСОВАНИЯ",
+        body:  "Включите <b>РИСОВАНИЕ</b> в левой панели для аннотирования карты. Доступны: перо, линия, стрелка, круг, прямоугольник, AOI (зона) и текстовая метка. <b>Ctrl + выделение</b> — удаление нескольких рисунков сразу."
+    },
+    {
+        icon: "📏",
+        title: "ЛИНЕЙКА",
+        body:  "Нажмите иконку линейки (правая панель), чтобы измерить расстояния. Кликайте по карте для добавления точек — итог отображается справа вверху. <b>Двойной клик</b> или повторное нажатие завершает замер. Работает в 2D и 3D."
+    },
+    {
+        icon: "📡",
+        title: "ВЕЖА — СВЯЗЬ",
+        body:  "ВЕЖА — центр связи. Создайте или подключитесь к <b>комнате</b> для голосового/видео вызова с командой. Чат общий с окном связи Монитора. К любой метке можно прикрепить <b>ссылку Medal.tv</b> через поле КЛИП в окне редактирования."
+    },
+    {
+        icon: "🎯",
+        title: "КАЛЬКУЛЯТОР АРТЫ",
+        body:  "В режиме <b>АРТА</b> рассчитываются параметры огня. <b>Левый клик</b> — позиция орудия, <b>правый клик</b> — цель. Результаты: азимут, угол возвышения и время полёта для каждого типа снаряда. 3D-панель показывает баллистическую траекторию."
+    }
+  ],
+  ua: [
+    {
+        icon: "🛡",
+        title: "ЛАСКАВО ПРОСИМО ДО DELTA",
+        body:  "DELTA — система тактичної координації в реальному часі для <b>25-ї Бригади</b> в <b>Roblox MTC4</b>. Система <b>приватна та конфіденційна</b> — <b>ЗАБОРОНЕНО</b> ділитися матеріалами, скриншотами або даними цього сайту з кимось поза бригадою або публікувати їх в мережі без дозволу адміністратора."
+    },
+    {
+        icon: "🗺️",
+        title: "ТРИ РЕЖИМИ",
+        body:  "DELTA має три режими: <b>МОНІТОР</b> (тактична карта з мітками та малюнками), <b>ВЕЖА</b> (голос/відео та чат) і <b>АРТА</b> (калькулятор артилерійського вогню). Перемикайтеся між ними через іконки у лівій частині верхньої панелі."
+    },
+    {
+        icon: "📍",
+        title: "РОЗМІЩЕННЯ МІТОК",
+        body:  "Переконайтеся, що режим малювання <b>ВИМКНЕНО</b>, потім <b>клікніть лівою кнопкою</b> по карті, щоб поставити мітку. Спочатку виберіть тип і сторону в лівій панелі. <b>Клік</b> по мітці відкриває редагування. <b>Правий клік</b> — видалення."
+    },
+    {
+        icon: "✏️",
+        title: "ІНСТРУМЕНТИ МАЛЮВАННЯ",
+        body:  "Увімкніть <b>МАЛЮВАННЯ</b> в лівій панелі для анотування карти. Доступні: перо, лінія, стрілка, коло, прямокутник, AOI (зона) та текстова мітка. <b>Ctrl + виділення</b> — видалення кількох малюнків одразу."
+    },
+    {
+        icon: "📏",
+        title: "ЛІНІЙКА",
+        body:  "Натисніть іконку лінійки (права панель), щоб виміряти відстані. Клікайте по карті для додавання точок — підсумок відображається праворуч угорі. <b>Подвійний клік</b> або повторне натискання завершує вимір. Працює в 2D та 3D."
+    },
+    {
+        icon: "📡",
+        title: "ВЕЖА — ЗВ'ЯЗОК",
+        body:  "ВЕЖА — центр зв'язку. Створіть або приєднайтеся до <b>кімнати</b> для голосового/відео виклику з командою. Чат спільний з вікном зв'язку Монітора. До будь-якої мітки можна прикріпити <b>посилання Medal.tv</b> через поле КЛІП у вікні редагування."
+    },
+    {
+        icon: "🎯",
+        title: "КАЛЬКУЛЯТОР АРТИ",
+        body:  "В режимі <b>АРТА</b> розраховуються параметри вогню. <b>Лівий клік</b> — позиція гармати, <b>правий клік</b> — ціль. Результати: азимут, кут підвищення та час польоту для кожного типу снаряду. 3D-панель показує балістичну траєкторію."
+    }
+  ]
+};
 
+let _tutLang = "en";
 let _tutStep = 0;
 
+function _tutSteps() { return TUT_STEPS[_tutLang] || TUT_STEPS.en; }
+
 function _tutRender() {
-    const step  = TUT_STEPS[_tutStep];
-    const total = TUT_STEPS.length;
+    const steps = _tutSteps();
+    const step  = steps[_tutStep];
+    const total = steps.length;
     document.getElementById("tutStepLabel").textContent = `STEP ${_tutStep + 1} / ${total}`;
     document.getElementById("tutIcon").textContent  = step.icon;
     document.getElementById("tutTitle").textContent = step.title;
@@ -4982,6 +5110,10 @@ function _tutRender() {
         d.className = "tut-dot" + (i === _tutStep ? " tut-dot-active" : "");
         dots.appendChild(d);
     }
+    // Lang buttons
+    document.querySelectorAll(".tut-lang-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.lang === _tutLang);
+    });
 }
 
 function startTutorial() {
@@ -4996,7 +5128,7 @@ function closeTutorial() {
 }
 
 document.getElementById("tutNext")?.addEventListener("click", () => {
-    if (_tutStep < TUT_STEPS.length - 1) { _tutStep++; _tutRender(); }
+    if (_tutStep < _tutSteps().length - 1) { _tutStep++; _tutRender(); }
     else closeTutorial();
 });
 document.getElementById("tutPrev")?.addEventListener("click", () => {
@@ -5004,6 +5136,17 @@ document.getElementById("tutPrev")?.addEventListener("click", () => {
 });
 document.getElementById("tutSkip")?.addEventListener("click", closeTutorial);
 document.getElementById("tutorialBtn")?.addEventListener("click", startTutorial);
+
+// Tutorial language switcher
+document.querySelectorAll(".tut-lang-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+        _tutLang = btn.dataset.lang;
+        // Keep step in range if new lang has fewer steps
+        const steps = _tutSteps();
+        if (_tutStep >= steps.length) _tutStep = steps.length - 1;
+        _tutRender();
+    });
+});
 
 // Show tutorial automatically for first-time users (after auth)
 function maybeShowTutorial() {
