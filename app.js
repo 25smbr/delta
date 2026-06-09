@@ -1322,6 +1322,64 @@ document.getElementById("coordPopupClose").addEventListener("click", () => {
     coordPopup.style.display = "none";
 });
 map.on("click", () => { coordPopup.style.display = "none"; });
+
+// ─── AOI RENAME — double-click on a zone to rename it ────────────────────────
+map.on("dblclick", async (e) => {
+    if (drawMode || rulerMode) return;
+    const clickLng = e.latlng.lng;
+    const clickLat = e.latlng.lat;
+    // Find a zone stroke whose bounding box contains the click point
+    const zone = strokes.find(s => {
+        if (s.tool !== "zone" || !s.ll1 || !s.ll2) return false;
+        const minLat = Math.min(s.ll1.lat, s.ll2.lat);
+        const maxLat = Math.max(s.ll1.lat, s.ll2.lat);
+        const minLng = Math.min(s.ll1.lng, s.ll2.lng);
+        const maxLng = Math.max(s.ll1.lng, s.ll2.lng);
+        return clickLat >= minLat && clickLat <= maxLat && clickLng >= minLng && clickLng <= maxLng;
+    });
+    if (!zone) return;
+    e.originalEvent.preventDefault();
+    // Position the rename popup at the click point
+    const wrapper = document.getElementById("mapWrapper");
+    const wRect = wrapper.getBoundingClientRect();
+    const cx = e.originalEvent.clientX - wRect.left;
+    const cy = e.originalEvent.clientY - wRect.top;
+    const zWrap = document.getElementById("zoneNameWrap");
+    const zField = document.getElementById("zoneNameField");
+    if (!zWrap || !zField) return;
+    zWrap.style.display = "block";
+    zWrap.style.left = (cx - 60) + "px";
+    zWrap.style.top  = (cy - 16) + "px";
+    zField.value = zone.zoneName || "AOI";
+    zField.select();
+    zField.focus();
+    let committed = false;
+    const commit = async () => {
+        if (committed) return;
+        committed = true;
+        zWrap.style.display = "none";
+        zField.removeEventListener("keydown", onKey);
+        zField.removeEventListener("blur", commit);
+        const newName = zField.value.trim().toUpperCase() || zone.zoneName || "AOI";
+        if (newName === zone.zoneName) return;
+        zone.zoneName = newName;
+        redrawAll();
+        if (zone.firestoreId && !zone.firestoreId.startsWith("_local_")) {
+            try { await updateDoc(doc(db, "drawings", zone.firestoreId), { zoneName: newName }); } catch (_) {}
+        }
+    };
+    const onKey = (ev) => {
+        if (ev.key === "Enter") { commit(); }
+        if (ev.key === "Escape") {
+            committed = true;
+            zWrap.style.display = "none";
+            zField.removeEventListener("keydown", onKey);
+            zField.removeEventListener("blur", commit);
+        }
+    };
+    zField.addEventListener("keydown", onKey);
+    zField.addEventListener("blur", commit);
+});
 function copyToClipboard(text, btn) {
     navigator.clipboard.writeText(text).then(() => {
         const orig = btn.innerHTML;
@@ -3683,11 +3741,13 @@ function startAdminListeners() {
             const roleLabel = isOwner ? "ADMIN" : (acct.role || "operator").toUpperCase();
             const row = document.createElement("div");
             row.className = "admin-row";
+            const uidStr = acct.userId ? `<span class="admin-row-uid" title="User ID">${escHtml(acct.userId)}</span>` : "";
             if (isOwner) {
                 row.innerHTML = `
                   <span class="presence-dot ${online ? "online" : "offline"}"></span>
                   <span class="admin-row-name">${escHtml(acct.username)}</span>
-                  <span class="admin-row-role">${roleLabel}</span>`;
+                  <span class="admin-row-role">${roleLabel}</span>
+                  ${uidStr}`;
             } else {
                 const opts = CHANGEABLE_ROLES.map(r =>
                     `<option value="${r}" ${acct.role===r?"selected":""}>${r.toUpperCase()}</option>`
@@ -3697,6 +3757,7 @@ function startAdminListeners() {
                   <span class="presence-dot ${online ? "online" : "offline"}"></span>
                   <span class="admin-row-name">${escHtml(acct.username)}</span>
                   <span class="admin-row-callsign" title="Callsign / nickname">${escHtml(callsign)}</span>
+                  ${uidStr}
                   <select class="admin-role-select" data-user="${escHtml(acct.username)}">${opts}</select>
                   <button class="admin-btn admin-btn-neutral admin-btn-rename" title="Rename callsign">✎</button>
                   <button class="admin-btn admin-btn-deny admin-btn-kick"
@@ -5506,14 +5567,25 @@ const ARTY_GUNS = [
 
 // ─── Populate gun/projectile selects ─────────────────────────────────────────
 {
-    const gunSel  = document.getElementById("artyGunSelect");
-    const projSel = document.getElementById("artyProjectileSelect");
+    const gunSel    = document.getElementById("artyGunSelect");
+    const gunSearch = document.getElementById("artyGunSearch");
+    const projSel   = document.getElementById("artyProjectileSelect");
     if (gunSel && projSel) {
-        ARTY_GUNS.forEach((gun, i) => {
-            const opt = document.createElement("option");
-            opt.value = i; opt.textContent = gun.name;
-            gunSel.appendChild(opt);
-        });
+        function buildGunOptions(filter = "") {
+            const prev = gunSel.value;
+            gunSel.innerHTML = "";
+            const q = filter.trim().toLowerCase();
+            ARTY_GUNS.forEach((gun, i) => {
+                if (q && !gun.name.toLowerCase().includes(q)) return;
+                const opt = document.createElement("option");
+                opt.value = i; opt.textContent = gun.name;
+                gunSel.appendChild(opt);
+            });
+            // Restore previous selection if still visible, else pick first
+            const still = [...gunSel.options].find(o => o.value === prev);
+            if (still) gunSel.value = prev; else if (gunSel.options.length) gunSel.selectedIndex = 0;
+            populateProjectiles();
+        }
         function populateProjectiles() {
             projSel.innerHTML = "";
             const gun = ARTY_GUNS[+gunSel.value];
@@ -5524,8 +5596,9 @@ const ARTY_GUNS = [
                 projSel.appendChild(opt);
             });
         }
+        gunSearch?.addEventListener("input", () => buildGunOptions(gunSearch.value));
         gunSel.addEventListener("change", populateProjectiles);
-        populateProjectiles();
+        buildGunOptions();
     }
 }
 

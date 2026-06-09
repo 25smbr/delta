@@ -44,6 +44,7 @@ html, body {
   font-size: 13px;
   overflow: hidden;
   transition: background 0.3s, color 0.3s;
+  color-scheme: dark;
 }
 button { cursor: pointer; font-family: var(--font-ui); }
 .mono  { font-family: var(--font-mono); }
@@ -522,6 +523,7 @@ body.in-arty    .monitor-chat { display: none; }
    LIGHT THEME
 ============================ */
 body.light-theme {
+  color-scheme: light;
   --bg-base:      #eef1f6;
   --bg-panel:     #ffffff;
   --bg-section:   #f3f5f9;
@@ -1534,6 +1536,8 @@ body.lang-ua .danger-btn { font-size: 9px; letter-spacing: 0.5px; }
 }
 .arty-select:focus, .arty-input:focus { border-color: var(--accent); }
 .arty-select { cursor: pointer; }
+#artyGunSelect[size] { height: auto; padding: 2px 0; }
+#artyGunSelect[size] option { padding: 5px 10px; }
 .arty-input::placeholder { color: var(--text-dim); }
 .arty-xy-row {
   display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
@@ -1973,6 +1977,7 @@ body.lang-ua .danger-btn { font-size: 9px; letter-spacing: 0.5px; }
 .admin-row-name { color: var(--text-primary); font-weight: 700; letter-spacing: 0.8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; max-width: 90px; }
 .admin-row-callsign { color: var(--accent); font-size: 8.5px; letter-spacing: 0.5px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .admin-row-role { color: var(--text-dim); font-size: 8px; letter-spacing: 0.3px; flex-shrink: 0; }
+.admin-row-uid  { color: var(--text-dim); font-size: 7.5px; letter-spacing: 0.2px; opacity: .7; flex-shrink: 0; cursor: default; }
 .admin-btn-rename { font-size: 12px; padding: 2px 6px; }
 .admin-btn {
   background: none; border: 1px solid; border-radius: 3px;
