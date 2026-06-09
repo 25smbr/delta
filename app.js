@@ -209,7 +209,7 @@ let PIXELS_PER_METER_DYNAMIC = MAPS[currentMapIdx].ppm;
 const map = L.map("map", {
     crs: L.CRS.Simple,
     minZoom: -3,
-    maxZoom: 2,
+    maxZoom: 4,
     zoomControl: false,
     attributionControl: false
 });
@@ -914,12 +914,59 @@ document.getElementById("map").addEventListener("click", e => {
     // Stop the event in capture phase so Leaflet never sees it → no new marker placed
     e.stopPropagation();
 }, true);  // ← capture phase
-// Block the browser context menu across the entire map wrapper, always.
-// Our own right-click actions (delete marker, coord popup, arty target) are
-// all JavaScript-driven and don't need the browser's native menu.
+// ─── MARKER DRAG (LMB) ───────────────────────────────────────────────────────
+// Hold LMB on a marker icon and drag to reposition it; releases save to Firestore.
+{
+    let _dragId     = null;   // markerId being dragged
+    let _dragMarker = null;   // L.Marker reference
+    let _dragMoved  = false;  // did mouse actually move enough to count as drag?
+    let _dragOrigin = null;   // { x, y } mousedown screen pos
+
+    document.getElementById("map").addEventListener("mousedown", e => {
+        if (e.button !== 0 || drawMode || rulerMode) return;
+        const iconEl = e.target.closest(".mkr-icon");
+        if (!iconEl) return;
+        const wrap = iconEl.closest("[data-mid]");
+        if (!wrap) return;
+        const id = wrap.dataset.mid;
+        if (!id || !displayedMarkers[id]) return;
+        _dragId     = id;
+        _dragMarker = displayedMarkers[id].marker;
+        _dragMoved  = false;
+        _dragOrigin = { x: e.clientX, y: e.clientY };
+        e.stopPropagation();  // prevent Leaflet from panning
+        map.dragging.disable();
+    }, true);
+
+    document.addEventListener("mousemove", e => {
+        if (!_dragId) return;
+        const dx = e.clientX - _dragOrigin.x, dy = e.clientY - _dragOrigin.y;
+        if (!_dragMoved && Math.hypot(dx, dy) < 5) return;
+        _dragMoved = true;
+        const mapEl  = document.getElementById("map");
+        const rect   = mapEl.getBoundingClientRect();
+        const pt     = map.containerPointToLatLng(L.point(e.clientX - rect.left, e.clientY - rect.top));
+        _dragMarker.setLatLng([pt.lat, pt.lng]);
+    });
+
+    document.addEventListener("mouseup", async e => {
+        if (!_dragId) return;
+        const id = _dragId;
+        _dragId = null;
+        if (!drawMode) map.dragging.enable();
+        if (!_dragMoved) return;   // short click — let the click handler open popup
+        const ll = _dragMarker.getLatLng();
+        displayedMarkers[id].data.x = ll.lng;
+        displayedMarkers[id].data.y = ll.lat;
+        try { await updateDoc(doc(db, "markers", id), { x: ll.lng, y: ll.lat }); } catch (_) {}
+    });
+}
+
+// Block the BROWSER context menu across the entire map wrapper — always.
+// We do NOT stopPropagation so the marker contextmenu handler below can still fire.
+// In 3D mode the canvas handler also calls stopPropagation so nothing leaks there.
 document.getElementById("mapWrapper").addEventListener("contextmenu", (e) => {
     e.preventDefault();
-    e.stopPropagation();
 }, true);
 
 document.getElementById("map").addEventListener("contextmenu", async e => {
@@ -3758,7 +3805,15 @@ function _watchAccountKick(username) {
 function getCurrentUser() {
     try { return JSON.parse(localStorage.getItem("deltaCurrentUser") || "null"); } catch { return null; }
 }
-function hashPass(pw) { return btoa(encodeURIComponent(pw)); }
+// Legacy hash (base64) — only kept to migrate old accounts on first login
+function _legacyHash(pw) { return btoa(encodeURIComponent(pw)); }
+
+// Real SHA-256 via Web Crypto API → hex string
+async function hashPass(pw) {
+    const enc  = new TextEncoder();
+    const buf  = await crypto.subtle.digest("SHA-256", enc.encode(pw));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
 
 function applyCurrentUser(user) {
     if (user) {
@@ -3864,10 +3919,15 @@ async function doLogin(username, pw, errEl, busyBtnId) {
     setAuthBusy(busyBtnId, true);
     try {
         const snap = await getDoc(doc(db, "accounts", username));
-        if (!snap.exists() || snap.data().passHash !== hashPass(pw)) {
-            errEl.textContent = t("errBadCreds");
-            setAuthBusy(busyBtnId, false);
-            return;
+        if (!snap.exists()) { errEl.textContent = t("errBadCreds"); setAuthBusy(busyBtnId, false); return; }
+        const storedHash = snap.data().passHash;
+        const sha256hash  = await hashPass(pw);
+        const legacyHash  = _legacyHash(pw);
+        const hashMatch   = (storedHash === sha256hash) || (storedHash === legacyHash);
+        if (!hashMatch) { errEl.textContent = t("errBadCreds"); setAuthBusy(busyBtnId, false); return; }
+        // Auto-upgrade legacy hash to SHA-256 on successful login
+        if (storedHash === legacyHash) {
+            try { await updateDoc(doc(db, "accounts", username), { passHash: sha256hash }); } catch (_) {}
         }
         const acct = snap.data();
         // PLAYFRA bypass: always allowed regardless of status field
@@ -3916,7 +3976,7 @@ async function doRegister(username, pw, confirm, role, errEl, busyBtnId, onPendi
         const userId = generateUserId();
         const isOwner = (username === OWNER_CALLSIGN);
         await setDoc(ref, {
-            username, passHash: hashPass(pw),
+            username, passHash: await hashPass(pw),
             role:     isOwner ? "owner" : role,
             status:   isOwner ? "approved" : "pending",
             userId,   callsign: username
@@ -4137,7 +4197,7 @@ document.getElementById("settingsSaveBtn")?.addEventListener("click", async () =
     if (newPass) {
         if (newPass.length < 8) { errEl.textContent = t("errPassLen"); return; }
         if (newPass !== newPassConf) { errEl.textContent = t("errPassMatch"); return; }
-        updates.passHash = hashPass(newPass);
+        updates.passHash = await hashPass(newPass);
     }
     if (Object.keys(updates).length === 0) { errEl.textContent = "Nothing to change."; return; }
     try {
@@ -4202,14 +4262,12 @@ document.addEventListener("keyup", (e) => {
 });
 
 let localStream    = null;
-let mySessionRef   = null;
-let vezhaUnsubs    = [];
-let chatUnsub      = null;
-let processedSigs  = new Set();
-const peers        = {};
-const peerMeta     = {};   // peerId → { callsign, role } from vezha_sessions
-let vezhaEnterTime = 0;
-let heartbeatTimer = null;
+let mySessionRef   = null;   // legacy (kept for beforeunload fallback)
+let vezhaUnsubs    = [];     // legacy (unused by v2 but some old code may push here)
+let chatUnsub      = null;   // legacy alias — v2ChatUnsub is the real one
+let processedSigs  = new Set(); // legacy
+// peers / peerMeta — legacy aliases; real state is v2Peers / v2Meta
+const peerMeta     = {};
 
 const ICE_CONFIG = {
     iceServers: [
@@ -4220,7 +4278,7 @@ const ICE_CONFIG = {
 
 // Best-effort cleanup on tab close
 window.addEventListener("beforeunload", () => {
-    if (mySessionRef) deleteDoc(mySessionRef);
+    if (v2SessionRef) deleteDoc(v2SessionRef); else if (mySessionRef) deleteDoc(mySessionRef);
     clearPresence();
 });
 
@@ -4232,7 +4290,7 @@ const brandModule  = document.getElementById("brandModule");
 mapViewBtn.addEventListener("click",   () => { if (vezhaActive)  exitVezha(); });
 vezhaViewBtn.addEventListener("click", () => { if (!vezhaActive) enterVezha(); });
 
-// ─── VEZHA ROOMS ─────────────────────────────────────────────────────────────
+// ─── VEZHA ROOMS (stub kept for imports that still reference symbols) ─────────
 async function initVezhaRooms() {
     roomsData = {};
     try {
@@ -4281,134 +4339,218 @@ async function adminMoveUser(docId, targetRoomId) {
 function renderRoomsPanel() {
     const list = document.getElementById("vezhaRoomsList");
     if (!list) return;
-    const sorted  = Object.values(roomsData).sort((a, b) => (a.order || 0) - (b.order || 0));
-    const isAdmin = getCurrentUser()?.role === "owner";
 
-    // Map room → members
-    const byRoom = {};
-    sorted.forEach(r => { byRoom[r.id] = []; });
-    Object.values(sessionsCache).forEach(s => {
-        if (s.room && byRoom[s.room]) byRoom[s.room].push(s);
-    });
-
+    // v2: no rooms — just show who's online
+    const online = Object.entries(v2Meta);
     list.innerHTML = "";
-    sorted.forEach(room => {
-        const members = byRoom[room.id] || [];
-        const isMine  = myCurrentRoom === room.id;
-        const item    = document.createElement("div");
-        item.className = "vr-item" + (isMine ? " vr-mine" : "");
 
-        // Header
-        const hdr = document.createElement("div");
-        hdr.className = "vr-hdr";
-        hdr.innerHTML =
-            `<svg class="vr-icon" width="10" height="10" viewBox="0 0 10 10" fill="none">` +
-            `<path d="M1 2.5h8M1 5h8M1 7.5h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>` +
-            `<span class="vr-name" id="vrn_${room.id}">${escHtml(room.name)}</span>` +
-            (members.length ? `<span class="vr-cnt">${members.length}</span>` : "") +
-            `<button class="vr-edit-btn" data-rid="${room.id}" title="Rename">✎</button>`;
+    // "ONLINE" header
+    const hdr = document.createElement("div");
+    hdr.className = "vr-item";
+    hdr.innerHTML =
+        `<div class="vr-hdr">` +
+        `<span class="vr-name" style="opacity:.55;font-size:9px;letter-spacing:1px">ONLINE</span>` +
+        (online.length ? `<span class="vr-cnt">${online.length}</span>` : "") +
+        `</div>`;
+    list.appendChild(hdr);
 
-        hdr.addEventListener("click", e => {
-            if (e.target.closest(".vr-edit-btn")) return;
-            joinRoom(room.id);
-        });
-        hdr.querySelector(".vr-edit-btn").addEventListener("click", e => {
-            e.stopPropagation();
-            const nameSpan = document.getElementById(`vrn_${room.id}`);
-            if (!nameSpan) return;
-            const inp = document.createElement("input");
-            inp.className = "vr-name-inp"; inp.value = room.name; inp.maxLength = 20;
-            nameSpan.replaceWith(inp); inp.focus(); inp.select();
-            const commit = () => {
-                const n = inp.value.trim().toUpperCase() || room.name;
-                renameRoom(room.id, n);
-                // nameSpan will be refreshed on next snapshot
-            };
-            inp.addEventListener("blur", commit);
-            inp.addEventListener("keydown", e2 => {
-                if (e2.key === "Enter") { e2.preventDefault(); commit(); }
-                if (e2.key === "Escape") inp.replaceWith(nameSpan);
-            });
-        });
-        item.appendChild(hdr);
-
-        // Drag-over target on header
-        item.addEventListener("dragover", e => { e.preventDefault(); item.classList.add("drag-over"); });
-        item.addEventListener("dragleave", () => item.classList.remove("drag-over"));
-        item.addEventListener("drop", e => {
-            e.preventDefault(); item.classList.remove("drag-over");
-            const docId   = e.dataTransfer.getData("text/plain");
-            const fromRoom = e.dataTransfer.getData("application/x-room");
-            if (!docId) return;
-            if (fromRoom !== room.id) adminMoveUser(docId, room.id);
-        });
-
-        // Members
-        if (members.length) {
-            const mWrap = document.createElement("div");
-            mWrap.className = "vr-members";
-            members.forEach(sess => {
-                const rc  = ROLE_COLORS[sess.role] || "#64697e";
-                const mRow = document.createElement("div");
-                mRow.className = "vr-member";
-                // Status icons: muted, deafened, streaming — visible to everyone
-                const muteIcon   = sess.muted    ? `<span class="vr-si si-muted"  title="Muted">🔇</span>`    : "";
-                const deafIcon   = sess.deafened ? `<span class="vr-si si-deaf"   title="Deafened">🔕</span>` : "";
-                const streamIcon = sess.streaming? `<span class="vr-si si-stream" title="Streaming">📡</span>`: "";
-                mRow.innerHTML =
-                    `<span class="vr-dot" style="background:${rc}"></span>` +
-                    `<span class="vr-mname">${escHtml(sess.callsign)}</span>` +
-                    `<span class="vr-status-icons">${muteIcon}${deafIcon}${streamIcon}</span>`;
-                // Drag-to-move (any user can be dragged by admin)
-                if (isAdmin && sess.userId !== myPeerId) {
-                    mRow.draggable = true;
-                    mRow.addEventListener("dragstart", e2 => {
-                        e2.dataTransfer.setData("text/plain", sess.docId);
-                        e2.dataTransfer.setData("application/x-room", room.id);
-                        mRow.classList.add("dragging");
-                    });
-                    mRow.addEventListener("dragend", () => mRow.classList.remove("dragging"));
-                }
-                mWrap.appendChild(mRow);
-            });
-            item.appendChild(mWrap);
-        }
-        list.appendChild(item);
+    online.forEach(([uid, meta]) => {
+        const rc  = ROLE_COLORS[meta.role] || "#64697e";
+        const row = document.createElement("div");
+        row.className = "vr-item";
+        row.innerHTML =
+            `<div class="vr-hdr" style="cursor:default">` +
+            `<span class="vr-dot" style="background:${rc};width:6px;height:6px;border-radius:50%;flex-shrink:0"></span>` +
+            `<span class="vr-name">${escHtml(meta.callsign)}</span>` +
+            `</div>`;
+        list.appendChild(row);
     });
 }
 
+// ════════════════════════════════════════════════════════════════════
+// VEZHA v2 — simple, no rooms, fully reliable WebRTC screen share
+// ════════════════════════════════════════════════════════════════════
+
+// Each PC is keyed by remote peerId.
+// We use a single RTCPeerConnection per pair, replacing it cleanly on renegotiation.
+// Tracks are added before createOffer to avoid mid-negotiation surprises.
+
+const VEZHA_ICE = {
+    iceServers: [
+        { urls: "stun:stun.l.google.com:19302"  },
+        { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:stun2.l.google.com:19302" },
+    ]
+};
+
+// State
+const v2Peers      = {};          // peerId → { pc, makingOffer }
+const v2Meta       = {};          // peerId → { callsign, role }
+let   v2SessionRef = null;
+let   v2Unsubs     = [];
+let   v2ChatUnsub  = null;
+let   v2HB         = null;
+let   v2EnterTime  = 0;
+const v2Processed  = new Set();
+
+function _v2Send(to, type, data = {}) {
+    return addDoc(vezha_signals, { from: myPeerId, to, type, data, created: Date.now() }).catch(() => {});
+}
+
+function _v2Label(uid) {
+    const m = v2Meta[uid] || {};
+    const cs   = m.callsign || uid.slice(-6).toUpperCase();
+    const role = (m.role === "owner" ? "ADMIN" : (m.role || "OPERATOR")).toUpperCase();
+    return `${role} · ${cs}`;
+}
+
+// ── Peer connection factory ──────────────────────────────────────────────────
+function v2GetOrCreate(uid) {
+    if (v2Peers[uid]) return v2Peers[uid];
+    const entry = { pc: null, makingOffer: false };
+    const pc = new RTCPeerConnection(VEZHA_ICE);
+    entry.pc = pc;
+    v2Peers[uid] = entry;
+
+    pc.onicecandidate = e => {
+        if (e.candidate) _v2Send(uid, "ice", e.candidate.toJSON());
+    };
+
+    // Collect all incoming tracks into one MediaStream per sender
+    const incomingStreams = {};
+    pc.ontrack = e => {
+        const sid = e.streams[0]?.id || e.track.id;
+        if (!incomingStreams[sid]) incomingStreams[sid] = new MediaStream();
+        incomingStreams[sid].addTrack(e.track);
+        // Show tile once we have a video track
+        if (e.track.kind === "video") {
+            addVideoTile(uid, incomingStreams[sid], _v2Label(uid));
+        }
+    };
+
+    pc.onconnectionstatechange = () => {
+        if (["disconnected", "failed", "closed"].includes(pc.connectionState)) {
+            v2RemovePeer(uid);
+        }
+    };
+
+    // Perfect negotiation — polite/impolite based on lexicographic peer id comparison
+    const polite = myPeerId < uid;
+    pc.onnegotiationneeded = async () => {
+        try {
+            entry.makingOffer = true;
+            await pc.setLocalDescription();
+            _v2Send(uid, "offer", { sdp: pc.localDescription.sdp, type: pc.localDescription.type });
+        } catch (e) { console.warn("v2 negotiation:", e); }
+        finally { entry.makingOffer = false; }
+    };
+
+    return entry;
+}
+
+function v2AddLocalTracks(pc) {
+    // Add current screen stream tracks
+    if (localStream) {
+        localStream.getTracks().forEach(t => {
+            if (!pc.getSenders().find(s => s.track === t)) pc.addTrack(t, localStream);
+        });
+    }
+    // Add mic track
+    if (micStream) {
+        micStream.getAudioTracks().forEach(t => {
+            if (!pc.getSenders().find(s => s.track === t)) {
+                try { pc.addTrack(t, micStream); } catch (_) {}
+            }
+        });
+    }
+}
+
+function v2RemovePeer(uid) {
+    if (v2Peers[uid]) { try { v2Peers[uid].pc.close(); } catch (_) {} delete v2Peers[uid]; }
+    delete v2Meta[uid];
+    removeTile(uid);
+}
+
+// ── Signal handler ──────────────────────────────────────────────────────────
+async function v2HandleSignal(sig) {
+    const { from, type, data } = sig;
+    try {
+        if (type === "offer") {
+            const entry  = v2GetOrCreate(from);
+            const pc     = entry.pc;
+            const polite = myPeerId < from;
+            const offerCollision = entry.makingOffer || pc.signalingState !== "stable";
+            if (!polite && offerCollision) return;  // impolite: ignore colliding offer
+            if (polite && offerCollision) {
+                await Promise.all([
+                    pc.setLocalDescription({ type: "rollback" }),
+                    pc.setRemoteDescription(new RTCSessionDescription(data))
+                ]);
+            } else {
+                await pc.setRemoteDescription(new RTCSessionDescription(data));
+            }
+            v2AddLocalTracks(pc);
+            await pc.setLocalDescription();
+            _v2Send(from, "answer", { sdp: pc.localDescription.sdp, type: pc.localDescription.type });
+
+        } else if (type === "answer") {
+            const pc = v2Peers[from]?.pc;
+            if (pc && pc.signalingState !== "stable") {
+                await pc.setRemoteDescription(new RTCSessionDescription(data));
+            }
+
+        } else if (type === "ice") {
+            const pc = v2Peers[from]?.pc;
+            if (pc) {
+                try { await pc.addIceCandidate(new RTCIceCandidate(data)); } catch (_) {}
+            }
+
+        } else if (type === "hello") {
+            // New peer announced themselves — create connection and add tracks
+            const entry = v2GetOrCreate(from);
+            v2AddLocalTracks(entry.pc);
+            // Trigger negotiation if we have something to send, else just be ready
+            if (localStream || micStream) {
+                // onnegotiationneeded will fire automatically after addTrack
+            }
+
+        } else if (type === "stop-stream") {
+            removeTile(from);
+        }
+    } catch (err) { console.error("v2 signal error:", err, sig); }
+    // Clean up the signal doc from Firestore
+    try { await deleteDoc(doc(db, "vezha_signals", sig._docId)); } catch (_) {}
+}
+
+// ── enterVezha / exitVezha ───────────────────────────────────────────────────
 async function enterVezha() {
     if (typeof artilleryActive !== "undefined" && artilleryActive) exitArtillery();
-    // Clean up monitor map 3D scene — it's invisible when appBody is hidden
     if (map3DState) {
         map3DState.dispose(); map3DState = null;
         const b = document.getElementById("mapDimToggle");
         if (b) { b.textContent = "3D"; b.title = "Switch to 3D view"; b.classList.remove("active"); }
     }
-    vezhaActive    = true;
-    vezhaEnterTime = Date.now();
+    vezhaActive = true;
+    v2EnterTime = Date.now();
     document.body.classList.add("in-vezha"); document.body.classList.remove("in-arty");
-
     document.getElementById("appBody").style.display = "none";
     document.getElementById("vezhaView").classList.add("active");
     brandModule.textContent = "VEZHA";
     mapViewBtn.classList.remove("active");
     vezhaViewBtn.classList.add("active");
 
-    // ── Purge stale sessions (no heartbeat for >60 s) ──
+    // Purge stale sessions (> 60 s without heartbeat)
     try {
         const all = await getDocs(vezha_sessions);
-        const b   = writeBatch(db);
-        let dirty = false;
+        const b   = writeBatch(db); let dirty = false;
         all.forEach(d => {
-            const ls = d.data().lastSeen || d.data().created || 0;
-            if (Date.now() - ls > 60000) { b.delete(d.ref); dirty = true; }
+            if (Date.now() - (d.data().lastSeen || 0) > 60000) { b.delete(d.ref); dirty = true; }
         });
         if (dirty) await b.commit();
-    } catch (e) { /* non-fatal */ }
+    } catch (_) {}
 
-    // ── Register presence (include callsign + role so peers can label tiles) ──
-    mySessionRef = await addDoc(vezha_sessions, {
+    // Register my session
+    v2SessionRef = await addDoc(vezha_sessions, {
         userId:   myPeerId,
         callsign: getCallsign(),
         role:     getRole(),
@@ -4416,111 +4558,72 @@ async function enterVezha() {
         created:  Date.now()
     });
 
-    // ── Heartbeat every 15 s ──
-    heartbeatTimer = setInterval(async () => {
-        if (mySessionRef) {
-            try { await updateDoc(mySessionRef, { lastSeen: Date.now() }); } catch (_) {}
-        }
+    // Heartbeat
+    v2HB = setInterval(() => {
+        if (v2SessionRef) updateDoc(v2SessionRef, { lastSeen: Date.now() }).catch(() => {});
     }, 15000);
 
-    // ── Listen for WebRTC signals directed to me ──
+    // Listen for signals addressed to me
     const unsubSig = onSnapshot(
         query(vezha_signals, where("to", "==", myPeerId)),
-        snapshot => {
-            snapshot.docChanges().forEach(change => {
-                if (change.type === "added" && !processedSigs.has(change.doc.id)) {
-                    const sig = change.doc.data();
-                    if (sig.created >= vezhaEnterTime - 5000) {
-                        processedSigs.add(change.doc.id);
-                        handleSignal(sig, change.doc.id);
-                    }
-                }
+        snap => {
+            snap.docChanges().forEach(ch => {
+                if (ch.type !== "added") return;
+                if (v2Processed.has(ch.doc.id)) return;
+                const sig = ch.doc.data();
+                if (sig.created < v2EnterTime - 5000) return; // skip old
+                v2Processed.add(ch.doc.id);
+                v2HandleSignal({ ...sig, _docId: ch.doc.id });
             });
         }
     );
-    vezhaUnsubs.push(unsubSig);
+    v2Unsubs.push(unsubSig);
 
-    // ── Listen for peer sessions ──
-    const unsubSess = onSnapshot(vezha_sessions, snapshot => {
-        snapshot.docChanges().forEach(change => {
-            const data = change.doc.data();
-            const uid  = data.userId;
-            if (change.type === "added" || change.type === "modified") {
-                sessionsCache[uid] = {
-                    callsign:  data.callsign  || uid.slice(-6).toUpperCase(),
-                    role:      data.role      || "operator",
-                    room:      data.room      || null,
-                    docId:     change.doc.id,
-                    userId:    uid,
-                    muted:     data.muted     || false,
-                    deafened:  data.deafened  || false,
-                    streaming: data.streaming || false,
-                };
-                if (uid === myPeerId) {
-                    myCurrentRoom = data.room || null;
-                } else {
-                    peerMeta[uid] = { callsign: sessionsCache[uid].callsign, role: sessionsCache[uid].role };
+    // Listen for peer sessions — track who's online, auto-connect
+    const unsubSess = onSnapshot(vezha_sessions, snap => {
+        snap.docChanges().forEach(ch => {
+            const d   = ch.doc.data();
+            const uid = d.userId;
+            if (!uid || uid === myPeerId) return;
+            if (ch.type === "added" || ch.type === "modified") {
+                v2Meta[uid] = { callsign: d.callsign || uid.slice(-6).toUpperCase(), role: d.role || "operator" };
+            }
+            if (ch.type === "added") {
+                // New peer arrived — announce ourselves so they connect back
+                _v2Send(uid, "hello");
+                // If WE have a stream, kick off an offer to them
+                if (localStream) {
+                    const entry = v2GetOrCreate(uid);
+                    v2AddLocalTracks(entry.pc);
                 }
             }
-            if (uid !== myPeerId) {
-                if (change.type === "added"   && localStream) createOffer(uid);
-                if (change.type === "removed") { delete peerMeta[uid]; removePeer(uid); }
-            }
-            if (change.type === "removed") delete sessionsCache[uid];
+            if (ch.type === "removed") v2RemovePeer(uid);
         });
-        // Count only peers with a recent heartbeat
-        const now = Date.now();
+        // Update operator count
         let count = 0;
-        snapshot.forEach(d => {
-            const data = d.data();
-            if (data.userId !== myPeerId) {
-                const ls = data.lastSeen || data.created || 0;
-                if (now - ls < 45000) count++;
-            }
+        snap.forEach(d => {
+            if (d.data().userId !== myPeerId && Date.now() - (d.data().lastSeen || 0) < 45000) count++;
         });
         document.getElementById("vezhaStatus").textContent = t("operators", count);
         renderRoomsPanel();
     });
-    vezhaUnsubs.push(unsubSess);
+    v2Unsubs.push(unsubSess);
 
-    // ── Init + subscribe to rooms ─────────────────────────────────────────────
-    await initVezhaRooms();
-    const unsubRooms = onSnapshot(vezha_rooms_col, snap => {
-        snap.docChanges().forEach(ch => {
-            if (ch.type === "removed") delete roomsData[ch.doc.id];
-            else roomsData[ch.doc.id] = { id: ch.doc.id, ...ch.doc.data() };
-        });
-        renderRoomsPanel();
-        renderChannelTabs();
-    });
-    vezhaUnsubs.push(unsubRooms);
-
-    // ── Subscribe to chat — fast load: last 60 msgs, then live tail ──
+    // Load chat (last 60 messages)
     document.getElementById("vezhaChatMessages").innerHTML = "";
     chatMsgCache.length = 0;
-    renderChannelTabs(); // initialise with "general" before rooms load
-    chatUnsub = onSnapshot(
+    renderChannelTabs();
+    v2ChatUnsub = onSnapshot(
         query(vezha_chat, orderBy("created", "asc"), limitToLast(60)),
-        snapshot => {
-            snapshot.docChanges().forEach(change => {
-                if (change.type === "added") {
-                    const docId = change.doc.id;
-                    const data  = change.doc.data();
-                    // Add to cache if not already present
-                    if (!chatMsgCache.find(m => m.id === docId)) {
-                        chatMsgCache.push({ id: docId, data });
-                    }
-                    // Skip if we already rendered it optimistically in sendChat
-                    const fp = _chatFP(data);
-                    if (_chatOptimisticFPs.has(fp)) { _chatOptimisticFPs.delete(fp); return; }
-                    renderChatMessage(data);
-                } else if (change.type === "removed") {
-                    const docId = change.doc.id;
-                    const idx = chatMsgCache.findIndex(m => m.id === docId);
-                    if (idx !== -1) chatMsgCache.splice(idx, 1);
-                }
+        snap => {
+            snap.docChanges().forEach(ch => {
+                if (ch.type !== "added") return;
+                const data = ch.doc.data();
+                if (!chatMsgCache.find(m => m.id === ch.doc.id)) chatMsgCache.push({ id: ch.doc.id, data });
+                const fp = _chatFP(data);
+                if (_chatOptimisticFPs.has(fp)) { _chatOptimisticFPs.delete(fp); return; }
+                renderChatMessage(data);
             });
-            // Scroll to latest after each batch
             const msgsEl = document.getElementById("vezhaChatMessages");
             if (msgsEl) requestAnimationFrame(() => { msgsEl.scrollTop = msgsEl.scrollHeight; });
         }
@@ -4529,22 +4632,11 @@ async function enterVezha() {
     updateTileLayout();
     initMic();
 
-    // ── Request streams from peers that are already present ──
-    // Done AFTER all listeners are subscribed so offers/answers won't be missed.
-    // The sessions listener "added" handler only fires offers when WE are the
-    // streamer; this covers the reverse case (we join late, others are streaming).
+    // Announce to all existing peers that we're here (so they send us their streams)
     try {
-        const existingSnap = await getDocs(vezha_sessions);
-        existingSnap.forEach(d => {
-            const uid = d.data().userId;
-            if (uid === myPeerId) return;
-            // Send a lightweight "request-stream" signal so the remote peer
-            // creates a fresh offer to us (they'll include their stream if any).
-            addDoc(vezha_signals, {
-                from: myPeerId, to: uid,
-                type: "request-stream",
-                created: Date.now()
-            });
+        const existing = await getDocs(vezha_sessions);
+        existing.forEach(d => {
+            if (d.data().userId !== myPeerId) _v2Send(d.data().userId, "hello");
         });
     } catch (_) {}
 }
@@ -4553,52 +4645,58 @@ async function exitVezha() {
     await stopSharing();
     stopMic();
     vezhaActive = false;
-    document.body.classList.remove("in-vezha");
-
-    clearInterval(heartbeatTimer); heartbeatTimer = null;
-    if (mySessionRef) { deleteDoc(mySessionRef); mySessionRef = null; }
-    vezhaUnsubs.forEach(u => u()); vezhaUnsubs = [];
-    if (chatUnsub) { chatUnsub(); chatUnsub = null; }
+    clearInterval(v2HB); v2HB = null;
+    if (v2SessionRef) { deleteDoc(v2SessionRef).catch(() => {}); v2SessionRef = null; }
+    v2Unsubs.forEach(u => u()); v2Unsubs = [];
+    if (v2ChatUnsub) { v2ChatUnsub(); v2ChatUnsub = null; }
+    v2Processed.clear();
+    Object.keys(v2Peers).forEach(v2RemovePeer);
+    Object.keys(v2Meta).forEach(k => delete v2Meta[k]);
     chatMsgCache.length = 0;
     _chatOptimisticFPs.clear();
-    processedSigs.clear();
-    Object.keys(peers).forEach(removePeer);
-    Object.keys(peerMeta).forEach(k => delete peerMeta[k]);
-    sessionsCache = {}; roomsData = {}; myCurrentRoom = null;
-    const _rlist = document.getElementById("vezhaRoomsList");
-    if (_rlist) _rlist.innerHTML = "";
+    sessionsCache = {};
 
+    document.body.classList.remove("in-vezha");
     document.getElementById("vezhaView").classList.remove("active");
     document.getElementById("appBody").style.display = "flex";
     brandModule.textContent = "MONITOR";
     vezhaViewBtn.classList.remove("active");
     mapViewBtn.classList.add("active");
-    // Leaflet loses track of container size while hidden — must re-validate
     setTimeout(() => {
         map.invalidateSize({ animate: false });
-        resizeCanvas();
-        redrawAll();
+        resizeCanvas(); redrawAll();
         drawWatermarkCanvas(getCurrentUser()?.userId || null);
     }, 50);
 }
 
-// ─── SCREEN SHARING ───────────────────────────────────────────────────────────
+// ── Screen sharing ───────────────────────────────────────────────────────────
 document.getElementById("shareScreenBtn").addEventListener("click", shareScreen);
 document.getElementById("stopSharingBtn").addEventListener("click", stopSharing);
 
 async function shareScreen() {
     try {
-        localStream = await navigator.mediaDevices.getDisplayMedia({
-            video: { cursor: "always" }, audio: true
-        });
+        localStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "always" }, audio: true });
         localStream.getVideoTracks()[0].addEventListener("ended", stopSharing);
         addVideoTile("self", localStream, "YOU  ·  BROADCASTING");
         document.getElementById("shareScreenBtn").style.display = "none";
         document.getElementById("stopSharingBtn").style.display = "flex";
-        const snap = await getDocs(vezha_sessions);
-        snap.forEach(d => {
-            if (d.data().userId !== myPeerId) createOffer(d.data().userId);
+        // Add tracks to all existing peer connections — onnegotiationneeded will trigger offers
+        Object.values(v2Peers).forEach(({ pc }) => {
+            localStream.getTracks().forEach(t => {
+                if (!pc.getSenders().find(s => s.track === t)) pc.addTrack(t, localStream);
+            });
         });
+        // Also connect to any peer we don't have a connection with yet
+        try {
+            const snap = await getDocs(vezha_sessions);
+            snap.forEach(d => {
+                const uid = d.data().userId;
+                if (uid !== myPeerId && !v2Peers[uid]) {
+                    const entry = v2GetOrCreate(uid);
+                    v2AddLocalTracks(entry.pc);
+                }
+            });
+        } catch (_) {}
     } catch (err) {
         if (err.name !== "NotAllowedError") console.error("Screen share error:", err);
     }
@@ -4606,97 +4704,20 @@ async function shareScreen() {
 
 async function stopSharing() {
     if (!localStream) return;
+    // Notify all peers first
+    const uids = Object.keys(v2Peers);
+    await Promise.allSettled(uids.map(uid => _v2Send(uid, "stop-stream")));
     localStream.getTracks().forEach(t => t.stop());
     localStream = null;
     removeTile("self");
     document.getElementById("shareScreenBtn").style.display = "flex";
     document.getElementById("stopSharingBtn").style.display  = "none";
-
-    // Tell all peers to remove our tile immediately (don't wait for ICE timeout)
-    const stopSignals = Object.keys(peers).map(uid =>
-        addDoc(vezha_signals, { from: myPeerId, to: uid, type: "stop-stream", created: Date.now() })
-            .catch(() => {})
-    );
-    await Promise.allSettled(stopSignals);
-
-    // Close all peer connections — we're no longer sending a stream
-    Object.keys(peers).forEach(uid => { peers[uid].pc.close(); delete peers[uid]; });
+    // Close all peer connections — we'll reconnect when someone needs us again
+    uids.forEach(uid => { try { v2Peers[uid]?.pc.close(); } catch (_) {} delete v2Peers[uid]; });
 }
 
-// ─── PEER CONNECTION ──────────────────────────────────────────────────────────
-function getOrCreatePeer(userId) {
-    if (peers[userId]) return peers[userId].pc;
-    const pc = new RTCPeerConnection(ICE_CONFIG);
-    peers[userId] = { pc };
-    pc.addEventListener("icecandidate", e => {
-        if (e.candidate) {
-            addDoc(vezha_signals, { from: myPeerId, to: userId, type: "ice", data: e.candidate.toJSON(), created: Date.now() });
-        }
-    });
-    pc.addEventListener("track", e => {
-        // e.streams[0] can be undefined on the answerer side in Chrome/Edge —
-        // fall back to wrapping the track in a new MediaStream.
-        const stream   = (e.streams && e.streams[0]) || new MediaStream([e.track]);
-        const meta     = peerMeta[userId] || {};
-        const cs       = meta.callsign || userId.slice(-6).toUpperCase();
-        const roleKey  = meta.role || "operator";
-        const roleDisp = roleKey === "owner" ? "ADMIN" : roleKey.toUpperCase();
-        // Only show stream if user is in the same room as us (or we're not in a room)
-        const theirRoom = sessionsCache[userId]?.room;
-        if (myCurrentRoom && theirRoom && theirRoom !== myCurrentRoom) return;
-        addVideoTile(userId, stream, `${roleDisp} · ${cs}`);
-    });
-    pc.addEventListener("connectionstatechange", () => {
-        if (["disconnected", "failed", "closed"].includes(pc.connectionState)) removePeer(userId);
-    });
-    return pc;
-}
-
-async function createOffer(userId) {
-    const pc = getOrCreatePeer(userId);
-    if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-    if (micStream) micStream.getAudioTracks().forEach(t => { try { pc.addTrack(t, micStream); } catch (_) {} });
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    addDoc(vezha_signals, { from: myPeerId, to: userId, type: "offer", data: { sdp: offer.sdp, type: offer.type }, created: Date.now() });
-}
-
-async function handleSignal(sig, docId) {
-    const { from, type, data } = sig;
-    try {
-        if (type === "offer") {
-            const pc = getOrCreatePeer(from);
-            if (localStream) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-            if (micStream) micStream.getAudioTracks().forEach(t => { try { pc.addTrack(t, micStream); } catch (_) {} });
-            await pc.setRemoteDescription(new RTCSessionDescription(data));
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            addDoc(vezha_signals, { from: myPeerId, to: from, type: "answer", data: { sdp: answer.sdp, type: answer.type }, created: Date.now() });
-        } else if (type === "answer") {
-            const pc = peers[from]?.pc;
-            if (pc && pc.signalingState !== "stable") await pc.setRemoteDescription(new RTCSessionDescription(data));
-        } else if (type === "ice") {
-            const pc = peers[from]?.pc;
-            if (pc) await pc.addIceCandidate(new RTCIceCandidate(data));
-        } else if (type === "request-stream") {
-            // A peer just entered Vezha and is asking us to send them our stream.
-            // Close any stale PC for this peer then create a fresh offer.
-            if (peers[from]) { peers[from].pc.close(); delete peers[from]; }
-            if (localStream) await createOffer(from);
-        } else if (type === "stop-stream") {
-            // Remote peer stopped sharing — remove their tile immediately.
-            removePeer(from);
-        }
-    } catch (err) { console.error("Signal handling error:", err); }
-    try { await deleteDoc(doc(db, "vezha_signals", docId)); } catch (_) {}
-}
-
-function removePeer(userId) {
-    if (!peers[userId]) return;
-    peers[userId].pc.close();
-    delete peers[userId];
-    removeTile(userId);
-}
+// Legacy alias
+function removePeer(uid) { v2RemovePeer(uid); }
 
 // ─── VIDEO TILES ──────────────────────────────────────────────────────────────
 function addVideoTile(id, stream, label) {
@@ -5660,7 +5681,7 @@ function initArtyMap() {
         return;
     }
     artyMapInstance = L.map("artyMapEl", {
-        crs: L.CRS.Simple, minZoom: -3, maxZoom: 2,
+        crs: L.CRS.Simple, minZoom: -3, maxZoom: 4,
         zoomControl: true, attributionControl: false
     });
     const artBounds = [[0, 0], [imageHeight, imageWidth]];
@@ -5851,34 +5872,38 @@ function enterArtillery() {
     vezhaViewBtn.classList.remove("active");
     artilleryViewBtn.classList.add("active");
     setTimeout(() => {
+        // Snapshot saved positions BEFORE initArtyMap/reloadArtyMapImage clears them
+        const restoreGun = _savedArtyGunPx ? { ..._savedArtyGunPx } : null;
+        const restoreTgt = _savedArtyTgtPx ? { ..._savedArtyTgtPx } : null;
         initArtyMap();
-        // Restore saved G/T positions after the map is ready
-        if (_savedArtyGunPx || _savedArtyTgtPx) {
+        drawArtyWatermark(getCurrentUser()?.userId || null);
+        // Restore G/T after the Leaflet map has had time to initialise
+        if (restoreGun || restoreTgt) {
             setTimeout(() => {
-                if (_savedArtyGunPx && artyMapInstance) {
-                    artyGunPx = _savedArtyGunPx;
+                if (!artyMapInstance) return;
+                const ppm = MAPS[currentMapIdx].ppm;
+                const STUD = ppm > 0 ? 1 / ppm : 1;
+                if (restoreGun) {
+                    artyGunPx = restoreGun;
                     if (artyGunMarker) artyGunMarker.remove();
-                    artyGunMarker = L.marker([artyGunPx.lat, artyGunPx.lng], {
+                    artyGunMarker = L.marker([restoreGun.lat, restoreGun.lng], {
                         icon: L.divIcon({ className: "", html: `<div style="background:#4ade80;color:#000;font-family:monospace;font-size:10px;font-weight:700;padding:2px 5px;border-radius:3px;white-space:nowrap;">G</div>`, iconAnchor: [10, 10] })
                     }).addTo(artyMapInstance);
-                    const ARTY_PX_TO_STUD = MAPS[currentMapIdx].ppm > 0 ? 1 / MAPS[currentMapIdx].ppm : 1;
-                    document.getElementById("artyGunX").value = Math.round(artyGunPx.lng * ARTY_PX_TO_STUD);
-                    document.getElementById("artyGunY").value = Math.round(artyGunPx.lat * ARTY_PX_TO_STUD);
+                    document.getElementById("artyGunX").value = Math.round(restoreGun.lng * STUD);
+                    document.getElementById("artyGunY").value = Math.round(restoreGun.lat * STUD);
                 }
-                if (_savedArtyTgtPx && artyMapInstance) {
-                    artyTgtPx = _savedArtyTgtPx;
+                if (restoreTgt) {
+                    artyTgtPx = restoreTgt;
                     if (artyTgtMarker) artyTgtMarker.remove();
-                    artyTgtMarker = L.marker([artyTgtPx.lat, artyTgtPx.lng], {
+                    artyTgtMarker = L.marker([restoreTgt.lat, restoreTgt.lng], {
                         icon: L.divIcon({ className: "", html: `<div style="background:#f87171;color:#000;font-family:monospace;font-size:10px;font-weight:700;padding:2px 5px;border-radius:3px;white-space:nowrap;">T</div>`, iconAnchor: [8, 10] })
                     }).addTo(artyMapInstance);
-                    const ARTY_PX_TO_STUD = MAPS[currentMapIdx].ppm > 0 ? 1 / MAPS[currentMapIdx].ppm : 1;
-                    document.getElementById("artyTgtX").value = Math.round(artyTgtPx.lng * ARTY_PX_TO_STUD);
-                    document.getElementById("artyTgtY").value = Math.round(artyTgtPx.lat * ARTY_PX_TO_STUD);
+                    document.getElementById("artyTgtX").value = Math.round(restoreTgt.lng * STUD);
+                    document.getElementById("artyTgtY").value = Math.round(restoreTgt.lat * STUD);
                 }
                 if (artyGunPx && artyTgtPx) triggerArtyCalc();
-            }, 120);
+            }, 200);
         }
-        drawArtyWatermark(getCurrentUser()?.userId || null);
     }, 50);
 }
 
@@ -6035,11 +6060,8 @@ document.addEventListener("click", () => {
 function renderChannelTabs() {
     const container = document.getElementById("vcChannelTabs");
     if (!container) return;
-    // Build list: general + one per room in roomsData
+    // v2: single general channel only (rooms removed)
     const channels = [{ id: "general", label: "# GENERAL" }];
-    Object.values(roomsData)
-        .sort((a, b) => (a.order || 0) - (b.order || 0))
-        .forEach(r => channels.push({ id: r.id, label: "# " + (r.name || r.id.replace("_", " ").toUpperCase()) }));
 
     container.innerHTML = "";
     channels.forEach(ch => {
@@ -6079,9 +6101,10 @@ let _isDeafened   = false;
 let _isStreaming  = false;
 
 async function updateMyVezhaStatus() {
-    if (!mySessionRef) return;
+    const ref = v2SessionRef || mySessionRef;
+    if (!ref) return;
     try {
-        await updateDoc(mySessionRef, {
+        await updateDoc(ref, {
             muted:     _isMicMuted,
             deafened:  _isDeafened,
             streaming: _isStreaming,
