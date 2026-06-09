@@ -658,15 +658,26 @@ document.getElementById("clearDrawingsBtn").addEventListener("click", async () =
 // ─── FILTER ───────────────────────────────────────────────────────────────────
 const hiddenUnits = new Set();   // unit type strings that are currently hidden
 let filterVisualConf = false;    // when true, show ONLY markers that have a clip URL
+let filterMaxAge = null;         // null = show all; otherwise max age in milliseconds
+
+const TIME_FILTERS = [
+    { label: "1D",  ms: 1  * 24 * 3600 * 1000 },
+    { label: "2D",  ms: 2  * 24 * 3600 * 1000 },
+    { label: "3D",  ms: 3  * 24 * 3600 * 1000 },
+    { label: "1W",  ms: 7  * 24 * 3600 * 1000 },
+];
 
 function applyFilter() {
+    const now = Date.now();
     Object.entries(displayedMarkers).forEach(([, {marker, data}]) => {
         const unit = (data.type || "infantry_alive").split("_").slice(0, -1).join("_");
         const el   = marker.getElement();
         if (!el) return;
         const hiddenByUnit = hiddenUnits.has(unit);
         const hiddenByConf = filterVisualConf && !data.clip;
-        el.style.display = (hiddenByUnit || hiddenByConf) ? "none" : "";
+        const hiddenByAge  = filterMaxAge !== null &&
+                             (typeof data.created !== "number" || (now - data.created) > filterMaxAge);
+        el.style.display = (hiddenByUnit || hiddenByConf || hiddenByAge) ? "none" : "";
     });
 }
 
@@ -703,6 +714,35 @@ function initFilterUI() {
         applyFilter();
     });
     container.appendChild(vcChip);
+
+    // ── Time-range filter chips ──────────────────────────────────────────────
+    const timeGroup = document.createElement("div");
+    timeGroup.className = "filter-time-group";
+
+    const allChip = document.createElement("button");
+    allChip.className = "filter-chip filter-chip-time active";
+    allChip.dataset.ms = "";
+    allChip.textContent = "ALL";
+    timeGroup.appendChild(allChip);
+
+    TIME_FILTERS.forEach(({ label, ms }) => {
+        const chip = document.createElement("button");
+        chip.className = "filter-chip filter-chip-time";
+        chip.dataset.ms = String(ms);
+        chip.textContent = label;
+        timeGroup.appendChild(chip);
+    });
+
+    timeGroup.querySelectorAll(".filter-chip-time").forEach(chip => {
+        chip.addEventListener("click", () => {
+            timeGroup.querySelectorAll(".filter-chip-time").forEach(c => c.classList.remove("active"));
+            chip.classList.add("active");
+            filterMaxAge = chip.dataset.ms ? Number(chip.dataset.ms) : null;
+            applyFilter();
+        });
+    });
+
+    container.appendChild(timeGroup);
 }
 initFilterUI();
 
@@ -874,6 +914,12 @@ document.getElementById("map").addEventListener("click", e => {
     // Stop the event in capture phase so Leaflet never sees it → no new marker placed
     e.stopPropagation();
 }, true);  // ← capture phase
+// When a 3D scene is active the canvas handler already suppresses the browser menu,
+// but events can still reach the underlying Leaflet container — block them here too.
+document.getElementById("mapWrapper").addEventListener("contextmenu", (e) => {
+    if (map3DState || arty3DState) { e.preventDefault(); e.stopPropagation(); }
+}, true);
+
 document.getElementById("map").addEventListener("contextmenu", async e => {
     const iconEl = e.target.closest(".mkr-icon");
     if (!iconEl) return;
@@ -2176,7 +2222,7 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
         if (e.button === 2) _rmbStart = { x: e.clientX, y: e.clientY };
     }, true);
     // Suppress browser context menu on the 3D canvas so RMB actions work cleanly
-    canvas.addEventListener("contextmenu", (e) => { e.preventDefault(); }, true);
+    canvas.addEventListener("contextmenu", (e) => { e.preventDefault(); e.stopPropagation(); }, true);
     canvas.addEventListener("pointerup", async (e) => {
         if (e.button !== 2 || !_rmbStart) return;
         const dx = e.clientX - _rmbStart.x, dy = e.clientY - _rmbStart.y;
