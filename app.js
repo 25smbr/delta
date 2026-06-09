@@ -887,26 +887,16 @@ function _clipEmbedHtml(url) {
     if (/\.(mp4|webm|mov)(\?|$)/i.test(url)) {
         return `<video src="${escHtml(url)}" controls autoplay muted loop style="width:100%;height:100%;object-fit:contain"></video>`;
     }
-    // Medal clip → cannot be iframed (X-Frame-Options: sameorigin), open in new tab
-    if (/medal\.tv/i.test(url)) {
-        const safe = escHtml(url);
-        return `
-          <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#0d1117;">
-            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-              <circle cx="24" cy="24" r="22" stroke="#facc15" stroke-width="2" fill="rgba(250,204,21,0.08)"/>
-              <polygon points="19,14 37,24 19,34" fill="#facc15"/>
-            </svg>
-            <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);letter-spacing:1px;text-align:center;padding:0 20px;word-break:break-all;">${safe}</div>
-            <a href="${safe}" target="_blank" rel="noopener noreferrer"
-               style="background:var(--accent-dim);border:1px solid var(--accent);border-radius:4px;
-                      color:var(--accent);font-family:var(--font-mono);font-size:10px;font-weight:700;
-                      letter-spacing:1.5px;padding:8px 20px;text-decoration:none;cursor:pointer;">
-              ▶ OPEN ON MEDAL
-            </a>
-          </div>`;
-    }
-    // Fallback: iframe
-    return `<iframe src="${escHtml(url)}" allowfullscreen></iframe>`;
+    // Everything else (Medal and unknown URLs) → same clip-card as inline preview
+    return `
+      <div class="clip-card" data-clip-url="${escHtml(url)}"
+           style="position:absolute;inset:0;border-radius:0;">
+        <svg class="clip-card-play" viewBox="0 0 64 64" fill="none">
+          <circle cx="32" cy="32" r="30" fill="rgba(0,0,0,.55)" stroke="rgba(255,255,255,.25)" stroke-width="1.5"/>
+          <polygon points="24,16 52,32 24,48" fill="#facc15"/>
+        </svg>
+        <div class="clip-card-label">${escHtml(url)}</div>
+      </div>`;
 }
 function _openClipOverlay(url, label) {
     const overlay = document.getElementById("clipOverlay");
@@ -932,21 +922,34 @@ document.getElementById("clipOverlay")?.addEventListener("click", (e) => {
 // Uses a standalone L.popup (not bound to marker) so it can be reopened anytime.
 function _clipPreviewHtml(url) {
     if (!url) return "";
+    const safe = escHtml(url);
+    // Direct image → inline
     if (/\.(jpe?g|png|gif|webp)(\?|$)/i.test(url)) {
-        return `<img src="${escHtml(url)}" alt="preview" style="width:100%;height:100%;object-fit:contain;display:block;"/>`;
+        return `<img src="${safe}" alt="preview" style="width:100%;height:100%;object-fit:contain;display:block;"/>`;
     }
+    // Direct video file → HTML5 player
     if (/\.(mp4|webm|mov)(\?|$)/i.test(url)) {
-        return `<video src="${escHtml(url)}" controls muted loop style="width:100%;height:100%;object-fit:contain;display:block;"></video>`;
+        return `<video src="${safe}" controls muted loop style="width:100%;height:100%;object-fit:contain;display:block;"></video>`;
     }
-    // Medal: try dedicated embed endpoint (different from the main player, may allow framing)
-    const m = url.match(/medal\.tv\/(?:games\/[^/?#]+\/)?clips\/([^/?#]+)/i);
-    if (m) {
-        const embedUrl = `https://medal.tv/clip-embed/${m[1]}`;
-        return `<iframe src="${escHtml(embedUrl)}" allowfullscreen allow="autoplay;fullscreen"
-                  style="width:100%;height:100%;border:none;display:block;"></iframe>`;
-    }
-    return `<iframe src="${escHtml(url)}" allowfullscreen style="width:100%;height:100%;border:none;display:block;"></iframe>`;
+    // Medal (and any other URL that blocks iframes) → clickable card that opens a small popup window
+    return `
+      <div class="clip-card" data-clip-url="${safe}">
+        <svg class="clip-card-play" viewBox="0 0 64 64" fill="none">
+          <circle cx="32" cy="32" r="30" fill="rgba(0,0,0,.55)" stroke="rgba(255,255,255,.25)" stroke-width="1.5"/>
+          <polygon points="24,16 52,32 24,48" fill="#facc15"/>
+        </svg>
+        <div class="clip-card-label">${safe.length > 38 ? safe.slice(0,36) + "…" : safe}</div>
+      </div>`;
 }
+
+// Delegated handler for clip-card clicks (opens a small floating window)
+document.addEventListener("click", e => {
+    const card = e.target.closest(".clip-card");
+    if (!card) return;
+    const url = card.dataset.clipUrl;
+    if (url) window.open(url, "delta_clip",
+        "width=960,height=600,menubar=no,toolbar=no,location=no,status=no,resizable=yes");
+});
 
 function openMarkerEditPopup(markerId, markerLeaflet, data) {
     const isInfo = (data.type || "").startsWith("info");
