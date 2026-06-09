@@ -2175,6 +2175,8 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
     canvas.addEventListener("pointerdown", (e) => {
         if (e.button === 2) _rmbStart = { x: e.clientX, y: e.clientY };
     }, true);
+    // Suppress browser context menu on the 3D canvas so RMB actions work cleanly
+    canvas.addEventListener("contextmenu", (e) => { e.preventDefault(); }, true);
     canvas.addEventListener("pointerup", async (e) => {
         if (e.button !== 2 || !_rmbStart) return;
         const dx = e.clientX - _rmbStart.x, dy = e.clientY - _rmbStart.y;
@@ -4978,7 +4980,7 @@ const TUT_STEPS = {
     {
         icon: "🛡",
         title: "WELCOME TO DELTA",
-        body:  "DELTA is a real-time tactical coordination system for the <b>25th Brigade</b> in <b>Roblox MTC4</b>. It is <b>private and confidential</b> — do <b>NOT</b> share any content, screenshots, or data from this site with anyone outside the brigade or publish it online without admin approval."
+        body:  "DELTA is a real-time tactical coordination system for the <b>25th Brigade</b> in <b>Roblox MTC4</b>. It is <b>private</b> — please don't share any content, screenshots, or data from this site with anyone outside the brigade or publish it online without admin approval."
     },
     {
         icon: "🗺️",
@@ -5015,7 +5017,7 @@ const TUT_STEPS = {
     {
         icon: "🛡",
         title: "ДОБРО ПОЖАЛОВАТЬ В DELTA",
-        body:  "DELTA — система тактической координации в реальном времени для <b>25-й Бригады</b> в <b>Roblox MTC4</b>. Система <b>частная и конфиденциальная</b> — <b>ЗАПРЕЩЕНО</b> делиться материалами, скриншотами или данными этого сайта с кем-либо вне бригады или публиковать их в сети без разрешения администратора."
+        body:  "DELTA — система тактической координации в реальном времени для <b>25-й Бригады</b> в <b>Roblox MTC4</b>. Система <b>приватная</b> — пожалуйста, не делитесь материалами, скриншотами или данными этого сайта с кем-либо вне бригады и не публикуйте их в сети без разрешения администратора."
     },
     {
         icon: "🗺️",
@@ -5052,7 +5054,7 @@ const TUT_STEPS = {
     {
         icon: "🛡",
         title: "ЛАСКАВО ПРОСИМО ДО DELTA",
-        body:  "DELTA — система тактичної координації в реальному часі для <b>25-ї Бригади</b> в <b>Roblox MTC4</b>. Система <b>приватна та конфіденційна</b> — <b>ЗАБОРОНЕНО</b> ділитися матеріалами, скриншотами або даними цього сайту з кимось поза бригадою або публікувати їх в мережі без дозволу адміністратора."
+        body:  "DELTA — система тактичної координації в реальному часі для <b>25-ї Бригади</b> в <b>Roblox MTC4</b>. Система <b>приватна</b> — будь ласка, не діліться матеріалами, скриншотами або даними цього сайту з кимось поза бригадою і не публікуйте їх в мережі без дозволу адміністратора."
     },
     {
         icon: "🗺️",
