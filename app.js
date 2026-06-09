@@ -930,16 +930,40 @@ document.getElementById("clipOverlay")?.addEventListener("click", (e) => {
 });
 // ─── MARKER EDIT POPUP ───────────────────────────────────────────────────────
 // Uses a standalone L.popup (not bound to marker) so it can be reopened anytime.
+function _clipPreviewHtml(url) {
+    if (!url) return "";
+    if (/\.(jpe?g|png|gif|webp)(\?|$)/i.test(url)) {
+        return `<img src="${escHtml(url)}" alt="preview" style="width:100%;height:100%;object-fit:contain;display:block;"/>`;
+    }
+    if (/\.(mp4|webm|mov)(\?|$)/i.test(url)) {
+        return `<video src="${escHtml(url)}" controls muted loop style="width:100%;height:100%;object-fit:contain;display:block;"></video>`;
+    }
+    // Medal: try dedicated embed endpoint (different from the main player, may allow framing)
+    const m = url.match(/medal\.tv\/(?:games\/[^/?#]+\/)?clips\/([^/?#]+)/i);
+    if (m) {
+        const embedUrl = `https://medal.tv/clip-embed/${m[1]}`;
+        return `<iframe src="${escHtml(embedUrl)}" allowfullscreen allow="autoplay;fullscreen"
+                  style="width:100%;height:100%;border:none;display:block;"></iframe>`;
+    }
+    return `<iframe src="${escHtml(url)}" allowfullscreen style="width:100%;height:100%;border:none;display:block;"></iframe>`;
+}
+
 function openMarkerEditPopup(markerId, markerLeaflet, data) {
     const isInfo = (data.type || "").startsWith("info");
     const clipVal = escHtml(data.clip || "");
+    const previewHtml = data.clip ? _clipPreviewHtml(data.clip) : "";
+    const previewSection = `
+        <div class="mep-clip-preview" id="mep-clip-preview" style="${data.clip ? "" : "display:none"}">
+          ${previewHtml}
+        </div>`;
     const clipRow = `
         <div class="mep-row">
           <label class="mep-label" for="mep-clip">CLIP</label>
           <input class="mep-inp" id="mep-clip" type="text"
                  value="${clipVal}" placeholder="medal.tv/clips/…"/>
-          <button class="mep-clip-btn" id="mep-clip-view">▶ VIEW</button>
-        </div>`;
+          <button class="mep-clip-btn" id="mep-clip-view">▶</button>
+        </div>
+        ${previewSection}`;
     const amtRow = isInfo ? "" : `
         <div class="mep-row">
           <label class="mep-label" for="mep-amt">AMT</label>
@@ -980,18 +1004,14 @@ function openMarkerEditPopup(markerId, markerLeaflet, data) {
         return;
     }
 
-    // Close any previously opened popup, then open a fresh standalone one
-    map.closePopup();
-    const popup = L.popup({ className: "mep-outer", maxWidth: 260, minWidth: 220, autoPan: true, offset: L.point(160, 40) })
-        .setLatLng(markerLeaflet.getLatLng())
-        .setContent(popupContent)
-        .openOn(map);
-
-    // Wait one animation frame for Leaflet to insert the DOM, then wire buttons
+    // IMPORTANT: register popupopen handler BEFORE openOn() — Leaflet fires it synchronously
     map.once("popupopen", () => {
         document.getElementById("mep-clip-view")?.addEventListener("click", () => {
             const url = document.getElementById("mep-clip")?.value.trim();
-            if (url) _openClipOverlay(url, data.info || data.type);
+            if (!url) return;
+            // Refresh inline preview with current input value
+            const preview = document.getElementById("mep-clip-preview");
+            if (preview) { preview.innerHTML = _clipPreviewHtml(url); preview.style.display = ""; }
         });
         document.getElementById("mep-save")?.addEventListener("click", async () => {
             const amt  = document.getElementById("mep-amt")?.value  ?? "";
@@ -1005,6 +1025,13 @@ function openMarkerEditPopup(markerId, markerLeaflet, data) {
             map.closePopup();
         });
     });
+
+    // Close any previously opened popup, then open a fresh standalone one
+    map.closePopup();
+    L.popup({ className: "mep-outer", maxWidth: 260, minWidth: 220, autoPan: true, offset: L.point(160, 40) })
+        .setLatLng(markerLeaflet.getLatLng())
+        .setContent(popupContent)
+        .openOn(map);
 }
 
 // ── Fixed-position marker editor for 3D mode ─────────────────────────────────
@@ -1023,12 +1050,17 @@ function _show3DMarkerPanel(markerId, isInfo, data) {
         <label class="mep-label" for="mep3d-src">SRC</label>
         <input class="mep-inp" id="mep3d-src" type="text" value="${escHtml(data.source||"")}"/>
       </div>`;
+    const preview3d = data.clip
+        ? `<div class="mep-clip-preview">${_clipPreviewHtml(data.clip)}</div>` : "";
     const clipRow = `
       <div class="mep-row">
         <label class="mep-label" for="mep3d-clip">CLIP</label>
         <input class="mep-inp" id="mep3d-clip" type="text"
                value="${escHtml(data.clip||"")}" placeholder="medal.tv/clips/…"/>
-        <button class="mep-clip-btn" id="mep3d-clip-view">▶ VIEW</button>
+        <button class="mep-clip-btn" id="mep3d-clip-view">▶</button>
+      </div>
+      <div class="mep-clip-preview" id="mep3d-clip-preview" style="${data.clip ? "" : "display:none"}">
+        ${_clipPreviewHtml(data.clip||"")}
       </div>`;
     panel.innerHTML = `
       <button class="mep-close3d" id="_mep3dX">✕</button>
@@ -1055,7 +1087,9 @@ function _show3DMarkerPanel(markerId, isInfo, data) {
     document.getElementById("_mep3dX").addEventListener("click", close);
     document.getElementById("mep3d-clip-view")?.addEventListener("click", () => {
         const url = document.getElementById("mep3d-clip")?.value.trim();
-        if (url) _openClipOverlay(url, data.info || data.type);
+        if (!url) return;
+        const preview = document.getElementById("mep3d-clip-preview");
+        if (preview) { preview.innerHTML = _clipPreviewHtml(url); preview.style.display = ""; }
     });
     document.getElementById("_mep3dSave").addEventListener("click", async () => {
         const amt  = document.getElementById("mep3d-amt")?.value  ?? "";
