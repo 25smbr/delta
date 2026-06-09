@@ -876,26 +876,153 @@ document.getElementById("map").addEventListener("contextmenu", async e => {
     }
 }, true);  // ← capture phase
 
-// ─── CLIP OVERLAY ────────────────────────────────────────────────────────────
+// ─── DELTA VIDEO PLAYER ──────────────────────────────────────────────────────
+function _fmtTime(s) {
+    if (!isFinite(s)) return "0:00";
+    const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+    return `${m}:${String(sec).padStart(2,"0")}`;
+}
+function _videoPlayerHtml(src) {
+    const safe = escHtml(src);
+    return `
+    <div class="dp">
+      <video class="dp-video" src="${safe}" preload="metadata" playsinline></video>
+      <div class="dp-controls">
+        <button class="dp-btn" data-dp="playpause" title="Play / Pause">
+          <svg viewBox="0 0 16 16"><polygon points="3,1 13,8 3,15" fill="currentColor"/></svg>
+        </button>
+        <span class="dp-time" data-dp-time>0:00 / 0:00</span>
+        <input class="dp-seek dp-range" type="range" min="0" max="1000" value="0" step="1" data-dp="seek" title="Seek">
+        <svg class="dp-vol-icon" viewBox="0 0 16 16"><path d="M2 5h3l4-3v12l-4-3H2z" fill="currentColor"/><path d="M11 5a4 4 0 0 1 0 6" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/></svg>
+        <input class="dp-vol dp-range" type="range" min="0" max="1" value="1" step="0.02" data-dp="vol" title="Volume">
+        <button class="dp-btn" data-dp="fs" title="Fullscreen">
+          <svg viewBox="0 0 16 16"><path d="M1 1h5M1 1v5M15 1h-5M15 1v5M1 15h5M1 15v-5M15 15h-5M15 15v-5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </div>`;
+}
+
+// Delegated player events — work for any .dp inserted anywhere in the DOM
+document.addEventListener("click", e => {
+    const btn = e.target.closest("[data-dp]");
+    if (!btn) return;
+    const dp    = btn.closest(".dp");
+    const video = dp?.querySelector(".dp-video");
+    if (!video) return;
+    const action = btn.dataset.dp;
+    if (action === "playpause") { video.paused ? video.play() : video.pause(); }
+    if (action === "fs") {
+        if (document.fullscreenElement) document.exitFullscreen();
+        else (dp.requestFullscreen || dp.webkitRequestFullscreen).call(dp);
+    }
+}, true);
+document.addEventListener("input", e => {
+    const el = e.target.closest("[data-dp]");
+    if (!el) return;
+    const dp    = el.closest(".dp");
+    const video = dp?.querySelector(".dp-video");
+    if (!video) return;
+    if (el.dataset.dp === "seek" && isFinite(video.duration))
+        video.currentTime = (el.value / 1000) * video.duration;
+    if (el.dataset.dp === "vol") video.volume = el.value;
+}, true);
+document.addEventListener("timeupdate", e => {
+    if (e.target.tagName !== "VIDEO") return;
+    const dp = e.target.closest(".dp"); if (!dp) return;
+    const seek = dp.querySelector("[data-dp='seek']");
+    const time = dp.querySelector("[data-dp-time]");
+    const v = e.target;
+    if (seek && isFinite(v.duration)) seek.value = (v.currentTime / v.duration) * 1000;
+    if (time) time.textContent = `${_fmtTime(v.currentTime)} / ${_fmtTime(v.duration)}`;
+}, true);
+document.addEventListener("play", e => {
+    if (e.target.tagName !== "VIDEO") return;
+    const btn = e.target.closest(".dp")?.querySelector("[data-dp='playpause']");
+    if (btn) btn.innerHTML = `<svg viewBox="0 0 16 16"><rect x="2" y="1" width="4" height="14" fill="currentColor"/><rect x="10" y="1" width="4" height="14" fill="currentColor"/></svg>`;
+}, true);
+document.addEventListener("pause", e => {
+    if (e.target.tagName !== "VIDEO") return;
+    const btn = e.target.closest(".dp")?.querySelector("[data-dp='playpause']");
+    if (btn) btn.innerHTML = `<svg viewBox="0 0 16 16"><polygon points="3,1 13,8 3,15" fill="currentColor"/></svg>`;
+}, true);
+
+// Try to resolve a Medal clip to a direct video URL via oEmbed
+async function _tryMedalVideoUrl(clipUrl) {
+    try {
+        const oe = await fetch(
+            `https://medal.tv/api/content/oembed?url=${encodeURIComponent(clipUrl)}&format=json`,
+            { mode: "cors", signal: AbortSignal.timeout(4000) }
+        );
+        if (!oe.ok) return null;
+        const json = await oe.json();
+        // Some oEmbed responses include a direct video url
+        if (json.video_url && /https?:\/\//i.test(json.video_url)) return json.video_url;
+        if (json.url      && /\.(mp4|webm)/i.test(json.url))       return json.url;
+        // Parse embed HTML for a src that points to a CDN video
+        if (json.html) {
+            const m = json.html.match(/src="([^"]*cdn[^"]*\.(?:mp4|webm)[^"]*)"/i);
+            if (m) return m[1];
+        }
+        return null;
+    } catch { return null; }
+}
+
+// Delegated handler for .clip-card clicks
+document.addEventListener("click", async e => {
+    const card = e.target.closest(".clip-card");
+    if (!card) return;
+    const url = card.dataset.clipUrl;
+    if (!url) return;
+
+    // Show a loading state
+    card.innerHTML = `<div style="color:var(--text-dim);font-family:var(--font-mono);font-size:10px;letter-spacing:1px;">LOADING…</div>`;
+
+    // Try Medal oEmbed first
+    if (/medal\.tv/i.test(url)) {
+        const videoUrl = await _tryMedalVideoUrl(url);
+        if (videoUrl) {
+            card.outerHTML = _videoPlayerHtml(videoUrl);
+            return;
+        }
+    }
+    // Fallback: open in a small popup window
+    window.open(url, "delta_clip", "width=960,height=600,menubar=no,toolbar=no,location=no,status=no,resizable=yes");
+    // Restore the card
+    card.outerHTML = `
+      <div class="clip-card" data-clip-url="${escHtml(url)}">
+        ${_clipCardInner(url)}
+      </div>`;
+});
+
+function _clipCardInner(url) {
+    const safe = escHtml(url);
+    const label = url.length > 38 ? url.slice(0, 36) + "…" : url;
+    return `
+      <svg class="clip-card-play" viewBox="0 0 64 64" fill="none">
+        <circle cx="32" cy="32" r="30" fill="rgba(255,255,255,.08)" stroke="rgba(255,255,255,.3)" stroke-width="1.5"/>
+        <polygon points="25,17 49,32 25,47" fill="rgba(255,255,255,.9)"/>
+      </svg>
+      <div class="clip-card-label">${escHtml(label)}</div>`;
+}
+
+function _clipPreviewHtml(url) {
+    if (!url) return "";
+    const safe = escHtml(url);
+    if (/\.(jpe?g|png|gif|webp)(\?|$)/i.test(url))
+        return `<img src="${safe}" alt="preview" style="width:100%;height:100%;object-fit:contain;display:block;"/>`;
+    if (/\.(mp4|webm|mov)(\?|$)/i.test(url))
+        return _videoPlayerHtml(url);
+    return `<div class="clip-card" data-clip-url="${safe}">${_clipCardInner(url)}</div>`;
+}
 function _clipEmbedHtml(url) {
     if (!url) return "";
-    // Direct image URLs → embed
-    if (/\.(jpe?g|png|gif|webp)(\?|$)/i.test(url) || /cdn\.medal\.tv.*\.(jpe?g|png|webp)/i.test(url)) {
-        return `<img src="${escHtml(url)}" alt="clip"/>`;
-    }
-    // Direct video file → HTML5 player
-    if (/\.(mp4|webm|mov)(\?|$)/i.test(url)) {
-        return `<video src="${escHtml(url)}" controls autoplay muted loop style="width:100%;height:100%;object-fit:contain"></video>`;
-    }
-    // Everything else (Medal and unknown URLs) → same clip-card as inline preview
+    if (/\.(jpe?g|png|gif|webp)(\?|$)/i.test(url))
+        return `<img src="${escHtml(url)}" alt="clip" style="width:100%;height:100%;object-fit:contain;"/>`;
+    if (/\.(mp4|webm|mov)(\?|$)/i.test(url))
+        return `<div style="width:100%;height:100%;">${_videoPlayerHtml(url)}</div>`;
     return `
-      <div class="clip-card" data-clip-url="${escHtml(url)}"
-           style="position:absolute;inset:0;border-radius:0;">
-        <svg class="clip-card-play" viewBox="0 0 64 64" fill="none">
-          <circle cx="32" cy="32" r="30" fill="rgba(0,0,0,.55)" stroke="rgba(255,255,255,.25)" stroke-width="1.5"/>
-          <polygon points="24,16 52,32 24,48" fill="#facc15"/>
-        </svg>
-        <div class="clip-card-label">${escHtml(url)}</div>
+      <div class="clip-card" data-clip-url="${escHtml(url)}" style="position:absolute;inset:0;border-radius:0;">
+        ${_clipCardInner(url)}
       </div>`;
 }
 function _openClipOverlay(url, label) {
@@ -903,7 +1030,7 @@ function _openClipOverlay(url, label) {
     const body    = document.getElementById("clipOverlayBody");
     const title   = document.getElementById("clipOverlayTitle");
     if (!overlay || !body) return;
-    body.innerHTML  = _clipEmbedHtml(url);
+    body.innerHTML    = _clipEmbedHtml(url);
     title.textContent = label ? `CLIP — ${label}` : "CLIP";
     overlay.style.display = "flex";
 }
@@ -917,38 +1044,6 @@ document.getElementById("clipOverlay")?.addEventListener("click", (e) => {
         e.currentTarget.style.display = "none";
         document.getElementById("clipOverlayBody").innerHTML = "";
     }
-});
-// ─── MARKER EDIT POPUP ───────────────────────────────────────────────────────
-// Uses a standalone L.popup (not bound to marker) so it can be reopened anytime.
-function _clipPreviewHtml(url) {
-    if (!url) return "";
-    const safe = escHtml(url);
-    // Direct image → inline
-    if (/\.(jpe?g|png|gif|webp)(\?|$)/i.test(url)) {
-        return `<img src="${safe}" alt="preview" style="width:100%;height:100%;object-fit:contain;display:block;"/>`;
-    }
-    // Direct video file → HTML5 player
-    if (/\.(mp4|webm|mov)(\?|$)/i.test(url)) {
-        return `<video src="${safe}" controls muted loop style="width:100%;height:100%;object-fit:contain;display:block;"></video>`;
-    }
-    // Medal (and any other URL that blocks iframes) → clickable card that opens a small popup window
-    return `
-      <div class="clip-card" data-clip-url="${safe}">
-        <svg class="clip-card-play" viewBox="0 0 64 64" fill="none">
-          <circle cx="32" cy="32" r="30" fill="rgba(0,0,0,.55)" stroke="rgba(255,255,255,.25)" stroke-width="1.5"/>
-          <polygon points="24,16 52,32 24,48" fill="#facc15"/>
-        </svg>
-        <div class="clip-card-label">${safe.length > 38 ? safe.slice(0,36) + "…" : safe}</div>
-      </div>`;
-}
-
-// Delegated handler for clip-card clicks (opens a small floating window)
-document.addEventListener("click", e => {
-    const card = e.target.closest(".clip-card");
-    if (!card) return;
-    const url = card.dataset.clipUrl;
-    if (url) window.open(url, "delta_clip",
-        "width=960,height=600,menubar=no,toolbar=no,location=no,status=no,resizable=yes");
 });
 
 function openMarkerEditPopup(markerId, markerLeaflet, data) {
