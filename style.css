@@ -627,8 +627,10 @@ body.light-theme .filter-chip.active { color: var(--accent); }
   box-shadow: 0 16px 48px rgba(0,0,0,.65);
 }
 .tut-header {
-  display: flex; justify-content: space-between; align-items: flex-start;
+  display: flex; justify-content: space-between; align-items: center;
+  position: relative;
 }
+/* Truly centre the lang switcher regardless of label widths on the sides */
 .tut-step-label {
   font-family: var(--font-mono);
   font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase;
@@ -702,12 +704,14 @@ body.light-theme .tut-skip { color: rgba(0,0,0,.35); }
 body.light-theme .tut-skip:hover { color: var(--accent); }
 body.light-theme .tut-dot { background: rgba(0,0,0,.18); }
 
-/* Tutorial lang switcher */
+/* Tutorial lang switcher — absolutely centred in the header row */
 .tut-lang-switcher {
+  position: absolute; left: 50%; transform: translateX(-50%);
   display: flex; align-items: center; gap: 1px;
   background: var(--bg-section, rgba(255,255,255,.05));
   border: 1px solid var(--border, rgba(255,255,255,.1));
   border-radius: 4px; padding: 2px;
+  white-space: nowrap;
 }
 .tut-lang-btn {
   background: transparent; border: none; border-radius: 3px;
@@ -1631,27 +1635,27 @@ body.lang-ua .danger-btn { font-size: 9px; letter-spacing: 0.5px; }
 
   /* ── Topbar ── */
   #topBar {
-    padding: 0 4px; gap: 2px;
-    overflow-x: auto; overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;    /* hide scrollbar but allow scroll */
+    padding: 0 3px; gap: 1px;
   }
-  #topBar::-webkit-scrollbar { display: none; }
-  .topBar-left  { flex-shrink: 0; gap: 3px; }
-  .topBar-center { flex-shrink: 0; }
-  .topBar-right { flex-shrink: 0; gap: 3px; }
-  /* Hide text brand labels on very small screens, keep icon buttons */
+  .topBar-left  { gap: 1px; }
+  .topBar-center { flex: 0 0 auto; }
+  .topBar-right { gap: 1px; }
+  /* Hide text brand labels, map selector label, and dividers */
   .brand-name, .brand-sep, .brand-module, .top-divider { display: none; }
-  /* Shrink icon buttons a touch */
-  .topBtn { width: 28px; height: 28px; }
-  /* Stack lang switcher tighter */
-  .lang-switcher { gap: 1px; }
-  .lang-btn { padding: 2px 5px; font-size: 9px; }
-  /* Status pill: drop text, keep dot */
+  /* Map selector: hide the label text, keep the icon only */
+  #mapSelLabel { display: none; }
+  .map-sel-btn { padding: 0 5px; min-width: 24px; }
+  /* Icon buttons: compact */
+  .topBtn { width: 24px; height: 24px; }
+  .topBtn svg { width: 13px; height: 13px; }
+  /* Lang switcher: very tight */
+  .lang-switcher { gap: 0; padding: 1px; }
+  .lang-btn { padding: 2px 4px; font-size: 8px; letter-spacing: 0.5px; }
+  /* Status pill: dot only */
   .status-pill span:not(.pulse-dot) { display: none; }
-  .status-pill { padding: 3px 6px; }
+  .status-pill { padding: 2px 5px; }
   /* Clock smaller */
-  #clock { font-size: 11px; letter-spacing: 0; }
+  #clock { font-size: 10px; letter-spacing: 0; }
 
   /* ── Left panel: icon-strip visible by default, slides open ── */
   #leftPanel {
