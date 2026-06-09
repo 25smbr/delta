@@ -879,21 +879,33 @@ document.getElementById("map").addEventListener("contextmenu", async e => {
 // ─── CLIP OVERLAY ────────────────────────────────────────────────────────────
 function _clipEmbedHtml(url) {
     if (!url) return "";
-    // Direct image URLs
+    // Direct image URLs → embed
     if (/\.(jpe?g|png|gif|webp)(\?|$)/i.test(url) || /cdn\.medal\.tv.*\.(jpe?g|png|webp)/i.test(url)) {
         return `<img src="${escHtml(url)}" alt="clip"/>`;
     }
-    // Medal clip → iframe embed
-    const m = url.match(/medal\.tv\/(?:games\/[^/?#]+\/)?clips\/([^/?#]+)/i);
-    if (m) {
-        const embedUrl = `https://medal.tv/clips/${m[1]}?loop=1&autoplay=1&muted=1&cta=0`;
-        return `<iframe src="${escHtml(embedUrl)}" allowfullscreen allow="autoplay; fullscreen"></iframe>`;
-    }
-    // Generic video file
+    // Direct video file → HTML5 player
     if (/\.(mp4|webm|mov)(\?|$)/i.test(url)) {
         return `<video src="${escHtml(url)}" controls autoplay muted loop style="width:100%;height:100%;object-fit:contain"></video>`;
     }
-    // Fallback: iframe any URL
+    // Medal clip → cannot be iframed (X-Frame-Options: sameorigin), open in new tab
+    if (/medal\.tv/i.test(url)) {
+        const safe = escHtml(url);
+        return `
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#0d1117;">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+              <circle cx="24" cy="24" r="22" stroke="#facc15" stroke-width="2" fill="rgba(250,204,21,0.08)"/>
+              <polygon points="19,14 37,24 19,34" fill="#facc15"/>
+            </svg>
+            <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);letter-spacing:1px;text-align:center;padding:0 20px;word-break:break-all;">${safe}</div>
+            <a href="${safe}" target="_blank" rel="noopener noreferrer"
+               style="background:var(--accent-dim);border:1px solid var(--accent);border-radius:4px;
+                      color:var(--accent);font-family:var(--font-mono);font-size:10px;font-weight:700;
+                      letter-spacing:1.5px;padding:8px 20px;text-decoration:none;cursor:pointer;">
+              ▶ OPEN ON MEDAL
+            </a>
+          </div>`;
+    }
+    // Fallback: iframe
     return `<iframe src="${escHtml(url)}" allowfullscreen></iframe>`;
 }
 function _openClipOverlay(url, label) {
@@ -921,14 +933,12 @@ document.getElementById("clipOverlay")?.addEventListener("click", (e) => {
 function openMarkerEditPopup(markerId, markerLeaflet, data) {
     const isInfo = (data.type || "").startsWith("info");
     const clipVal = escHtml(data.clip || "");
-    const viewBtn = data.clip
-        ? `<button class="mep-clip-btn" id="mep-clip-view">▶ VIEW</button>` : "";
     const clipRow = `
         <div class="mep-row">
           <label class="mep-label" for="mep-clip">CLIP</label>
           <input class="mep-inp" id="mep-clip" type="text"
                  value="${clipVal}" placeholder="medal.tv/clips/…"/>
-          ${viewBtn}
+          <button class="mep-clip-btn" id="mep-clip-view">▶ VIEW</button>
         </div>`;
     const amtRow = isInfo ? "" : `
         <div class="mep-row">
@@ -978,9 +988,10 @@ function openMarkerEditPopup(markerId, markerLeaflet, data) {
         .openOn(map);
 
     // Wait one animation frame for Leaflet to insert the DOM, then wire buttons
-    requestAnimationFrame(() => {
+    map.once("popupopen", () => {
         document.getElementById("mep-clip-view")?.addEventListener("click", () => {
-            _openClipOverlay(data.clip, data.info || data.type);
+            const url = document.getElementById("mep-clip")?.value.trim();
+            if (url) _openClipOverlay(url, data.info || data.type);
         });
         document.getElementById("mep-save")?.addEventListener("click", async () => {
             const amt  = document.getElementById("mep-amt")?.value  ?? "";
@@ -1012,14 +1023,12 @@ function _show3DMarkerPanel(markerId, isInfo, data) {
         <label class="mep-label" for="mep3d-src">SRC</label>
         <input class="mep-inp" id="mep3d-src" type="text" value="${escHtml(data.source||"")}"/>
       </div>`;
-    const viewBtn = data.clip
-        ? `<button class="mep-clip-btn" id="mep3d-clip-view">▶ VIEW</button>` : "";
     const clipRow = `
       <div class="mep-row">
         <label class="mep-label" for="mep3d-clip">CLIP</label>
         <input class="mep-inp" id="mep3d-clip" type="text"
                value="${escHtml(data.clip||"")}" placeholder="medal.tv/clips/…"/>
-        ${viewBtn}
+        <button class="mep-clip-btn" id="mep3d-clip-view">▶ VIEW</button>
       </div>`;
     panel.innerHTML = `
       <button class="mep-close3d" id="_mep3dX">✕</button>
@@ -1045,7 +1054,8 @@ function _show3DMarkerPanel(markerId, isInfo, data) {
     const close = () => panel.remove();
     document.getElementById("_mep3dX").addEventListener("click", close);
     document.getElementById("mep3d-clip-view")?.addEventListener("click", () => {
-        _openClipOverlay(data.clip, data.info || data.type);
+        const url = document.getElementById("mep3d-clip")?.value.trim();
+        if (url) _openClipOverlay(url, data.info || data.type);
     });
     document.getElementById("_mep3dSave").addEventListener("click", async () => {
         const amt  = document.getElementById("mep3d-amt")?.value  ?? "";
