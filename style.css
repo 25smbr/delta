@@ -594,6 +594,114 @@ body.light-theme .scrollable-symbols::-webkit-scrollbar-thumb { background: var(
 .filter-chip:hover { opacity: 1; border-color: var(--border-light); }
 body.light-theme .filter-chip.active { color: var(--accent); }
 
+/* ── Visual-Confirmation chip ──────────────────────────────────────────────── */
+.filter-chip-vc {
+  border-color: rgba(250, 204, 21, 0.4);
+  color: rgba(250, 204, 21, 0.55);
+}
+.filter-chip-vc:not(.vc-on) { opacity: 0.45; }
+.filter-chip-vc.vc-on {
+  border-color: #facc15;
+  background: rgba(250, 204, 21, 0.12);
+  color: #facc15;
+  opacity: 1;
+}
+.filter-chip-vc:hover { opacity: 1; border-color: #facc15; }
+
+/* ── Tutorial Overlay ──────────────────────────────────────────────────────── */
+#tutorialOverlay {
+  display: none;
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(0,0,0,0.72);
+  align-items: center; justify-content: center;
+  backdrop-filter: blur(3px);
+}
+.tut-box {
+  background: var(--panel-bg, #14181f);
+  border: 1px solid var(--border-light, rgba(255,255,255,.13));
+  border-radius: 8px;
+  width: min(460px, 92vw);
+  padding: 28px 28px 22px;
+  position: relative;
+  display: flex; flex-direction: column; gap: 14px;
+  box-shadow: 0 16px 48px rgba(0,0,0,.65);
+}
+.tut-header {
+  display: flex; justify-content: space-between; align-items: flex-start;
+}
+.tut-step-label {
+  font-family: var(--font-mono);
+  font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--text-muted, rgba(255,255,255,.35));
+  padding-top: 2px;
+}
+.tut-skip {
+  font-family: var(--font-mono);
+  font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--text-muted, rgba(255,255,255,.3));
+  background: none; border: none; cursor: pointer; padding: 2px 0;
+  transition: color .15s;
+}
+.tut-skip:hover { color: var(--accent, #e8c97a); }
+.tut-icon {
+  font-size: 38px; text-align: center; line-height: 1;
+  margin-bottom: 2px;
+}
+.tut-title {
+  font-family: var(--font-mono);
+  font-size: 13px; font-weight: 700; letter-spacing: 2px;
+  text-transform: uppercase; text-align: center;
+  color: var(--accent, #e8c97a);
+}
+.tut-body {
+  font-family: var(--font-mono);
+  font-size: 11px; line-height: 1.65; letter-spacing: 0.3px;
+  color: var(--text-secondary, rgba(255,255,255,.72));
+  text-align: center; min-height: 60px;
+}
+.tut-dots {
+  display: flex; justify-content: center; gap: 6px;
+}
+.tut-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: rgba(255,255,255,.18); transition: background .2s;
+}
+.tut-dot-active {
+  background: var(--accent, #e8c97a);
+}
+.tut-footer {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 4px;
+}
+.tut-btn {
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
+  text-transform: uppercase;
+  padding: 7px 18px; border-radius: 4px;
+  border: 1px solid var(--accent, #e8c97a);
+  background: transparent; color: var(--accent, #e8c97a);
+  cursor: pointer; transition: background .15s, color .15s;
+}
+.tut-btn:hover {
+  background: var(--accent, #e8c97a);
+  color: #0e1117;
+}
+.tut-btn:disabled { opacity: 0.25; cursor: default; }
+.tut-btn-finish {
+  background: var(--accent, #e8c97a);
+  color: #0e1117;
+}
+.tut-btn-finish:hover { opacity: 0.85; }
+
+body.light-theme .tut-box {
+  background: var(--panel-bg, #f4f0e8);
+  border-color: var(--border-light, rgba(0,0,0,.15));
+}
+body.light-theme .tut-body { color: var(--text-secondary, rgba(0,0,0,.7)); }
+body.light-theme .tut-skip { color: rgba(0,0,0,.35); }
+body.light-theme .tut-skip:hover { color: var(--accent); }
+body.light-theme .tut-dot { background: rgba(0,0,0,.18); }
+
 /* ── Enemy / Friendly side-toggle ───────────────────────────────────────────── */
 .side-toggle {
   display: flex; gap: 0; margin-left: 8px;
@@ -1575,6 +1683,57 @@ body.lang-ua .danger-btn { font-size: 9px; letter-spacing: 0.5px; }
 
   /* ── Ruler readout ── */
   #rulerReadout { font-size: 9px; }
+
+  /* ── Draw tool buttons — larger touch targets ── */
+  .drawToolBtn {
+    min-width: 38px; min-height: 38px;
+    font-size: 11px; padding: 6px 8px;
+  }
+  #drawToggle { min-height: 32px; font-size: 10px; }
+  #drawModePanel { gap: 5px; padding: 6px 8px; }
+
+  /* ── Marker popup on mobile ── */
+  .leaflet-popup-content-wrapper {
+    width: min(290px, 92vw) !important;
+    max-width: 92vw !important;
+  }
+  .leaflet-popup-content {
+    margin: 10px 12px !important;
+    width: auto !important;
+  }
+  .mep-popup { width: 100% !important; min-width: unset !important; }
+  .mep-popup input, .mep-popup textarea, .mep-popup select {
+    font-size: 13px !important;   /* prevents iOS auto-zoom on focus */
+  }
+  .mep-clip-preview { min-height: 100px; }
+  .dp { width: 100%; }
+  .dp-controls { flex-wrap: wrap; gap: 4px; padding: 4px 6px; }
+  .dp-seek { width: 100%; order: 10; }   /* move seek bar to second row */
+
+  /* ── Filter chips — wrap + bigger tap ── */
+  .filter-chips { gap: 6px; }
+  .filter-chip { font-size: 9px; padding: 5px 9px; }
+
+  /* ── Map selector list ── */
+  #mapSelList { max-height: 55vh; }
+  .map-sel-item { padding: 9px 10px; font-size: 11px; }
+
+  /* ── 3D view: popup card ── */
+  .mep-popup-3d { width: min(270px, 90vw) !important; }
+
+  /* ── Tutorial overlay ── */
+  .tut-box { padding: 22px 18px 18px; gap: 12px; }
+  .tut-title { font-size: 12px; }
+  .tut-body { font-size: 10.5px; }
+  .tut-btn { font-size: 9px; padding: 6px 14px; }
+
+  /* ── Admin panel ── */
+  .admin-panel { max-height: 60vh; overflow-y: auto; }
+  .admin-row { flex-wrap: wrap; gap: 4px; }
+  .admin-btn { min-height: 32px; padding: 5px 8px; font-size: 9px; }
+
+  /* ── Confirm dialog ── */
+  .confirm-box { width: min(300px, 90vw); padding: 20px 16px; }
 }
 
 /* Medium mobile / landscape (601–860 px) */
