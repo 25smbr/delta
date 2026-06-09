@@ -198,6 +198,7 @@ const MAPS = [
     { id: "map10", name: "Zone 11",           file: "zone_11.png",          width:  626, height:  631, ppm: 65/324   },
     { id: "map11", name: "Normandy Bocage",   file: "normandy_bocage.png",  width:  629, height:  634, ppm: 65/239   },
     { id: "map12", name: "Villers Sommeil",   file: "villers_sommeil.png",  width:  618, height:  631, ppm: 65/120   },
+    { id: "map13", name: "KP",               file: "kp.png",               width: 1280, height:  934, ppm: 1        },
 ];
 let currentMapIdx = parseInt(localStorage.getItem("currentMapIdx") || "0");
 if (currentMapIdx >= MAPS.length) currentMapIdx = 0;
