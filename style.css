@@ -594,6 +594,33 @@ body.light-theme .scrollable-symbols::-webkit-scrollbar-thumb { background: var(
 .filter-chip:hover { opacity: 1; border-color: var(--border-light); }
 body.light-theme .filter-chip.active { color: var(--accent); }
 
+/* ── Time-range filter group ───────────────────────────────────────────────── */
+.filter-time-group {
+  display: flex; align-items: center; gap: 1px;
+  background: var(--bg-section);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px;
+  margin-top: 2px;
+}
+/* Time chips share base .filter-chip sizing but override color to blue-ish */
+.filter-chip-time {
+  font-family: var(--font-mono);
+  font-size: 8.5px; font-weight: 700; letter-spacing: 1px;
+  padding: 3px 7px; border-radius: 3px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.15s;
+  text-transform: uppercase;
+}
+.filter-chip-time:hover { color: #60a5fa; }
+.filter-chip-time.active {
+  background: rgba(96,165,250,0.14);
+  color: #60a5fa;
+}
+
 /* ── Visual-Confirmation chip ──────────────────────────────────────────────── */
 .filter-chip-vc {
   border-color: rgba(250, 204, 21, 0.4);
