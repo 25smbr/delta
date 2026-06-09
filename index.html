@@ -336,7 +336,12 @@
       <div class="tut-box">
         <div class="tut-header">
           <span class="tut-step-label" id="tutStepLabel">STEP 1 / 7</span>
-          <button class="tut-skip" id="tutSkip">SKIP TUTORIAL</button>
+          <div class="tut-lang-switcher">
+            <button class="tut-lang-btn active" data-lang="en">EN</button>
+            <button class="tut-lang-btn" data-lang="ru">RU</button>
+            <button class="tut-lang-btn" data-lang="ua">UA</button>
+          </div>
+          <button class="tut-skip" id="tutSkip">SKIP</button>
         </div>
         <div class="tut-icon" id="tutIcon"></div>
         <div class="tut-title" id="tutTitle"></div>
@@ -453,6 +458,8 @@
 
     <!-- ── Rooms / Channels sidebar ── -->
     <aside class="vezha-rooms-panel" id="vezhaRoomsPanel">
+      <!-- Collapse tab — same pattern as chat sidebar -->
+      <button id="channelsCollapseBtn" class="channels-collapse-btn" title="Toggle channels">›</button>
       <div class="vrp-header">
         <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
           <path d="M1 2h9M1 5h9M1 8h6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
@@ -755,6 +762,13 @@
             <div class="admin-sub-section">
               <div class="admin-sub-title">ACCOUNTS</div>
               <div id="adminAccountsList" class="admin-list"></div>
+            </div>
+            <div class="admin-sub-section">
+              <div class="admin-sub-title" style="display:flex;align-items:center;justify-content:space-between">
+                🗄️ DATABASE USAGE
+                <button class="admin-btn admin-btn-neutral" id="adminDbRefreshBtn" title="Refresh">↻</button>
+              </div>
+              <div id="adminDbUsage" class="db-usage-box">Loading…</div>
             </div>
             <div class="admin-sub-section">
               <div class="admin-sub-title" style="display:flex;align-items:center;justify-content:space-between">
