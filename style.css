@@ -1878,6 +1878,11 @@ body.lang-ua .danger-btn { font-size: 9px; letter-spacing: 0.5px; }
   text-align: center; padding: 0 12px;
   word-break: break-all; max-width: 100%;
 }
+.clip-card-hint {
+  font-family: var(--font-mono); font-size: 8px;
+  color: rgba(255,255,255,.2); letter-spacing: 1.5px;
+  text-align: center;
+}
 /* Inline clip preview inside popup */
 .mep-clip-preview {
   width: 100%;
