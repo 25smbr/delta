@@ -996,11 +996,12 @@ function _fmtTime(s) {
     const m = Math.floor(s / 60), sec = Math.floor(s % 60);
     return `${m}:${String(sec).padStart(2,"0")}`;
 }
-function _videoPlayerHtml(src) {
+function _videoPlayerHtml(src, last3 = false) {
     const safe = escHtml(src);
+    const l3 = last3 ? ' data-last3="1"' : '';
     return `
     <div class="dp">
-      <video class="dp-video" src="${safe}" preload="metadata" playsinline></video>
+      <video class="dp-video" src="${safe}" preload="metadata" playsinline${l3}></video>
       <div class="dp-controls">
         <button class="dp-btn" data-dp="playpause" title="Play / Pause">
           <svg viewBox="0 0 16 16"><polygon points="3,1 13,8 3,15" fill="currentColor"/></svg>
@@ -1040,6 +1041,12 @@ document.addEventListener("input", e => {
         video.currentTime = (el.value / 1000) * video.duration;
     if (el.dataset.dp === "vol") video.volume = el.value;
 }, true);
+document.addEventListener("loadedmetadata", e => {
+    if (e.target.tagName !== "VIDEO" || !e.target.dataset.last3) return;
+    const v = e.target;
+    v.currentTime = Math.max(0, v.duration - 3);
+    v.play().catch(() => {});
+}, true);
 document.addEventListener("timeupdate", e => {
     if (e.target.tagName !== "VIDEO") return;
     const dp = e.target.closest(".dp"); if (!dp) return;
@@ -1048,6 +1055,10 @@ document.addEventListener("timeupdate", e => {
     const v = e.target;
     if (seek && isFinite(v.duration)) seek.value = (v.currentTime / v.duration) * 1000;
     if (time) time.textContent = `${_fmtTime(v.currentTime)} / ${_fmtTime(v.duration)}`;
+    // last-3 loop: when near end, jump back to 3 s before end
+    if (v.dataset.last3 && isFinite(v.duration) && v.currentTime >= v.duration - 0.15) {
+        v.currentTime = Math.max(0, v.duration - 3);
+    }
 }, true);
 document.addEventListener("play", e => {
     if (e.target.tagName !== "VIDEO") return;
@@ -1086,7 +1097,7 @@ function _clipPreviewHtml(url) {
     if (/\.(jpe?g|png|gif|webp)(\?|$)/i.test(url))
         return `<img src="${safe}" alt="preview" style="width:100%;height:100%;object-fit:contain;display:block;"/>`;
     if (/\.(mp4|webm|mov)(\?|$)/i.test(url))
-        return _videoPlayerHtml(url);
+        return _videoPlayerHtml(url, true);  // preview: loop last 3 s
     return `<div class="clip-card" data-clip-url="${safe}">${_clipCardInner(url)}</div>`;
 }
 function _clipEmbedHtml(url) {
