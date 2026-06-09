@@ -1761,6 +1761,7 @@ body.lang-ua .danger-btn { font-size: 9px; letter-spacing: 0.5px; }
   position: fixed; top: 50%; left: 50%;
   transform: translate(-50%, -50%);
   z-index: 9999;
+  width: 280px;
   background: var(--bg-panel); border: 1px solid var(--border-light);
   border-radius: 4px; box-shadow: 0 4px 20px rgba(0,0,0,.7);
 }
@@ -1810,6 +1811,14 @@ body.lang-ua .danger-btn { font-size: 9px; letter-spacing: 0.5px; }
   position: absolute; inset: 0;
   width: 100%; height: 100%;
   border: none; object-fit: contain;
+}
+/* Inline clip preview inside popup */
+.mep-clip-preview {
+  width: 100%; aspect-ratio: 16/9;
+  background: #000;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 2px;
 }
 /* VIEW CLIP button inside popup */
 .mep-clip-btn {
