@@ -1812,6 +1812,23 @@ body.lang-ua .danger-btn { font-size: 9px; letter-spacing: 0.5px; }
   width: 100%; height: 100%;
   border: none; object-fit: contain;
 }
+/* Clip card — shown for Medal and other non-embeddable URLs */
+.clip-card {
+  width: 100%; height: 100%;
+  background: #0d1117;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px;
+  cursor: pointer; position: relative;
+  transition: background 0.15s;
+}
+.clip-card:hover { background: #131b27; }
+.clip-card-play { width: 52px; height: 52px; flex-shrink: 0; }
+.clip-card-label {
+  font-family: var(--font-mono); font-size: 9px;
+  color: var(--text-dim); letter-spacing: 0.5px;
+  text-align: center; padding: 0 12px;
+  word-break: break-all; max-width: 100%;
+}
 /* Inline clip preview inside popup */
 .mep-clip-preview {
   width: 100%; aspect-ratio: 16/9;
