@@ -657,12 +657,16 @@ document.getElementById("clearDrawingsBtn").addEventListener("click", async () =
 });
 // ─── FILTER ───────────────────────────────────────────────────────────────────
 const hiddenUnits = new Set();   // unit type strings that are currently hidden
+let filterVisualConf = false;    // when true, show ONLY markers that have a clip URL
 
 function applyFilter() {
     Object.entries(displayedMarkers).forEach(([, {marker, data}]) => {
         const unit = (data.type || "infantry_alive").split("_").slice(0, -1).join("_");
         const el   = marker.getElement();
-        if (el) el.style.display = hiddenUnits.has(unit) ? "none" : "";
+        if (!el) return;
+        const hiddenByUnit = hiddenUnits.has(unit);
+        const hiddenByConf = filterVisualConf && !data.clip;
+        el.style.display = (hiddenByUnit || hiddenByConf) ? "none" : "";
     });
 }
 
@@ -687,6 +691,18 @@ function initFilterUI() {
         });
         container.appendChild(chip);
     });
+    // Visual Confirmation filter chip (special — not a unit type)
+    const vcChip = document.createElement("button");
+    vcChip.className = "filter-chip filter-chip-vc";
+    vcChip.id        = "filterVCBtn";
+    vcChip.title     = "Show only markers with confirmed footage";
+    vcChip.textContent = "VISUAL CONF.";
+    vcChip.addEventListener("click", () => {
+        filterVisualConf = !filterVisualConf;
+        vcChip.classList.toggle("vc-on", filterVisualConf);
+        applyFilter();
+    });
+    container.appendChild(vcChip);
 }
 initFilterUI();
 
@@ -869,6 +885,8 @@ document.getElementById("map").addEventListener("contextmenu", async e => {
         // Stop propagation in capture phase so the coord popup never shows
         e.stopPropagation();
         if (await showConfirm("DELETE THIS MARKER?")) {
+            map.closePopup();
+            document.getElementById("_mep3d")?.remove();
             await deleteDoc(doc(db, "markers", id));
             const idx = undoStack.findIndex(u => u.type === "marker" && u.id === id);
             if (idx !== -1) undoStack.splice(idx, 1);
@@ -3568,9 +3586,16 @@ function startAdminListeners() {
                 row.innerHTML = `
                   <span class="presence-dot ${online ? "online" : "offline"}"></span>
                   <span class="admin-row-name">${escHtml(acct.username)}</span>
-                  <select class="admin-role-select" data-user="${escHtml(acct.username)}">${opts}</select>`;
+                  <select class="admin-role-select" data-user="${escHtml(acct.username)}">${opts}</select>
+                  <button class="admin-btn admin-btn-deny admin-btn-kick"
+                          data-id="${escHtml(acct.username)}">KICK</button>`;
                 row.querySelector(".admin-role-select").addEventListener("change", async (e) => {
                     await updateDoc(doc(db, "accounts", acct.username), { role: e.target.value });
+                });
+                row.querySelector(".admin-btn-kick").addEventListener("click", async () => {
+                    if (confirm(`Kick "${acct.username}"? This deletes their account.`)) {
+                        await deleteDoc(doc(db, "accounts", acct.username));
+                    }
                 });
             }
             el.appendChild(row);
@@ -3618,6 +3643,19 @@ function startAdminListeners() {
 // Accounts live in Firestore "accounts/{USERNAME}" so any device can log in.
 // Current session is cached in localStorage for instant page-load restore.
 
+let _unsubKickWatcher = null;
+function _watchAccountKick(username) {
+    if (_unsubKickWatcher) { _unsubKickWatcher(); _unsubKickWatcher = null; }
+    if (!username || username === OWNER_CALLSIGN) return; // owner can't be kicked
+    _unsubKickWatcher = onSnapshot(doc(db, "accounts", username), snap => {
+        if (!snap.exists()) {
+            // Account was deleted — force logout
+            alert("Your account has been removed by an administrator.");
+            applyCurrentUser(null);
+        }
+    });
+}
+
 function getCurrentUser() {
     try { return JSON.parse(localStorage.getItem("deltaCurrentUser") || "null"); } catch { return null; }
 }
@@ -3644,7 +3682,10 @@ function applyCurrentUser(user) {
         presenceInterval = setInterval(updatePresence, 30000);
         // Start admin listeners if admin
         if (user.role === "owner") startAdminListeners();
+        // Watch for account deletion (kick) — auto-logout immediately
+        _watchAccountKick(user.username);
         hideAuthScreen();
+        setTimeout(maybeShowTutorial, 600); // slight delay so UI settles first
     } else {
         // Logout: clear presence, stop heartbeat, stop admin listeners
         clearPresence();
@@ -4881,6 +4922,92 @@ function renderChatMessage(data) {
 
 function escHtml(s) {
     return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// ─── TUTORIAL ────────────────────────────────────────────────────────────────
+const TUT_STEPS = [
+    {
+        icon: "🛡",
+        title: "WELCOME TO DELTA",
+        body:  "DELTA is a real-time tactical coordination platform. It has three views: <b>MONITOR</b> (tactical map), <b>VEZHA</b> (voice &amp; video comms), and <b>ARTY</b> (artillery calculator). Switch between them using the icons in the top-left bar."
+    },
+    {
+        icon: "📍",
+        title: "PLACING MARKERS",
+        body:  "Make sure draw mode is <b>OFF</b>, then <b>left-click</b> anywhere on the map to place a tactical marker. Select the unit type and side from the left panel first. <b>Click</b> a marker to edit its details (info, source, Medal clip…). <b>Right-click</b> a marker to delete it."
+    },
+    {
+        icon: "✏️",
+        title: "DRAW TOOLS",
+        body:  "Toggle <b>DRAW ON</b> in the left panel to annotate the map. Select a tool: pen, line, arrow, circle, rectangle, AOI (zone), or text label. Choose colour and stroke width. <b>Ctrl + drag</b> a selection box to delete multiple drawings at once."
+    },
+    {
+        icon: "📏",
+        title: "RULER",
+        body:  "Click the ruler icon (right toolbar) to measure distances. Click the map to add points — the running total appears in the top-right. <b>Double-click</b> or click the ruler button again to finish. Works in both 2D and 3D."
+    },
+    {
+        icon: "🗺",
+        title: "MAP SELECTOR",
+        body:  "Click the map name in the top-right bar to open the map selector. Search by name or scroll the list. Each map has its own independent set of markers and drawings — switching maps loads that map's data automatically."
+    },
+    {
+        icon: "📡",
+        title: "VEZHA — COMMS",
+        body:  "VEZHA is the communications hub. Create or join a <b>room</b> to start a voice/video call with your team. The chat panel is shared with the Monitor comms window. You can attach a <b>Medal.tv clip link</b> to any marker using the CLIP field in the edit popup."
+    },
+    {
+        icon: "🎯",
+        title: "ARTY CALCULATOR",
+        body:  "Switch to the <b>ARTY</b> view for firing solutions. <b>Left-click</b> the map to place your gun, <b>right-click</b> to place the target. Results show azimuth, elevation, and time-of-flight for each shell type. The 3D panel shows the ballistic trajectory."
+    }
+];
+
+let _tutStep = 0;
+
+function _tutRender() {
+    const step  = TUT_STEPS[_tutStep];
+    const total = TUT_STEPS.length;
+    document.getElementById("tutStepLabel").textContent = `STEP ${_tutStep + 1} / ${total}`;
+    document.getElementById("tutIcon").textContent  = step.icon;
+    document.getElementById("tutTitle").textContent = step.title;
+    document.getElementById("tutBody").innerHTML    = step.body;
+    document.getElementById("tutPrev").disabled     = _tutStep === 0;
+    document.getElementById("tutNext").textContent  = _tutStep === total - 1 ? "FINISH ✓" : "NEXT →";
+    // Dots
+    const dots = document.getElementById("tutDots");
+    dots.innerHTML = "";
+    for (let i = 0; i < total; i++) {
+        const d = document.createElement("span");
+        d.className = "tut-dot" + (i === _tutStep ? " tut-dot-active" : "");
+        dots.appendChild(d);
+    }
+}
+
+function startTutorial() {
+    _tutStep = 0;
+    _tutRender();
+    document.getElementById("tutorialOverlay").style.display = "flex";
+}
+
+function closeTutorial() {
+    document.getElementById("tutorialOverlay").style.display = "none";
+    localStorage.setItem("deltaTutorialDone", "1");
+}
+
+document.getElementById("tutNext")?.addEventListener("click", () => {
+    if (_tutStep < TUT_STEPS.length - 1) { _tutStep++; _tutRender(); }
+    else closeTutorial();
+});
+document.getElementById("tutPrev")?.addEventListener("click", () => {
+    if (_tutStep > 0) { _tutStep--; _tutRender(); }
+});
+document.getElementById("tutSkip")?.addEventListener("click", closeTutorial);
+document.getElementById("tutorialBtn")?.addEventListener("click", startTutorial);
+
+// Show tutorial automatically for first-time users (after auth)
+function maybeShowTutorial() {
+    if (!localStorage.getItem("deltaTutorialDone")) startTutorial();
 }
 
 // ─── THEME TOGGLE ────────────────────────────────────────────────────────────
