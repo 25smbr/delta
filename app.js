@@ -5260,6 +5260,16 @@ function maybeShowTutorial() {
 
 // ─── THEME TOGGLE ────────────────────────────────────────────────────────────
 
+// ── Marker labels toggle ──────────────────────────────────────────────────────
+let _markerLabelsVisible = true;
+const markerLabelsBtn = document.getElementById("markerLabelsBtn");
+markerLabelsBtn?.addEventListener("click", () => {
+    _markerLabelsVisible = !_markerLabelsVisible;
+    document.body.classList.toggle("hide-marker-labels", !_markerLabelsVisible);
+    markerLabelsBtn.classList.toggle("active", _markerLabelsVisible);
+    markerLabelsBtn.title = _markerLabelsVisible ? "Hide marker labels" : "Show marker labels";
+});
+
 const themeToggleBtn = document.getElementById("themeToggleBtn");
 themeToggleBtn.addEventListener("click", () => {
     isLightTheme = !isLightTheme;
