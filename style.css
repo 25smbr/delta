@@ -1812,6 +1812,55 @@ body.lang-ua .danger-btn { font-size: 9px; letter-spacing: 0.5px; }
   width: 100%; height: 100%;
   border: none; object-fit: contain;
 }
+/* ─── DELTA VIDEO PLAYER ────────────────────────────────────────────────────── */
+.dp {
+  width: 100%; height: 100%;
+  display: flex; flex-direction: column;
+  background: #000; position: relative;
+}
+.dp-video {
+  flex: 1; width: 100%; min-height: 0;
+  object-fit: contain; display: block; background: #000;
+}
+.dp-controls {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 8px;
+  background: rgba(6,12,22,0.92);
+  border-top: 1px solid rgba(255,255,255,.07);
+  flex-shrink: 0;
+}
+.dp-btn {
+  background: transparent; border: none; cursor: pointer;
+  color: rgba(255,255,255,.75); padding: 2px; line-height: 0;
+  flex-shrink: 0; border-radius: 3px;
+  transition: color 0.12s;
+}
+.dp-btn:hover { color: #fff; }
+.dp-btn svg { width: 14px; height: 14px; display: block; }
+.dp-time {
+  font-family: var(--font-mono); font-size: 9px;
+  color: rgba(255,255,255,.5); letter-spacing: 0.5px;
+  white-space: nowrap; flex-shrink: 0;
+}
+.dp-range {
+  -webkit-appearance: none; appearance: none;
+  height: 3px; border-radius: 2px; outline: none; cursor: pointer;
+  background: rgba(255,255,255,.18);
+}
+.dp-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: rgba(255,255,255,.85); cursor: pointer;
+  transition: background 0.12s;
+}
+.dp-range::-webkit-slider-thumb:hover { background: #fff; }
+.dp-range::-moz-range-thumb {
+  width: 10px; height: 10px; border-radius: 50%; border: none;
+  background: rgba(255,255,255,.85); cursor: pointer;
+}
+.dp-seek { flex: 1; min-width: 0; }
+.dp-vol  { width: 60px; flex-shrink: 0; }
+.dp-vol-icon { width: 13px; height: 13px; flex-shrink: 0; color: rgba(255,255,255,.45); }
 /* Clip card — shown for Medal and other non-embeddable URLs */
 .clip-card {
   width: 100%; height: 100%;
@@ -1831,11 +1880,14 @@ body.lang-ua .danger-btn { font-size: 9px; letter-spacing: 0.5px; }
 }
 /* Inline clip preview inside popup */
 .mep-clip-preview {
-  width: 100%; aspect-ratio: 16/9;
+  width: 100%;
+  aspect-ratio: 16/9;
   background: #000;
   border-radius: 3px;
   overflow: hidden;
   margin-top: 2px;
+  /* give extra height when player controls are visible */
+  min-height: 130px;
 }
 /* VIEW CLIP button inside popup */
 .mep-clip-btn {
