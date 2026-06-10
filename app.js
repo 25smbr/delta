@@ -1488,21 +1488,30 @@ coordSearchInput.addEventListener("keydown", (e) => { if (e.key === "Enter") goT
 // ════════════════════════════════════════════════════════════════════
 const canvas = document.getElementById("drawCanvas");
 const ctx    = canvas.getContext("2d");
-// Move canvas inside .leaflet-map-pane so its z-index competes within the same
-// stacking context as overlayPane (400) / markerPane (600) / popupPane (700).
-// The mapPane has a CSS transform applied by Leaflet during pan — that transform
-// creates a stacking context isolating all pane z-indices from outside elements.
-// Being inside the same stacking context: canvas z=500 < markerPane z=600 ✓
-// Counter-translate the canvas to keep it viewport-fixed despite the pan transform.
-{
-    const mapPane = map.getPanes().mapPane;
-    mapPane.appendChild(canvas);
-    function _syncCanvasTransform() {
-        const p = L.DomUtil.getPosition(mapPane);
-        canvas.style.transform = `translate(${-p.x}px, ${-p.y}px)`;
-    }
-    map.on("move zoom viewreset moveend zoomend", _syncCanvasTransform);
-    _syncCanvasTransform();
+// Zone (AOI) rectangles are rendered as Leaflet L.rectangle layers in overlayPane
+// (z-index 400 within mapPane's stacking context), which is BELOW markerPane (600).
+// The canvas (z=500, sibling of .leaflet-container) renders all other drawing tools
+// plus zone name labels on top of the Leaflet overlay but below popups/tooltips.
+let _zoneLayers = [];
+function syncZoneLayers() {
+    _zoneLayers.forEach(l => { try { map.removeLayer(l); } catch (_) {} });
+    _zoneLayers = [];
+    strokes.forEach(s => {
+        if (s.tool !== "zone" || !strokeVisible(s) || !s.ll1 || !s.ll2) return;
+        const layer = L.rectangle(
+            [[s.ll1.lat, s.ll1.lng], [s.ll2.lat, s.ll2.lng]],
+            {
+                color:        s.color,
+                weight:       Math.max(1, s.width || 2),
+                dashArray:    "6, 4",
+                fillColor:    s.color,
+                fillOpacity:  0.18,
+                interactive:  false,
+                bubblingMouseEvents: false
+            }
+        ).addTo(map);
+        _zoneLayers.push(layer);
+    });
 }
 // Initial subscription — must come after ctx is declared (subscribeToMap calls redrawAll)
 subscribeToMap(MAPS[currentMapIdx].id);
@@ -1616,6 +1625,7 @@ function strokeVisible(s) {
 }
 function redrawAll() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    syncZoneLayers();
     strokes.forEach(s => { if (strokeVisible(s)) drawStroke(s); });
     if (currentStroke) drawStroke(currentStroke);
     if (rulerMode && rulerPoints.length > 0) drawRulerOverlay();
@@ -1686,23 +1696,13 @@ function drawStroke(s) {
         ctx.fillText(s.labelText || "", cx, cy);
         ctx.shadowBlur = 0;
     } else if (s.tool === "zone") {
-        const [x1, y1] = llToCanvas(s.ll1.lat, s.ll1.lng);
-        const [x2, y2] = llToCanvas(s.ll2.lat, s.ll2.lng);
-        const rx = Math.min(x1, x2), ry = Math.min(y1, y2);
-        const rw = Math.abs(x2 - x1), rh = Math.abs(y2 - y1);
-        // Filled semi-transparent rect
-        ctx.globalAlpha = 0.18;
-        ctx.fillStyle = s.color;
-        ctx.fillRect(rx, ry, rw, rh);
-        ctx.globalAlpha = 1;
-        // Dashed border
-        ctx.strokeStyle = s.color;
-        ctx.lineWidth = Math.max(1, s.width || 2);
-        ctx.setLineDash([6, 4]);
-        ctx.strokeRect(rx, ry, rw, rh);
-        ctx.setLineDash([]);
-        // Name label centered
-        if (s.zoneName) {
+        // Fill and border are drawn as a Leaflet L.rectangle in overlayPane (syncZoneLayers).
+        // Only draw the name label here so it appears on the canvas layer.
+        if (s.zoneName && s.ll1 && s.ll2) {
+            const [x1, y1] = llToCanvas(s.ll1.lat, s.ll1.lng);
+            const [x2, y2] = llToCanvas(s.ll2.lat, s.ll2.lng);
+            const rx = Math.min(x1, x2), ry = Math.min(y1, y2);
+            const rw = Math.abs(x2 - x1), rh = Math.abs(y2 - y1);
             const cx2 = rx + rw / 2, cy2 = ry + rh / 2;
             const fs2 = Math.max(10, Math.min(rh * 0.18, 22));
             ctx.font = `700 ${fs2}px 'Share Tech Mono', monospace`;
