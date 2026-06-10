@@ -658,8 +658,10 @@ document.getElementById("clearDrawingsBtn").addEventListener("click", async () =
 });
 // ─── FILTER ───────────────────────────────────────────────────────────────────
 const hiddenUnits = new Set();   // unit type strings that are currently hidden
-let filterVisualConf = false;    // when true, show ONLY markers that have a clip URL
-let filterMaxAge = null;         // null = show all; otherwise max age in milliseconds
+let filterVisualConf  = false;   // when true, show ONLY markers that have a clip URL
+let filterMaxAge      = null;    // null = show all; otherwise max age in milliseconds
+let filterHideAOI     = false;   // hide all AOI (zone) drawings
+let filterHideDrawings = false;  // hide all non-AOI drawings
 
 const TIME_FILTERS = [
     { label: "1D",  ms: 1  * 24 * 3600 * 1000 },
@@ -716,6 +718,29 @@ function initFilterUI() {
     });
     container.appendChild(vcChip);
 
+    // ── AOI / Drawings toggle chips ──────────────────────────────────────────
+    const aoiChip = document.createElement("button");
+    aoiChip.className   = "filter-chip active";
+    aoiChip.textContent = "AOI";
+    aoiChip.title       = "Toggle AOI zones visibility";
+    aoiChip.addEventListener("click", () => {
+        filterHideAOI = !filterHideAOI;
+        aoiChip.classList.toggle("active", !filterHideAOI);
+        redrawAll();
+    });
+    container.appendChild(aoiChip);
+
+    const drawChip = document.createElement("button");
+    drawChip.className   = "filter-chip active";
+    drawChip.textContent = "DRAW";
+    drawChip.title       = "Toggle drawings visibility";
+    drawChip.addEventListener("click", () => {
+        filterHideDrawings = !filterHideDrawings;
+        drawChip.classList.toggle("active", !filterHideDrawings);
+        redrawAll();
+    });
+    container.appendChild(drawChip);
+
     // ── Time-range filter chips ──────────────────────────────────────────────
     const timeGroup = document.createElement("div");
     timeGroup.className = "filter-time-group";
@@ -740,6 +765,7 @@ function initFilterUI() {
             chip.classList.add("active");
             filterMaxAge = chip.dataset.ms ? Number(chip.dataset.ms) : null;
             applyFilter();
+            redrawAll();
         });
     });
 
@@ -1579,9 +1605,18 @@ widthSlider.addEventListener("input", () => {
     widthVal.textContent = penWidth;
 });
 // ─── REDRAW ALL STROKES ───────────────────────────────────────────────────────
+function strokeVisible(s) {
+    const isZone = s.tool === "zone";
+    if (isZone  && filterHideAOI)      return false;
+    if (!isZone && filterHideDrawings) return false;
+    if (filterMaxAge !== null) {
+        if (typeof s.created !== "number" || (Date.now() - s.created) > filterMaxAge) return false;
+    }
+    return true;
+}
 function redrawAll() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    strokes.forEach(s => drawStroke(s));
+    strokes.forEach(s => { if (strokeVisible(s)) drawStroke(s); });
     if (currentStroke) drawStroke(currentStroke);
     if (rulerMode && rulerPoints.length > 0) drawRulerOverlay();
     if (window.__artyRedrawHook) window.__artyRedrawHook();
