@@ -1132,7 +1132,10 @@ document.getElementById("clipOverlay")?.addEventListener("click", (e) => {
     }
 });
 
+let _openPopupMarkerId = null;  // tracks which marker's popup is currently open
+
 function openMarkerEditPopup(markerId, markerLeaflet, data) {
+    _openPopupMarkerId = markerId;
     const isInfo = (data.type || "").startsWith("info");
     const clipVal = escHtml(data.clip || "");
     const previewHtml = data.clip ? _clipPreviewHtml(data.clip) : "";
@@ -1210,6 +1213,8 @@ function openMarkerEditPopup(markerId, markerLeaflet, data) {
         });
     });
 
+    // Clear tracking when popup closes
+    map.once("popupclose", () => { _openPopupMarkerId = null; });
     // Close any previously opened popup, then open a fresh standalone one
     map.closePopup();
     L.popup({ className: "mep-outer", maxWidth: 260, minWidth: 220, autoPan: true, offset: L.point(160, 40) })
@@ -1267,7 +1272,7 @@ function _show3DMarkerPanel(markerId, isInfo, data) {
       <button class="mep-save" id="_mep3dSave">SAVE</button>`;
     document.body.appendChild(panel);
 
-    const close = () => panel.remove();
+    const close = () => { panel.remove(); _openPopupMarkerId = null; };
     document.getElementById("_mep3dX").addEventListener("click", close);
     document.getElementById("mep3d-clip-view")?.addEventListener("click", () => {
         const url = document.getElementById("mep3d-clip")?.value.trim();
@@ -1322,6 +1327,22 @@ document.getElementById("coordPopupClose").addEventListener("click", () => {
     coordPopup.style.display = "none";
 });
 map.on("click", () => { coordPopup.style.display = "none"; });
+
+// ─── CANC / DELETE KEY — instant marker delete from edit popup ────────────────
+document.addEventListener("keydown", async (e) => {
+    if (e.key !== "Delete") return;
+    // Don't fire when typing in an input/textarea
+    const tag = document.activeElement?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA") return;
+    if (!_openPopupMarkerId) return;
+    const id = _openPopupMarkerId;
+    _openPopupMarkerId = null;
+    map.closePopup();
+    document.getElementById("_mep3d")?.remove();
+    try { await deleteDoc(doc(db, "markers", id)); } catch (_) {}
+    const idx = undoStack.findIndex(u => u.type === "marker" && u.id === id);
+    if (idx !== -1) undoStack.splice(idx, 1);
+});
 
 // ─── AOI RENAME — double-click on a zone to rename it ────────────────────────
 map.on("dblclick", async (e) => {
@@ -1441,6 +1462,11 @@ coordSearchInput.addEventListener("keydown", (e) => { if (e.key === "Enter") goT
 // ════════════════════════════════════════════════════════════════════
 const canvas = document.getElementById("drawCanvas");
 const ctx    = canvas.getContext("2d");
+// Move canvas inside the Leaflet container so its z-index competes directly with
+// Leaflet's panes (overlayPane z=400 < canvas z=500 < markerPane z=600).
+// Without this, #drawCanvas as a sibling of #map (z-index:auto) always paints above
+// all Leaflet content because z-index:auto elements paint before positive-z-index ones.
+map.getContainer().appendChild(canvas);
 // Initial subscription — must come after ctx is declared (subscribeToMap calls redrawAll)
 subscribeToMap(MAPS[currentMapIdx].id);
 // ─── CANVAS SIZING ───────────────────────────────────────────────────────────
