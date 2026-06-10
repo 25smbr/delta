@@ -1462,11 +1462,22 @@ coordSearchInput.addEventListener("keydown", (e) => { if (e.key === "Enter") goT
 // ════════════════════════════════════════════════════════════════════
 const canvas = document.getElementById("drawCanvas");
 const ctx    = canvas.getContext("2d");
-// Move canvas inside the Leaflet container so its z-index competes directly with
-// Leaflet's panes (overlayPane z=400 < canvas z=500 < markerPane z=600).
-// Without this, #drawCanvas as a sibling of #map (z-index:auto) always paints above
-// all Leaflet content because z-index:auto elements paint before positive-z-index ones.
-map.getContainer().appendChild(canvas);
+// Move canvas inside .leaflet-map-pane so its z-index competes within the same
+// stacking context as overlayPane (400) / markerPane (600) / popupPane (700).
+// The mapPane has a CSS transform applied by Leaflet during pan — that transform
+// creates a stacking context isolating all pane z-indices from outside elements.
+// Being inside the same stacking context: canvas z=500 < markerPane z=600 ✓
+// Counter-translate the canvas to keep it viewport-fixed despite the pan transform.
+{
+    const mapPane = map.getPanes().mapPane;
+    mapPane.appendChild(canvas);
+    function _syncCanvasTransform() {
+        const p = L.DomUtil.getPosition(mapPane);
+        canvas.style.transform = `translate(${-p.x}px, ${-p.y}px)`;
+    }
+    map.on("move zoom viewreset moveend zoomend", _syncCanvasTransform);
+    _syncCanvasTransform();
+}
 // Initial subscription — must come after ctx is declared (subscribeToMap calls redrawAll)
 subscribeToMap(MAPS[currentMapIdx].id);
 // ─── CANVAS SIZING ───────────────────────────────────────────────────────────
