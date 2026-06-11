@@ -637,6 +637,20 @@ body.light-theme .filter-chip.active { color: var(--accent); }
 }
 .filter-chip-vc:hover { opacity: 1; border-color: #facc15; }
 
+/* ── Heatmap chip ──────────────────────────────────────────────────────────── */
+.filter-chip-heat {
+  border-color: rgba(230, 60, 60, 0.4);
+  color: rgba(230, 100, 60, 0.55);
+}
+.filter-chip-heat:not(.heat-on) { opacity: 0.45; }
+.filter-chip-heat.heat-on {
+  border-color: #e63c3c;
+  background: rgba(230, 60, 60, 0.14);
+  color: #ff7b5c;
+  opacity: 1;
+}
+.filter-chip-heat:hover { opacity: 1; border-color: #e63c3c; }
+
 /* ── Tutorial Overlay ──────────────────────────────────────────────────────── */
 #tutorialOverlay {
   display: none;

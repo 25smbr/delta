@@ -663,6 +663,7 @@ let filterVisualConf  = false;   // when true, show ONLY markers that have a cli
 let filterMaxAge      = null;    // null = show all; otherwise max age in milliseconds
 let filterHideAOI     = false;   // hide all AOI (zone) drawings
 let filterHideDrawings = false;  // hide all non-AOI drawings
+let heatmapEnabled    = false;   // heatmap overlay on/off
 
 const TIME_FILTERS = [
     { label: "1D",  ms: 1  * 24 * 3600 * 1000 },
@@ -684,6 +685,7 @@ function applyFilter() {
                              (now - data.created) > filterMaxAge;
         el.style.display = (hiddenByUnit || hiddenByConf || hiddenByAge) ? "none" : "";
     });
+    renderHeatmap();
 }
 
 // Normalise old single-clip field and new clips array into a plain array.
@@ -782,7 +784,7 @@ function initFilterUI() {
     });
     container.appendChild(vcChip);
 
-    // ── AOI / Drawings toggle chips ──────────────────────────────────────────
+    // ── AOI / Drawings / Heatmap toggle chips ───────────────────────────────
     const aoiChip = document.createElement("button");
     aoiChip.className   = "filter-chip active";
     aoiChip.textContent = "AOI";
@@ -804,6 +806,18 @@ function initFilterUI() {
         redrawAll();
     });
     container.appendChild(drawChip);
+
+    const heatChip = document.createElement("button");
+    heatChip.className   = "filter-chip filter-chip-heat";
+    heatChip.id          = "heatmapBtn";
+    heatChip.textContent = "HEAT";
+    heatChip.title       = "Toggle density heatmap for visible markers";
+    heatChip.addEventListener("click", () => {
+        heatmapEnabled = !heatmapEnabled;
+        heatChip.classList.toggle("heat-on", heatmapEnabled);
+        renderHeatmap();
+    });
+    container.appendChild(heatChip);
 
     // ── Time-range filter chips ──────────────────────────────────────────────
     const timeGroup = document.createElement("div");
@@ -836,6 +850,143 @@ function initFilterUI() {
     container.appendChild(timeGroup);
 }
 initFilterUI();
+
+// ─── HEATMAP ─────────────────────────────────────────────────────────────────
+
+(function () {
+    // Off-screen canvas used purely for heatmap blending
+    let _heatCanvas = null;
+    let _heatCtx    = null;
+
+    // Leaflet pane that hosts the heatmap so it sits below markers (z=350)
+    let _heatPane = null;
+    let _heatEl   = null;
+
+    function _ensurePane() {
+        if (_heatPane) return;
+        map.createPane("heatPane");
+        _heatPane = map.getPane("heatPane");
+        _heatPane.style.zIndex  = "350";   // above tilePane(200), below overlayPane(400)
+        _heatPane.style.pointerEvents = "none";
+
+        _heatEl = document.createElement("canvas");
+        _heatEl.id = "heatmapCanvas";
+        _heatPane.appendChild(_heatEl);
+
+        // Re-render on every map move / zoom so the canvas stays in sync
+        map.on("moveend zoomend resize", renderHeatmap);
+    }
+
+    function _positionCanvas() {
+        const size = map.getSize();
+        _heatEl.width  = size.x;
+        _heatEl.height = size.y;
+        _heatEl.style.position = "absolute";
+        _heatEl.style.left = "0";
+        _heatEl.style.top  = "0";
+        _heatEl.style.width  = size.x + "px";
+        _heatEl.style.height = size.y + "px";
+    }
+
+    window.renderHeatmap = function () {
+        if (!heatmapEnabled) {
+            if (_heatEl) {
+                const ctx = _heatEl.getContext("2d");
+                ctx.clearRect(0, 0, _heatEl.width, _heatEl.height);
+            }
+            return;
+        }
+
+        _ensurePane();
+        _positionCanvas();
+        const ctx = _heatEl.getContext("2d");
+        const W   = _heatEl.width;
+        const H   = _heatEl.height;
+        ctx.clearRect(0, 0, W, H);
+
+        // Collect visible marker positions in container-pixel space
+        const now = Date.now();
+        const points = [];
+        Object.values(displayedMarkers).forEach(({ marker, data }) => {
+            const unit = (data.type || "infantry_alive").split("_").slice(0, -1).join("_");
+            if (hiddenUnits.has(unit)) return;
+            if (filterVisualConf && !getClips(data).length) return;
+            if (filterMaxAge !== null &&
+                typeof data.created === "number" &&
+                (now - data.created) > filterMaxAge) return;
+
+            const pt = map.latLngToContainerPoint(marker.getLatLng());
+            if (pt.x < -100 || pt.y < -100 || pt.x > W + 100 || pt.y > H + 100) return;
+            points.push([pt.x, pt.y]);
+        });
+
+        if (points.length === 0) return;
+
+        // Adaptive radius: scales with zoom so it represents a fixed geographic area
+        const zoom   = map.getZoom();
+        const radius = Math.max(18, Math.min(80, 14 * Math.pow(1.35, zoom - 3)));
+
+        // Draw each point as a soft radial gradient onto an off-screen alpha canvas
+        if (!_heatCanvas) {
+            _heatCanvas = document.createElement("canvas");
+            _heatCtx    = _heatCanvas.getContext("2d");
+        }
+        _heatCanvas.width  = W;
+        _heatCanvas.height = H;
+        _heatCtx.clearRect(0, 0, W, H);
+
+        points.forEach(([px, py]) => {
+            const grd = _heatCtx.createRadialGradient(px, py, 0, px, py, radius);
+            grd.addColorStop(0,   "rgba(255,255,255,0.30)");
+            grd.addColorStop(0.4, "rgba(255,255,255,0.12)");
+            grd.addColorStop(1,   "rgba(255,255,255,0)");
+            _heatCtx.fillStyle = grd;
+            _heatCtx.beginPath();
+            _heatCtx.arc(px, py, radius, 0, Math.PI * 2);
+            _heatCtx.fill();
+        });
+
+        // Map the accumulated alpha → colour via ImageData
+        const imgData = _heatCtx.getImageData(0, 0, W, H);
+        const d = imgData.data;
+
+        // Colour stops: low→mid→high  (blue → yellow → red)
+        const STOPS = [
+            [0,   0,   0,   255, 0  ],   // transparent (no data)
+            [0.1, 0,   100, 255, 80 ],   // faint blue
+            [0.3, 0,   200, 200, 160],   // cyan
+            [0.5, 0,   220, 60,  200],   // green-yellow
+            [0.7, 240, 180, 0,   220],   // orange
+            [1.0, 230, 0,   0,   240],   // red
+        ];
+
+        function lerpColor(t) {
+            let i = 0;
+            while (i < STOPS.length - 1 && STOPS[i + 1][0] < t) i++;
+            const lo = STOPS[i], hi = STOPS[i + 1] || lo;
+            const f  = hi[0] === lo[0] ? 0 : (t - lo[0]) / (hi[0] - lo[0]);
+            return [
+                lo[1] + f * (hi[1] - lo[1]),
+                lo[2] + f * (hi[2] - lo[2]),
+                lo[3] + f * (hi[3] - lo[3]),
+                lo[4] + f * (hi[4] - lo[4]),
+            ];
+        }
+
+        for (let i = 0; i < d.length; i += 4) {
+            const a = d[i + 3] / 255;   // accumulated density [0-1]
+            if (a < 0.01) { d[i+3] = 0; continue; }
+            const t = Math.min(1, a * 2.5);  // compress range so sparse areas still show
+            const [r, g, b, ao] = lerpColor(t);
+            d[i]     = r;
+            d[i + 1] = g;
+            d[i + 2] = b;
+            d[i + 3] = ao;
+        }
+
+        ctx.putImageData(imgData, 0, 0);
+    };
+})();
 
 // ─── FIRESTORE REALTIME — MARKERS ────────────────────────────────────────────
 const displayedMarkers = {};        // id → { marker, data }
@@ -6168,6 +6319,16 @@ function exitArtillery() {
 
 artilleryViewBtn?.addEventListener("click", () => {
     if (!artilleryActive) enterArtillery();
+});
+
+// ── Heatmap toggle button (top bar) ─────────────────────────────────────────
+document.getElementById("heatmapToggleBtn")?.addEventListener("click", () => {
+    heatmapEnabled = !heatmapEnabled;
+    document.getElementById("heatmapToggleBtn").classList.toggle("active", heatmapEnabled);
+    // keep filter-bar chip in sync if visible
+    const chip = document.getElementById("heatmapBtn");
+    if (chip) chip.classList.toggle("heat-on", heatmapEnabled);
+    renderHeatmap();
 });
 
 // Patch mapViewBtn and vezhaViewBtn to also exit artillery
