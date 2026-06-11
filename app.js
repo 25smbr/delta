@@ -14,6 +14,7 @@ import {
     query,
     where,
     updateDoc,
+    deleteField,
     orderBy,
     limit,
     limitToLast,
@@ -677,11 +678,74 @@ function applyFilter() {
         const el   = marker.getElement();
         if (!el) return;
         const hiddenByUnit = hiddenUnits.has(unit);
-        const hiddenByConf = filterVisualConf && !data.clip;
+        const hiddenByConf = filterVisualConf && !getClips(data).length;
         const hiddenByAge  = filterMaxAge !== null &&
-                             (typeof data.created !== "number" || (now - data.created) > filterMaxAge);
+                             typeof data.created === "number" &&
+                             (now - data.created) > filterMaxAge;
         el.style.display = (hiddenByUnit || hiddenByConf || hiddenByAge) ? "none" : "";
     });
+}
+
+// Normalise old single-clip field and new clips array into a plain array.
+function getClips(data) {
+    if (Array.isArray(data.clips) && data.clips.length > 0) return data.clips;
+    if (data.clip) return [data.clip];
+    return [];
+}
+
+// Build the HTML for the multi-clip editor section.
+function _buildClipsHtml(clips, listId, addId, previewId) {
+    const items = clips.map(url => `
+      <div class="mep-clip-item">
+        <input class="mep-inp mep-clip-inp" type="text" value="${escHtml(url)}" placeholder="medal.tv/clips/…"/>
+        <button class="mep-clip-play-btn" type="button">▶</button>
+        <button class="mep-clip-del-btn"  type="button">✕</button>
+      </div>`).join("");
+    return `
+      <div class="mep-clips-section">
+        <div class="mep-row">
+          <span class="mep-label">CLIPS</span>
+          <div id="${listId}" class="mep-clips-list">${items}</div>
+        </div>
+        <button class="mep-btn-add-clip" id="${addId}" type="button">+ ADD</button>
+      </div>
+      <div class="mep-clip-preview" id="${previewId}" style="${clips[0] ? "" : "display:none"}">
+        ${clips[0] ? _clipPreviewHtml(clips[0]) : ""}
+      </div>`;
+}
+
+// Wire up play / delete / add-new buttons for the multi-clip section.
+function _wireClipsUI(listId, addId, previewId) {
+    const list    = document.getElementById(listId);
+    const addBtn  = document.getElementById(addId);
+    const preview = document.getElementById(previewId);
+    const wireItem = (item) => {
+        item.querySelector(".mep-clip-play-btn")?.addEventListener("click", () => {
+            const url = item.querySelector(".mep-clip-inp")?.value.trim();
+            if (!url || !preview) return;
+            preview.innerHTML = _clipPreviewHtml(url);
+            preview.style.display = "";
+        });
+        item.querySelector(".mep-clip-del-btn")?.addEventListener("click", () => item.remove());
+    };
+    list?.querySelectorAll(".mep-clip-item").forEach(wireItem);
+    addBtn?.addEventListener("click", () => {
+        const item = document.createElement("div");
+        item.className = "mep-clip-item";
+        item.innerHTML = `
+          <input class="mep-inp mep-clip-inp" type="text" placeholder="medal.tv/clips/…"/>
+          <button class="mep-clip-play-btn" type="button">▶</button>
+          <button class="mep-clip-del-btn"  type="button">✕</button>`;
+        list?.appendChild(item);
+        item.querySelector("input")?.focus();
+        wireItem(item);
+    });
+}
+
+// Read current clip URLs out of the DOM list.
+function _getClipsFromList(listId) {
+    return [...document.querySelectorAll(`#${listId} .mep-clip-inp`)]
+        .map(i => i.value.trim()).filter(Boolean);
 }
 
 // Populate filter chips (called once after page load)
@@ -1163,20 +1227,7 @@ let _openPopupMarkerId = null;  // tracks which marker's popup is currently open
 function openMarkerEditPopup(markerId, markerLeaflet, data) {
     _openPopupMarkerId = markerId;
     const isInfo = (data.type || "").startsWith("info");
-    const clipVal = escHtml(data.clip || "");
-    const previewHtml = data.clip ? _clipPreviewHtml(data.clip) : "";
-    const previewSection = `
-        <div class="mep-clip-preview" id="mep-clip-preview" style="${data.clip ? "" : "display:none"}">
-          ${previewHtml}
-        </div>`;
-    const clipRow = `
-        <div class="mep-row">
-          <label class="mep-label" for="mep-clip">CLIP</label>
-          <input class="mep-inp" id="mep-clip" type="text"
-                 value="${clipVal}" placeholder="medal.tv/clips/…"/>
-          <button class="mep-clip-btn" id="mep-clip-view">▶</button>
-        </div>
-        ${previewSection}`;
+    const clipRow = _buildClipsHtml(getClips(data), "mep-clips-list", "mep-clip-add", "mep-clip-preview");
     const amtRow = isInfo ? "" : `
         <div class="mep-row">
           <label class="mep-label" for="mep-amt">AMT</label>
@@ -1219,21 +1270,15 @@ function openMarkerEditPopup(markerId, markerLeaflet, data) {
 
     // IMPORTANT: register popupopen handler BEFORE openOn() — Leaflet fires it synchronously
     map.once("popupopen", () => {
-        document.getElementById("mep-clip-view")?.addEventListener("click", () => {
-            const url = document.getElementById("mep-clip")?.value.trim();
-            if (!url) return;
-            // Refresh inline preview with current input value
-            const preview = document.getElementById("mep-clip-preview");
-            if (preview) { preview.innerHTML = _clipPreviewHtml(url); preview.style.display = ""; }
-        });
+        _wireClipsUI("mep-clips-list", "mep-clip-add", "mep-clip-preview");
         document.getElementById("mep-save")?.addEventListener("click", async () => {
-            const amt  = document.getElementById("mep-amt")?.value  ?? "";
-            const inf  = document.getElementById("mep-inf")?.value  ?? "";
-            const src  = document.getElementById("mep-src")?.value  ?? "";
-            const clip = document.getElementById("mep-clip")?.value.trim() || null;
+            const amt   = document.getElementById("mep-amt")?.value ?? "";
+            const inf   = document.getElementById("mep-inf")?.value ?? "";
+            const src   = document.getElementById("mep-src")?.value ?? "";
+            const clips = _getClipsFromList("mep-clips-list");
             const update = isInfo
-                ? { info: inf, ...(clip !== null && { clip }) }
-                : { amount: amt, info: inf, source: src, ...(clip !== null && { clip }) };
+                ? { info: inf, clips, clip: clips[0] ?? deleteField() }
+                : { amount: amt, info: inf, source: src, clips, clip: clips[0] ?? deleteField() };
             await updateDoc(doc(db, "markers", markerId), update);
             map.closePopup();
         });
@@ -1265,18 +1310,7 @@ function _show3DMarkerPanel(markerId, isInfo, data) {
         <label class="mep-label" for="mep3d-src">SRC</label>
         <input class="mep-inp" id="mep3d-src" type="text" value="${escHtml(data.source||"")}"/>
       </div>`;
-    const preview3d = data.clip
-        ? `<div class="mep-clip-preview">${_clipPreviewHtml(data.clip)}</div>` : "";
-    const clipRow = `
-      <div class="mep-row">
-        <label class="mep-label" for="mep3d-clip">CLIP</label>
-        <input class="mep-inp" id="mep3d-clip" type="text"
-               value="${escHtml(data.clip||"")}" placeholder="medal.tv/clips/…"/>
-        <button class="mep-clip-btn" id="mep3d-clip-view">▶</button>
-      </div>
-      <div class="mep-clip-preview" id="mep3d-clip-preview" style="${data.clip ? "" : "display:none"}">
-        ${_clipPreviewHtml(data.clip||"")}
-      </div>`;
+    const clipRow = _buildClipsHtml(getClips(data), "mep3d-clips-list", "mep3d-clip-add", "mep3d-clip-preview");
     panel.innerHTML = `
       <button class="mep-close3d" id="_mep3dX">✕</button>
       <div class="mep-row">
@@ -1300,20 +1334,15 @@ function _show3DMarkerPanel(markerId, isInfo, data) {
 
     const close = () => { panel.remove(); _openPopupMarkerId = null; };
     document.getElementById("_mep3dX").addEventListener("click", close);
-    document.getElementById("mep3d-clip-view")?.addEventListener("click", () => {
-        const url = document.getElementById("mep3d-clip")?.value.trim();
-        if (!url) return;
-        const preview = document.getElementById("mep3d-clip-preview");
-        if (preview) { preview.innerHTML = _clipPreviewHtml(url); preview.style.display = ""; }
-    });
+    _wireClipsUI("mep3d-clips-list", "mep3d-clip-add", "mep3d-clip-preview");
     document.getElementById("_mep3dSave").addEventListener("click", async () => {
-        const amt  = document.getElementById("mep3d-amt")?.value  ?? "";
-        const inf  = document.getElementById("mep3d-inf")?.value  ?? "";
-        const src  = document.getElementById("mep3d-src")?.value  ?? "";
-        const clip = document.getElementById("mep3d-clip")?.value.trim() || null;
+        const amt   = document.getElementById("mep3d-amt")?.value ?? "";
+        const inf   = document.getElementById("mep3d-inf")?.value ?? "";
+        const src   = document.getElementById("mep3d-src")?.value ?? "";
+        const clips = _getClipsFromList("mep3d-clips-list");
         const update = isInfo
-            ? { info: inf, ...(clip !== null && { clip }) }
-            : { amount: amt, info: inf, source: src, ...(clip !== null && { clip }) };
+            ? { info: inf, clips, clip: clips[0] ?? deleteField() }
+            : { amount: amt, info: inf, source: src, clips, clip: clips[0] ?? deleteField() };
         await updateDoc(doc(db, "markers", markerId), update);
         close();
     });
@@ -1626,7 +1655,10 @@ function strokeVisible(s) {
 function redrawAll() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     syncZoneLayers();
-    strokes.forEach(s => { if (strokeVisible(s)) drawStroke(s); });
+    // Sort by creation time so eraser strokes always composite on top of the strokes they cover,
+    // even when Firestore returns documents in a different order after a page reload.
+    [...strokes].sort((a, b) => (a.created || 0) - (b.created || 0))
+        .forEach(s => { if (strokeVisible(s)) drawStroke(s); });
     if (currentStroke) drawStroke(currentStroke);
     if (rulerMode && rulerPoints.length > 0) drawRulerOverlay();
     if (window.__artyRedrawHook) window.__artyRedrawHook();
@@ -1676,7 +1708,11 @@ function drawStroke(s) {
     } else if (s.tool === "eraser") {
         ctx.save();
         ctx.globalCompositeOperation = "destination-out";
-        ctx.lineWidth = s.width * 5;
+        // Scale eraser width so it covers the same geographic area at any zoom level.
+        // At higher zoom, lat/lng points are farther apart in pixels; without scaling the
+        // eraser brush would leave gaps, making previously-erased strokes reappear.
+        const zoomScale = Math.pow(2, map.getZoom() - (s.recordedZoom ?? 0));
+        ctx.lineWidth = s.width * 5 * zoomScale;
         ctx.beginPath();
         s.points.forEach((pt, i) => {
             const { lat, lng } = getPointCoords(pt);
@@ -1922,11 +1958,12 @@ canvas.addEventListener("mouseup", async (e) => {
     const { offsetX: x, offsetY: y } = e;
     if (activeTool === "pen" || activeTool === "eraser") {
         const strokeData = {
-            tool:    currentStroke.tool,
-            color:   currentStroke.color,
-            width:   currentStroke.width,
-            points:  currentStroke.points,
-            created: Date.now()
+            tool:         currentStroke.tool,
+            color:        currentStroke.color,
+            width:        currentStroke.width,
+            points:       currentStroke.points,
+            created:      Date.now(),
+            recordedZoom: map.getZoom()
         };
         currentStroke = null;
         try {
@@ -2017,9 +2054,10 @@ canvas.addEventListener("mouseup", async (e) => {
 canvas.addEventListener("mouseleave", async () => {
     if (isDrawing && currentStroke) {
         const strokeData = {
-            tool:    currentStroke.tool,
-            color:   currentStroke.color,
-            width:   currentStroke.width,
+            tool:         currentStroke.tool,
+            color:        currentStroke.color,
+            width:        currentStroke.width,
+            recordedZoom: map.getZoom(),
             points:  currentStroke.points,
             created: Date.now()
         };
@@ -2591,9 +2629,38 @@ async function create3DScene(container, { withMarkers = false, isArty = false } 
         return null;
     }
 
+    function _strokeBounds(s) {
+        if (s.points?.length) {
+            const lats = s.points.map(p => (p.lat ?? p[0]));
+            const lngs = s.points.map(p => (p.lng ?? p[1]));
+            return { minLat: Math.min(...lats), maxLat: Math.max(...lats),
+                     minLng: Math.min(...lngs), maxLng: Math.max(...lngs) };
+        }
+        if (s.ll1 && s.ll2) {
+            return { minLat: Math.min(s.ll1.lat, s.ll2.lat), maxLat: Math.max(s.ll1.lat, s.ll2.lat),
+                     minLng: Math.min(s.ll1.lng, s.ll2.lng), maxLng: Math.max(s.ll1.lng, s.ll2.lng) };
+        }
+        return null;
+    }
+    function _boundsOverlap(a, b) {
+        return !(a.maxLat < b.minLat || a.minLat > b.maxLat ||
+                 a.maxLng < b.minLng || a.minLng > b.maxLng);
+    }
+
     function addStroke3D(id, data) {
         removeStroke3D(id);
         if (data.tool === "eraser") return;
+        // Hide strokes that have been (at least partly) erased: any eraser created after
+        // this stroke whose bounding box overlaps. Bounding-box check may give false positives
+        // (adjacent strokes) but avoids showing visibly-erased content in 3D.
+        if (typeof data.created === "number") {
+            const myBounds = _strokeBounds(data);
+            if (myBounds && strokes.some(s =>
+                s.tool === "eraser" &&
+                typeof s.created === "number" && s.created > data.created &&
+                ((_b => _b && _boundsOverlap(myBounds, _b))(_strokeBounds(s)))
+            )) return;
+        }
         const color3 = new THREE.Color(data.color || "#ff4444");
         const objs = [];   // THREE.Object3D to add/remove from scene
         const disp = [];   // BufferGeometry / Material to dispose

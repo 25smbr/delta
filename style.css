@@ -2150,7 +2150,34 @@ body.lang-ua .danger-btn { font-size: 9px; letter-spacing: 0.5px; }
   /* give extra height when player controls are visible */
   min-height: 130px;
 }
-/* VIEW CLIP button inside popup */
+/* Multi-clip editor */
+.mep-clips-section { display: flex; flex-direction: column; gap: 3px; }
+.mep-clips-list { display: flex; flex-direction: column; gap: 3px; flex: 1; }
+.mep-clip-item { display: flex; align-items: center; gap: 3px; }
+.mep-clip-item .mep-inp { flex: 1; min-width: 0; }
+.mep-clip-play-btn, .mep-clip-del-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  color: var(--accent);
+  font-size: 9px; font-weight: 700; font-family: var(--font-mono);
+  padding: 2px 5px; cursor: pointer;
+}
+.mep-clip-del-btn { border-color: var(--red, #e54545); color: var(--red, #e54545); }
+.mep-clip-play-btn:hover { background: var(--accent-dim); }
+.mep-clip-del-btn:hover  { background: rgba(229,69,69,0.15); }
+.mep-btn-add-clip {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px dashed var(--accent);
+  border-radius: 3px;
+  color: var(--accent);
+  font-family: var(--font-mono); font-size: 8px; font-weight: 700;
+  letter-spacing: 1px; padding: 2px 7px; cursor: pointer; margin-top: 1px;
+}
+.mep-btn-add-clip:hover { background: var(--accent-dim); }
+/* VIEW CLIP button inside popup (legacy, kept for overlay) */
 .mep-clip-btn {
   flex-shrink: 0;
   background: transparent;
