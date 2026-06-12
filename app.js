@@ -860,6 +860,12 @@ const _heatEl   = document.getElementById("heatmapCanvas");
 map.on("moveend zoomend resize", () => { if (heatmapEnabled) renderHeatmap(); });
 
 function renderHeatmap() {
+    // Hide all markers while heatmap is active so only the density picture shows
+    Object.values(displayedMarkers).forEach(({ marker }) => {
+        const el = marker.getElement();
+        if (el) el.style.visibility = heatmapEnabled ? "hidden" : "";
+    });
+
     if (!heatmapEnabled) {
         _heatEl.style.display = "none";
         if (_heatCtx) _heatCtx.clearRect(0, 0, _heatEl.width, _heatEl.height);
@@ -874,7 +880,21 @@ function renderHeatmap() {
     _heatEl.width  = W;
     _heatEl.height = H;
 
-    // Collect visible marker positions
+    // Render density at a fixed reference zoom so the picture never changes on zoom.
+    // We project everything to REF_ZOOM space, draw blobs there, then scale up.
+    const REF_ZOOM = 3;
+    const currentZoom = map.getZoom();
+    const zoomScale   = Math.pow(2, currentZoom - REF_ZOOM); // how much bigger current zoom is
+
+    // Size of the heatmap working canvas in REF_ZOOM pixel space
+    const rW = Math.max(1, Math.round(W / zoomScale));
+    const rH = Math.max(1, Math.round(H / zoomScale));
+
+    // North-west corner of the current view in REF_ZOOM pixel coords
+    const nwLatLng = map.containerPointToLatLng(L.point(0, 0));
+    const nwRef    = map.project(nwLatLng, REF_ZOOM);
+
+    // Collect visible markers as REF_ZOOM pixel positions
     const now = Date.now();
     const points = [];
     Object.values(displayedMarkers).forEach(({ marker, data }) => {
@@ -884,31 +904,34 @@ function renderHeatmap() {
         if (filterMaxAge !== null &&
             typeof data.created === "number" &&
             (now - data.created) > filterMaxAge) return;
-        const pt = map.latLngToContainerPoint(marker.getLatLng());
-        if (pt.x < -100 || pt.y < -100 || pt.x > W + 100 || pt.y > H + 100) return;
-        points.push([pt.x, pt.y]);
+        const refPx = map.project(marker.getLatLng(), REF_ZOOM);
+        const rx = refPx.x - nwRef.x;
+        const ry = refPx.y - nwRef.y;
+        // small padding so blobs at edges aren't clipped
+        if (rx < -80 || ry < -80 || rx > rW + 80 || ry > rH + 80) return;
+        points.push([rx, ry]);
     });
 
     const ctx = _heatEl.getContext("2d");
     ctx.clearRect(0, 0, W, H);
     if (points.length === 0) return;
 
-    const zoom   = map.getZoom();
-    const radius = Math.max(18, Math.min(80, 14 * Math.pow(1.35, zoom - 3)));
+    // Fixed blob radius in REF_ZOOM space — never changes regardless of zoom
+    const radius = 40;
 
-    // Accumulate density on off-screen canvas
+    // Accumulate density on off-screen canvas at REF_ZOOM resolution
     if (!_heatCanvas) {
         _heatCanvas = document.createElement("canvas");
         _heatCtx    = _heatCanvas.getContext("2d", { willReadFrequently: true });
     }
-    _heatCanvas.width  = W;
-    _heatCanvas.height = H;
-    _heatCtx.clearRect(0, 0, W, H);
+    _heatCanvas.width  = rW;
+    _heatCanvas.height = rH;
+    _heatCtx.clearRect(0, 0, rW, rH);
 
     points.forEach(([px, py]) => {
         const grd = _heatCtx.createRadialGradient(px, py, 0, px, py, radius);
-        grd.addColorStop(0,   "rgba(255,255,255,0.30)");
-        grd.addColorStop(0.4, "rgba(255,255,255,0.12)");
+        grd.addColorStop(0,   "rgba(255,255,255,0.35)");
+        grd.addColorStop(0.4, "rgba(255,255,255,0.14)");
         grd.addColorStop(1,   "rgba(255,255,255,0)");
         _heatCtx.fillStyle = grd;
         _heatCtx.beginPath();
@@ -916,7 +939,8 @@ function renderHeatmap() {
         _heatCtx.fill();
     });
 
-    const imgData = _heatCtx.getImageData(0, 0, W, H);
+    // Colourise the density alpha channel
+    const imgData = _heatCtx.getImageData(0, 0, rW, rH);
     const d = imgData.data;
 
     const STOPS = [
@@ -943,8 +967,13 @@ function renderHeatmap() {
         const [r, g, b, ao] = lerpColor(Math.min(1, a * 2.5));
         d[i] = r; d[i+1] = g; d[i+2] = b; d[i+3] = ao;
     }
+    _heatCtx.putImageData(imgData, 0, 0);
 
-    ctx.putImageData(imgData, 0, 0);
+    // Scale the REF_ZOOM heatmap up to fill the actual canvas (pixelated scaling
+    // would show blocks; imageSmoothingQuality "high" gives a nice soft upscale)
+    ctx.imageSmoothingEnabled  = true;
+    ctx.imageSmoothingQuality  = "high";
+    ctx.drawImage(_heatCanvas, 0, 0, rW, rH, 0, 0, W, H);
 }
 
 // ─── FIRESTORE REALTIME — MARKERS ────────────────────────────────────────────
