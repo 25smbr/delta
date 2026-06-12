@@ -853,14 +853,24 @@ initFilterUI();
 
 // ─── HEATMAP ─────────────────────────────────────────────────────────────────
 
-let _heatCanvas = null;
-let _heatCtx    = null;
 const _heatEl   = document.getElementById("heatmapCanvas");
+let   _heatCtx  = null;
+let   _heatTimer = null;
 
-map.on("moveend zoomend resize", () => { if (heatmapEnabled) renderHeatmap(); });
+// Always render at this fixed zoom level so density picture never changes on zoom
+const HEAT_REF_ZOOM = 3;
+// Working canvas is capped at this size to keep pixel-loop fast
+const HEAT_MAX_PX   = 300;
+
+map.on("moveend zoomend resize", () => { if (heatmapEnabled) _scheduleHeatmap(); });
+
+function _scheduleHeatmap() {
+    clearTimeout(_heatTimer);
+    _heatTimer = setTimeout(renderHeatmap, 120);
+}
 
 function renderHeatmap() {
-    // Hide all markers while heatmap is active so only the density picture shows
+    // Show/hide all markers
     Object.values(displayedMarkers).forEach(({ marker }) => {
         const el = marker.getElement();
         if (el) el.style.visibility = heatmapEnabled ? "hidden" : "";
@@ -868,11 +878,10 @@ function renderHeatmap() {
 
     if (!heatmapEnabled) {
         _heatEl.style.display = "none";
-        if (_heatCtx) _heatCtx.clearRect(0, 0, _heatEl.width, _heatEl.height);
         return;
     }
-
     _heatEl.style.display = "";
+
     const mapEl = document.getElementById("map");
     const rect  = mapEl.getBoundingClientRect();
     const W = Math.round(rect.width);
@@ -880,21 +889,18 @@ function renderHeatmap() {
     _heatEl.width  = W;
     _heatEl.height = H;
 
-    // Render density at a fixed reference zoom so the picture never changes on zoom.
-    // We project everything to REF_ZOOM space, draw blobs there, then scale up.
-    const REF_ZOOM = 3;
-    const currentZoom = map.getZoom();
-    const zoomScale   = Math.pow(2, currentZoom - REF_ZOOM); // how much bigger current zoom is
+    const ctx = _heatEl.getContext("2d");
+    ctx.clearRect(0, 0, W, H);
 
-    // Size of the heatmap working canvas in REF_ZOOM pixel space
-    const rW = Math.max(1, Math.round(W / zoomScale));
-    const rH = Math.max(1, Math.round(H / zoomScale));
-
-    // North-west corner of the current view in REF_ZOOM pixel coords
+    // --- Collect visible markers in HEAT_REF_ZOOM pixel space ---
     const nwLatLng = map.containerPointToLatLng(L.point(0, 0));
-    const nwRef    = map.project(nwLatLng, REF_ZOOM);
+    const nwRef    = map.project(nwLatLng, HEAT_REF_ZOOM);
+    const seLatLng = map.containerPointToLatLng(L.point(W, H));
+    const seRef    = map.project(seLatLng, HEAT_REF_ZOOM);
+    // Full geographic extent in ref-zoom pixels
+    const geoW = seRef.x - nwRef.x;
+    const geoH = seRef.y - nwRef.y;
 
-    // Collect visible markers as REF_ZOOM pixel positions
     const now = Date.now();
     const points = [];
     Object.values(displayedMarkers).forEach(({ marker, data }) => {
@@ -904,76 +910,69 @@ function renderHeatmap() {
         if (filterMaxAge !== null &&
             typeof data.created === "number" &&
             (now - data.created) > filterMaxAge) return;
-        const refPx = map.project(marker.getLatLng(), REF_ZOOM);
-        const rx = refPx.x - nwRef.x;
-        const ry = refPx.y - nwRef.y;
-        // small padding so blobs at edges aren't clipped
-        if (rx < -80 || ry < -80 || rx > rW + 80 || ry > rH + 80) return;
-        points.push([rx, ry]);
+        const refPx = map.project(marker.getLatLng(), HEAT_REF_ZOOM);
+        points.push([(refPx.x - nwRef.x) / geoW, (refPx.y - nwRef.y) / geoH]);
     });
 
-    const ctx = _heatEl.getContext("2d");
-    ctx.clearRect(0, 0, W, H);
     if (points.length === 0) return;
 
-    // Fixed blob radius in REF_ZOOM space — never changes regardless of zoom
-    const radius = 40;
+    // --- Draw on a small fixed-size canvas (fast pixel loop) ---
+    // Use a canvas whose longer edge is HEAT_MAX_PX. Points are in [0,1] space.
+    const aspect = W / H;
+    const cW = aspect >= 1 ? HEAT_MAX_PX : Math.round(HEAT_MAX_PX * aspect);
+    const cH = aspect >= 1 ? Math.round(HEAT_MAX_PX / aspect) : HEAT_MAX_PX;
 
-    // Accumulate density on off-screen canvas at REF_ZOOM resolution
-    if (!_heatCanvas) {
-        _heatCanvas = document.createElement("canvas");
-        _heatCtx    = _heatCanvas.getContext("2d", { willReadFrequently: true });
-    }
-    _heatCanvas.width  = rW;
-    _heatCanvas.height = rH;
-    _heatCtx.clearRect(0, 0, rW, rH);
+    // Blob radius: large enough that nearby markers always overlap visually.
+    // 18% of the longer edge gives good cluster merging at typical marker densities.
+    const radius = Math.round(HEAT_MAX_PX * 0.18);
 
-    points.forEach(([px, py]) => {
-        const grd = _heatCtx.createRadialGradient(px, py, 0, px, py, radius);
-        grd.addColorStop(0,   "rgba(255,255,255,0.35)");
-        grd.addColorStop(0.4, "rgba(255,255,255,0.14)");
+    const offscreen = document.createElement("canvas");
+    offscreen.width  = cW;
+    offscreen.height = cH;
+    const oc = offscreen.getContext("2d", { willReadFrequently: true });
+
+    points.forEach(([nx, ny]) => {
+        const px = nx * cW, py = ny * cH;
+        const grd = oc.createRadialGradient(px, py, 0, px, py, radius);
+        grd.addColorStop(0,   "rgba(255,255,255,0.40)");
+        grd.addColorStop(0.5, "rgba(255,255,255,0.10)");
         grd.addColorStop(1,   "rgba(255,255,255,0)");
-        _heatCtx.fillStyle = grd;
-        _heatCtx.beginPath();
-        _heatCtx.arc(px, py, radius, 0, Math.PI * 2);
-        _heatCtx.fill();
+        oc.fillStyle = grd;
+        oc.beginPath();
+        oc.arc(px, py, radius, 0, Math.PI * 2);
+        oc.fill();
     });
 
-    // Colourise the density alpha channel
-    const imgData = _heatCtx.getImageData(0, 0, rW, rH);
+    // Colourise: alpha → blue/cyan/green/orange/red
+    const imgData = oc.getImageData(0, 0, cW, cH);
     const d = imgData.data;
-
     const STOPS = [
-        [0,   0,   0,   255, 0  ],
-        [0.1, 0,   100, 255, 80 ],
-        [0.3, 0,   200, 200, 160],
-        [0.5, 0,   220, 60,  200],
-        [0.7, 240, 180, 0,   220],
-        [1.0, 230, 0,   0,   240],
+        [0,    0,   0,   255,  0],
+        [0.08, 0,  60,  255, 60],
+        [0.25, 0, 200,  200,150],
+        [0.50, 0, 220,   40,200],
+        [0.75,240, 160,    0,220],
+        [1.0, 230,   0,    0,240],
     ];
-
-    function lerpColor(t) {
-        let i = 0;
-        while (i < STOPS.length - 1 && STOPS[i + 1][0] < t) i++;
-        const lo = STOPS[i], hi = STOPS[i + 1] || lo;
-        const f  = hi[0] === lo[0] ? 0 : (t - lo[0]) / (hi[0] - lo[0]);
-        return [lo[1]+f*(hi[1]-lo[1]), lo[2]+f*(hi[2]-lo[2]),
-                lo[3]+f*(hi[3]-lo[3]), lo[4]+f*(hi[4]-lo[4])];
-    }
-
     for (let i = 0; i < d.length; i += 4) {
         const a = d[i + 3] / 255;
-        if (a < 0.01) { d[i + 3] = 0; continue; }
-        const [r, g, b, ao] = lerpColor(Math.min(1, a * 2.5));
-        d[i] = r; d[i+1] = g; d[i+2] = b; d[i+3] = ao;
+        if (a < 0.008) { d[i + 3] = 0; continue; }
+        const t = Math.min(1, a * 3);
+        let si = 0;
+        while (si < STOPS.length - 2 && STOPS[si + 1][0] < t) si++;
+        const lo = STOPS[si], hi = STOPS[si + 1];
+        const f  = hi[0] === lo[0] ? 0 : (t - lo[0]) / (hi[0] - lo[0]);
+        d[i]   = lo[1] + f * (hi[1] - lo[1]);
+        d[i+1] = lo[2] + f * (hi[2] - lo[2]);
+        d[i+2] = lo[3] + f * (hi[3] - lo[3]);
+        d[i+3] = lo[4] + f * (hi[4] - lo[4]);
     }
-    _heatCtx.putImageData(imgData, 0, 0);
+    oc.putImageData(imgData, 0, 0);
 
-    // Scale the REF_ZOOM heatmap up to fill the actual canvas (pixelated scaling
-    // would show blocks; imageSmoothingQuality "high" gives a nice soft upscale)
-    ctx.imageSmoothingEnabled  = true;
-    ctx.imageSmoothingQuality  = "high";
-    ctx.drawImage(_heatCanvas, 0, 0, rW, rH, 0, 0, W, H);
+    // Scale up to fill the actual map canvas with smooth interpolation
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(offscreen, 0, 0, cW, cH, 0, 0, W, H);
 }
 
 // ─── FIRESTORE REALTIME — MARKERS ────────────────────────────────────────────
