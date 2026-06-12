@@ -1277,6 +1277,8 @@ body.light-theme .mep-save:hover { background: rgba(37,99,235,0.15); }
   overflow: hidden;
 }
 .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   scrollbar-width: thin;
 }
