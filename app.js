@@ -875,8 +875,8 @@ const _heatOffCtx  = _heatOff.getContext("2d", { willReadFrequently: true });
 
 // Always render at this fixed zoom level so density picture never changes on zoom
 const HEAT_REF_ZOOM = 3;
-// Working canvas is capped at this size to keep pixel-loop fast
-const HEAT_MAX_PX   = 300;
+// Working canvas longer edge — higher = more spatial detail, slower pixel loop
+const HEAT_MAX_PX   = 500;
 
 map.on("moveend zoomend resize", () => { if (heatmapEnabled) _scheduleHeatmap(); });
 
@@ -932,9 +932,8 @@ function renderHeatmap() {
     const cW = aspect >= 1 ? HEAT_MAX_PX : Math.round(HEAT_MAX_PX * aspect);
     const cH = aspect >= 1 ? Math.round(HEAT_MAX_PX / aspect) : HEAT_MAX_PX;
 
-    // Blob radius: large enough that nearby markers always overlap visually.
-    // 18% of the longer edge gives good cluster merging at typical marker densities.
-    const radius = Math.round(HEAT_MAX_PX * 0.18);
+    // Blob radius: ~5% of canvas edge — nearby markers merge, distant ones stay separate.
+    const radius = Math.round(HEAT_MAX_PX * 0.05);
 
     const offscreen = _heatOff;
     offscreen.width  = cW;
