@@ -684,8 +684,10 @@ function applyFilter() {
                              typeof data.created === "number" &&
                              (now - data.created) > filterMaxAge;
         el.style.display = (hiddenByUnit || hiddenByConf || hiddenByAge) ? "none" : "";
+        // when heatmap is on, keep markers hidden regardless of filter result
+        if (heatmapEnabled && el.style.display === "") el.style.visibility = "hidden";
     });
-    renderHeatmap();
+    if (heatmapEnabled) _scheduleHeatmap();
 }
 
 // Normalise old single-clip field and new clips array into a plain array.
@@ -815,7 +817,20 @@ function initFilterUI() {
     heatChip.addEventListener("click", () => {
         heatmapEnabled = !heatmapEnabled;
         heatChip.classList.toggle("heat-on", heatmapEnabled);
-        renderHeatmap();
+        // restore marker visibility immediately when turning off
+        if (!heatmapEnabled) {
+            Object.values(displayedMarkers).forEach(({ marker }) => {
+                const el = marker.getElement();
+                if (el) el.style.visibility = "";
+            });
+            _heatEl.style.display = "none";
+        } else {
+            Object.values(displayedMarkers).forEach(({ marker }) => {
+                const el = marker.getElement();
+                if (el) el.style.visibility = "hidden";
+            });
+            _scheduleHeatmap();
+        }
     });
     container.appendChild(heatChip);
 
@@ -853,9 +868,10 @@ initFilterUI();
 
 // ─── HEATMAP ─────────────────────────────────────────────────────────────────
 
-const _heatEl   = document.getElementById("heatmapCanvas");
-let   _heatCtx  = null;
-let   _heatTimer = null;
+const _heatEl      = document.getElementById("heatmapCanvas");
+let   _heatTimer   = null;
+const _heatOff     = document.createElement("canvas");
+const _heatOffCtx  = _heatOff.getContext("2d", { willReadFrequently: true });
 
 // Always render at this fixed zoom level so density picture never changes on zoom
 const HEAT_REF_ZOOM = 3;
@@ -870,12 +886,6 @@ function _scheduleHeatmap() {
 }
 
 function renderHeatmap() {
-    // Show/hide all markers
-    Object.values(displayedMarkers).forEach(({ marker }) => {
-        const el = marker.getElement();
-        if (el) el.style.visibility = heatmapEnabled ? "hidden" : "";
-    });
-
     if (!heatmapEnabled) {
         _heatEl.style.display = "none";
         return;
@@ -926,10 +936,10 @@ function renderHeatmap() {
     // 18% of the longer edge gives good cluster merging at typical marker densities.
     const radius = Math.round(HEAT_MAX_PX * 0.18);
 
-    const offscreen = document.createElement("canvas");
+    const offscreen = _heatOff;
     offscreen.width  = cW;
     offscreen.height = cH;
-    const oc = offscreen.getContext("2d", { willReadFrequently: true });
+    const oc = _heatOffCtx;
 
     points.forEach(([nx, ny]) => {
         const px = nx * cW, py = ny * cH;
