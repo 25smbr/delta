@@ -855,35 +855,24 @@ initFilterUI();
 
 let _heatCanvas = null;
 let _heatCtx    = null;
-let _heatPane   = null;
-let _heatEl     = null;
+const _heatEl   = document.getElementById("heatmapCanvas");
 
-function _ensureHeatPane() {
-    if (_heatPane) return;
-    map.createPane("heatPane");
-    _heatPane = map.getPane("heatPane");
-    _heatPane.style.zIndex        = "350";
-    _heatPane.style.pointerEvents = "none";
-    _heatEl = document.createElement("canvas");
-    _heatEl.id = "heatmapCanvas";
-    _heatPane.appendChild(_heatEl);
-    map.on("moveend zoomend resize", renderHeatmap);
-}
+map.on("moveend zoomend resize", () => { if (heatmapEnabled) renderHeatmap(); });
 
 function renderHeatmap() {
     if (!heatmapEnabled) {
-        if (_heatEl) _heatEl.getContext("2d").clearRect(0, 0, _heatEl.width, _heatEl.height);
+        _heatEl.style.display = "none";
+        if (_heatCtx) _heatCtx.clearRect(0, 0, _heatEl.width, _heatEl.height);
         return;
     }
 
-    _ensureHeatPane();
-
-    const size = map.getSize();
-    _heatEl.width  = size.x;
-    _heatEl.height = size.y;
-    _heatEl.style.cssText = `position:absolute;left:0;top:0;width:${size.x}px;height:${size.y}px`;
-
-    const W = size.x, H = size.y;
+    _heatEl.style.display = "";
+    const mapEl = document.getElementById("map");
+    const rect  = mapEl.getBoundingClientRect();
+    const W = Math.round(rect.width);
+    const H = Math.round(rect.height);
+    _heatEl.width  = W;
+    _heatEl.height = H;
 
     // Collect visible marker positions
     const now = Date.now();
