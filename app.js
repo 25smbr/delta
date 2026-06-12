@@ -932,8 +932,8 @@ function renderHeatmap() {
     const cW = aspect >= 1 ? HEAT_MAX_PX : Math.round(HEAT_MAX_PX * aspect);
     const cH = aspect >= 1 ? Math.round(HEAT_MAX_PX / aspect) : HEAT_MAX_PX;
 
-    // Blob radius: ~5% of canvas edge — nearby markers merge, distant ones stay separate.
-    const radius = Math.round(HEAT_MAX_PX * 0.05);
+    // Blob radius: ~3.5% of canvas edge — nearby markers merge, distant ones stay separate.
+    const radius = Math.round(HEAT_MAX_PX * 0.035);
 
     const offscreen = _heatOff;
     offscreen.width  = cW;
